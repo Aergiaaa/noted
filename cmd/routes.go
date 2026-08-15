@@ -55,7 +55,7 @@ func (a *App) routes() http.Handler {
 				s.Post("/blocks/{id}/restore", a.handleRestoreBlock)
 
 				s.Patch("/blocks/{id}", a.handleUpdateBlock)
-				s.Patch("/pages/{id}/blocks/reorder", a.handleNOP)
+				s.Patch("/pages/{id}/blocks/reorder", a.handleReorderBlocks)
 
 				s.Delete("/blocks/{id}", a.handleDeleteBlock)
 			}

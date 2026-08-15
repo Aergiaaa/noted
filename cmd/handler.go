@@ -214,6 +214,21 @@ func (a *App) handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleReorderBlocks(w http.ResponseWriter, r *http.Request) {
+	input := []service.ReorderBlockArgs{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := a.service.Block.Reorder(r.Context(), input); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *App) handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
 	blockId := chi.URLParam(r, "id")
 

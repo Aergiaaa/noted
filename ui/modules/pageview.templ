@@ -57,14 +57,31 @@ templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, dept
 
 templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int) {
 	<div
-		x-data={ editorProps(b, pageId) }
-		contenteditable="true"
-		spellcheck="false"
-		@input="onInput()"
-		@keydown="onKeydown($event)"
-		class={ editorClass(b.Type, depth) }
+		x-data={ rowProps(b, pageId, depth) }
+		data-id={ b.ID.String() }
+		data-depth={ strconv.Itoa(depth) }
+		@dragenter.prevent="onDragEnter()"
+		@dragover.prevent="onDragOver()"
+		@drop="onDrop()"
+		class="group flex items-start"
 	>
-		{ blockText(b.Content) }
+		<div
+			draggable="true"
+			@dragstart="onDragStart()"
+			@dragend="onDragEnd()"
+			title="drag to reorder"
+			class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300"
+		>⠿</div>
+		<div
+			x-data={ editorProps(b, pageId, depth) }
+			contenteditable="true"
+			spellcheck="false"
+			@input="onInput()"
+			@keydown="onKeydown($event)"
+			class={ editorClass(b.Type, depth) }
+		>
+			{ blockText(b.Content) }
+		</div>
 	</div>
 }
 
@@ -91,8 +108,12 @@ func blockText(content []byte) string {
 	return c.Text
 }
 
-func editorProps(b database.GetBlocksByPageRow, pageId string) string {
-	return "editor({id: " + strconv.Quote(b.ID.String()) + ", type: " + strconv.Quote(b.Type) + ", pageId: " + strconv.Quote(pageId) + "})"
+func editorProps(b database.GetBlocksByPageRow, pageId string, depth int) string {
+	return "editor({id: " + strconv.Quote(b.ID.String()) + ", type: " + strconv.Quote(b.Type) + ", pageId: " + strconv.Quote(pageId) + ", depth: " + strconv.Itoa(depth) + "})"
+}
+
+func rowProps(b database.GetBlocksByPageRow, pageId string, depth int) string {
+	return "row({id: " + strconv.Quote(b.ID.String()) + ", pageId: " + strconv.Quote(pageId) + ", depth: " + strconv.Itoa(depth) + "})"
 }
 
 func editorClass(t string, depth int) string {

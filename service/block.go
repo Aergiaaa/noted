@@ -128,8 +128,8 @@ func (b *BlockService) Update(ctx context.Context, args UpdateBlockArgs) (databa
 }
 
 type ReorderBlockArgs struct {
-	ID    string
-	Order int32
+	ID    string `json:"id"`
+	Order int32  `json:"order"`
 }
 
 func (b *BlockService) Reorder(ctx context.Context, args []ReorderBlockArgs) error {
