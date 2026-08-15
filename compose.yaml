@@ -14,6 +14,16 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DB_URL: postgres://noted:noted@db:5432/noted?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   app:
     build: .
     ports:
@@ -23,8 +33,8 @@ services:
       PORT: "3000"
       SECRET: ${SECRET:-dev-only-change-me-totp-secret-32bytes}
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

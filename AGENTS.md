@@ -79,7 +79,9 @@ code before writing anything new. Rules below.
 ## SQL migrations
 
 - Numbered pairs `internal/database/migrations/NNNNNN_name.{up,down}.sql`;
-  UUID PKs `gen_random_uuid()`, timestamps `default now()`. Applied manually.
+  UUID PKs `gen_random_uuid()`, timestamps `default now()`. Applied by
+  `cmd/migrate` (embedded via `migrations.FS`, tracked in `schema_migrations`,
+  idempotent); compose runs it as a one-shot `migrate` service before `app`.
 
 ## Errors / logging
 
