@@ -63,26 +63,26 @@ func (a *App) routes() http.Handler {
 
 			s.Route("/transactions", func(s chi.Router) {
 
-				s.Get("/", a.handleNOP)
-				s.Get("/{id}", a.handleNOP)
+				s.Get("/", a.handleTransactions)
+				s.Get("/{id}", a.handleGetTransaction)
 
-				s.Post("/", a.handleNOP)
-				s.Post("/{id}/restore", a.handleNOP)
+				s.Post("/", a.handleCreateTransaction)
+				s.Post("/{id}/restore", a.handleRestoreTransaction)
 
-				s.Patch("/{id}", a.handleNOP)
-				s.Delete("/{id}", a.handleNOP)
+				s.Patch("/{id}", a.handleUpdateTransaction)
+				s.Delete("/{id}", a.handleDeleteTransaction)
 
 			})
 
 			s.Route("/pockets", func(s chi.Router) {
 
-				s.Get("/", a.handleNOP)
+				s.Get("/", a.handlePockets)
 
-				s.Post("/", a.handleNOP)
-				s.Post("/{id}/restore", a.handleNOP)
+				s.Post("/", a.handleCreatePocket)
+				s.Post("/{id}/restore", a.handleRestorePocket)
 
-				s.Patch("/{id}", a.handleNOP)
-				s.Delete("/{id}", a.handleNOP)
+				s.Patch("/{id}", a.handleUpdatePocket)
+				s.Delete("/{id}", a.handleDeletePocket)
 
 			})
 

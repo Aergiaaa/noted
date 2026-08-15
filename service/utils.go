@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -52,7 +53,14 @@ type Number interface {
 func parseNum[T Number](num T) (pgtype.Numeric, error) {
 	var res pgtype.Numeric
 
-	if err := res.Scan(num); err != nil {
+	var err error
+	if val, ok := any(num).(float64); ok {
+		err = res.Scan(strconv.FormatFloat(val, 'f', -1, 64))
+	} else {
+		err = res.Scan(num)
+	}
+
+	if err != nil {
 		return pgtype.Numeric{}, err
 	}
 
