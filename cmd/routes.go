@@ -40,7 +40,7 @@ func (a *App) routes() http.Handler {
 				s.Get("/{id}/backlinks", a.handleNOP)
 				s.Get("/{id}/blocks", a.handleNOP)
 
-			s.Post("/", a.handleNOP)
+				s.Post("/", a.handleNOP)
 				s.Post("/{id}/restore", a.handleNOP)
 
 				s.Patch("/{id}", a.handleNOP)
@@ -103,6 +103,11 @@ func (a *App) routes() http.Handler {
 				s.Post("/", a.handleNOP)
 				s.Delete("/", a.handleNOP)
 			})
+		})
+
+		// page fragment
+		s.Route("/pages", func(s chi.Router) {
+			s.Get("/{id}/fragment", a.handlePageFragment)
 		})
 
 		s.NotFound(func(w http.ResponseWriter, r *http.Request) {

@@ -20,6 +20,7 @@ const (
 type BlockServicer interface {
 	Create(ctx context.Context, args CreateBlockArgs) (database.CreateBlockRow, error)
 	Delete(ctx context.Context, id string) error
+	GetBlocksByPage(ctx context.Context, id string) ([]database.GetBlocksByPageRow, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, args UpdateBlockArgs) (database.UpdateBlockRow, error)
 	Reorder(ctx context.Context, args []ReorderBlockArgs) error
@@ -89,6 +90,15 @@ func (b *BlockService) Restore(ctx context.Context, id string) error {
 	}
 
 	return b.models.RestoreBlock(ctx, cleanId)
+}
+
+func (b *BlockService) GetBlocksByPage(ctx context.Context, id string) ([]database.GetBlocksByPageRow, error) {
+	cleanId, err := parseUUID(id)
+	if err != nil {
+		return []database.GetBlocksByPageRow{}, err
+	}
+
+	return b.models.GetBlocksByPage(ctx, cleanId)
 }
 
 type UpdateBlockArgs struct {

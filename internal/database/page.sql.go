@@ -14,6 +14,7 @@ import (
 const countPages = `-- name: CountPages :one
 select count(*)::int
 	from page
+	where deleted_at is null
 `
 
 func (q *Queries) CountPages(ctx context.Context) (int32, error) {
@@ -113,6 +114,7 @@ func (q *Queries) GetPageByID(ctx context.Context, id pgtype.UUID) (GetPageByIDR
 const getPagePaginated = `-- name: GetPagePaginated :many
 select id,title
 	from page
+	where deleted_at is null
 	order by updated_at desc
 	limit $1 offset $2
 `

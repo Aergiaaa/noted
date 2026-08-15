@@ -1,0 +1,71 @@
+package modules
+
+import (
+	"encoding/json"
+
+	"github.com/Aergiaaa/noted/internal/database"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+templ PageView(title string, blocks []database.GetBlocksByPageRow) {
+	<div class="mx-auto w-full max-w-2xl px-4 py-8">
+		<h1 class="mb-8 text-4xl font-bold tracking-tight">{ title }</h1>
+		<div class="space-y-1">
+			@blockTree(blocks, pgtype.UUID{}, 0)
+		</div>
+	</div>
+}
+
+templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int) {
+	for _, b := range blockChildren(blocks, parentId) {
+		@blockRow(b, depth)
+		@blockTree(blocks, b.ID, depth+1)
+	}
+}
+
+templ blockRow(b database.GetBlocksByPageRow, depth int) {
+	if depth > 0 {
+		<div class="ml-6">
+			@blockContent(b)
+		</div>
+	} else {
+		@blockContent(b)
+	}
+}
+
+templ blockContent(b database.GetBlocksByPageRow) {
+	switch b.Type {
+	case "heading":
+		<h2 class="pt-3 text-2xl font-semibold">{ blockText(b.Content) }</h2>
+	case "list":
+		<div class="flex gap-2">
+			<span class="text-muted-foreground">-</span>
+			<span>{ blockText(b.Content) }</span>
+		</div>
+	default:
+		<div>{ blockText(b.Content) }</div>
+	}
+}
+
+func blockChildren(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID) []database.GetBlocksByPageRow {
+	var children []database.GetBlocksByPageRow
+
+	for _, b := range blocks {
+		if b.ParentBlockID == parentId {
+			children = append(children, b)
+		}
+	}
+
+	return children
+}
+
+func blockText(content []byte) string {
+	var c struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(content, &c); err != nil {
+		return ""
+	}
+
+	return c.Text
+}

@@ -6,7 +6,7 @@ import (
 )
 
 type Services struct {
-	models       *database.Queries
+	models      *database.Queries
 	Page        PageServicer
 	Block       BlockServicer
 	Transaction TransactionServicer
@@ -18,7 +18,7 @@ type Services struct {
 
 func InitServices(models *database.Queries, pool *pgxpool.Pool) *Services {
 	return &Services{
-		models:       models,
+		models:      models,
 		Page:        &PageService{models: models},
 		Block:       &BlockService{models: models, pool: pool},
 		Transaction: &TransactionService{models: models},

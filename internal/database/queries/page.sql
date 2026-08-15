@@ -33,9 +33,11 @@ update page
 -- name: GetPagePaginated :many
 select id,title
 	from page
+	where deleted_at is null
 	order by updated_at desc
 	limit $1 offset $2;
 
 -- name: CountPages :one
 select count(*)::int
-	from page;
+	from page
+	where deleted_at is null;
