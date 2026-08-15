@@ -86,3 +86,18 @@ func TestTransactionServiceUUIDValidation(t *testing.T) {
 		t.Fatalf("expected error for bad id")
 	}
 }
+
+func TestTransactionServiceGetFiltered(t *testing.T) {
+	tr := &TransactionService{}
+
+	if _, err := tr.GetFiltered(context.Background(), FilterTransactionsArg{PocketID: "nope"}); err == nil {
+		t.Fatalf("expected error for bad pocket id")
+	}
+
+	if _, err := tr.GetFiltered(context.Background(), FilterTransactionsArg{
+		FromDate: time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC),
+		ToDate:   time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+	}); !errors.Is(err, ErrInvalidDateRange) {
+		t.Fatalf("expected ErrInvalidDateRange, got %v", err)
+	}
+}

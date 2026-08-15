@@ -947,10 +947,45 @@ func (a *App) handlePocketsFragment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleTransactionsFragment(w http.ResponseWriter, r *http.Request) {
-	transactions, err := a.service.Transaction.GetWithPockets(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	pocketQuery := r.URL.Query().Get("pocket")
+	fromQuery := r.URL.Query().Get("from")
+	toQuery := r.URL.Query().Get("to")
+
+	var transactions []database.GetTransactionsWithPocketNamesRow
+	var err error
+
+	if pocketQuery != "" || fromQuery != "" || toQuery != "" {
+		var fromDate, toDate time.Time
+		if fromQuery != "" {
+			fromDate, err = time.Parse(time.DateOnly, fromQuery)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		if toQuery != "" {
+			toDate, err = time.Parse(time.DateOnly, toQuery)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+		transactions, err = a.service.Transaction.GetFiltered(r.Context(), service.FilterTransactionsArg{
+			PocketID: pocketQuery,
+			FromDate: fromDate,
+			ToDate:   toDate,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		transactions, err = a.service.Transaction.GetWithPockets(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	pockets, err := a.service.Pocket.GetAll(r.Context())

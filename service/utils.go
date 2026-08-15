@@ -21,6 +21,7 @@ var (
 	ErrEdgeLinkTypeMismatch    = errors.New("mismatch edge link type")
 	ErrEmptyTitle              = errors.New("title cannot be empty")
 	ErrInvalidAmount           = errors.New("amount must be a finite number")
+	ErrInvalidDateRange        = errors.New("from date must not be after to date")
 )
 
 type PagTrType string

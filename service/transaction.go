@@ -14,6 +14,7 @@ type TransactionServicer interface {
 	GetAll(ctx context.Context) ([]database.GetAllTransactionsRow, error)
 	GetById(ctx context.Context, id string) (database.GetTransactionByIDRow, error)
 	GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error)
+	GetFiltered(ctx context.Context, arg FilterTransactionsArg) ([]database.GetTransactionsWithPocketNamesRow, error)
 	GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, arg UpdateTransactionArg) (database.UpdateTransactionRow, error)
@@ -118,6 +119,63 @@ func (t *TransactionService) GetById(ctx context.Context, id string) (database.G
 
 func (t *TransactionService) GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error) {
 	return t.models.GetDeletedTransactions(ctx)
+}
+
+type FilterTransactionsArg struct {
+	PocketID string
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+func (t *TransactionService) GetFiltered(ctx context.Context, arg FilterTransactionsArg) ([]database.GetTransactionsWithPocketNamesRow, error) {
+	var pocketId pgtype.UUID
+	if arg.PocketID != "" {
+		var err error
+		pocketId, err = parseUUID(arg.PocketID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var fromDate pgtype.Date
+	if !arg.FromDate.IsZero() {
+		var err error
+		fromDate, err = parseDate(arg.FromDate)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var toDate pgtype.Date
+	if !arg.ToDate.IsZero() {
+		var err error
+		toDate, err = parseDate(arg.ToDate)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if !arg.FromDate.IsZero() && !arg.ToDate.IsZero() && arg.FromDate.After(arg.ToDate) {
+		return nil, ErrInvalidDateRange
+	}
+
+	params := database.GetTransactionsByFilterParams{
+		PocketID: pocketId,
+		FromDate: fromDate,
+		ToDate:   toDate,
+	}
+
+	rows, err := t.models.GetTransactionsByFilter(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]database.GetTransactionsWithPocketNamesRow, len(rows))
+	for i, r := range rows {
+		out[i] = database.GetTransactionsWithPocketNamesRow(r)
+	}
+
+	return out, nil
 }
 
 func (t *TransactionService) GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error) {

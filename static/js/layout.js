@@ -303,6 +303,26 @@ document.addEventListener('alpine:init', () => {
 			this.$refs.amountInput.value = ''
 		},
 
+		filter() {
+			const params = new URLSearchParams()
+			const pocket = this.$refs.filterPocket.value
+			const from = this.$refs.filterFrom.value
+			const to = this.$refs.filterTo.value
+			if (pocket) params.set('pocket', pocket)
+			if (from) params.set('from', from)
+			if (to) params.set('to', to)
+			const qs = params.toString()
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadFinance('transactions' + (qs ? '?' + qs : ''))
+		},
+
+		clearFilter() {
+			this.$refs.filterPocket.value = ''
+			this.$refs.filterFrom.value = ''
+			this.$refs.filterTo.value = ''
+			this.filter()
+		},
+
 		async create() {
 			const title = this.$refs.titleInput.value.trim()
 			const amount = Number(this.$refs.amountInput.value)

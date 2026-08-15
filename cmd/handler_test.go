@@ -223,6 +223,9 @@ type fakeTransactionServicer struct {
 	deleted       []database.GetDeletedTransactionsRow
 	getDeletedErr error
 	restoreErr    error
+	filtered      []database.GetTransactionsWithPocketNamesRow
+	filterArg     *service.FilterTransactionsArg
+	filterErr     error
 }
 
 func (f *fakeTransactionServicer) Create(ctx context.Context, arg service.CreateTransactionArg) (database.CreateTransactionRow, error) {
@@ -245,6 +248,11 @@ func (f *fakeTransactionServicer) GetWithPockets(ctx context.Context) ([]databas
 
 func (f *fakeTransactionServicer) GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error) {
 	return f.deleted, f.getDeletedErr
+}
+
+func (f *fakeTransactionServicer) GetFiltered(ctx context.Context, arg service.FilterTransactionsArg) ([]database.GetTransactionsWithPocketNamesRow, error) {
+	f.filterArg = &arg
+	return f.filtered, f.filterErr
 }
 
 func (f *fakeTransactionServicer) Restore(ctx context.Context, id string) error { return f.restoreErr }
@@ -388,4 +396,91 @@ func TestHandleTrashFragmentTransactionError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
+}
+
+func TestHandleTransactionsFragmentWithFilters(t *testing.T) {
+	fake := &fakeTransactionServicer{
+		filtered: []database.GetTransactionsWithPocketNamesRow{deletedTransactionRowToRow()},
+	}
+	app := &App{service: &service.Services{Transaction: fake, Pocket: &fakePocketServicer{}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?pocket=0197f1a0-0000-0000-0000-000000000001&from=2026-08-01&to=2026-08-15", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if fake.filterArg == nil {
+		t.Fatalf("expected GetFiltered to be called")
+	}
+
+	if fake.filterArg.PocketID != "0197f1a0-0000-0000-0000-000000000001" {
+		t.Fatalf("expected pocket id passthrough, got %q", fake.filterArg.PocketID)
+	}
+
+	if fake.filterArg.FromDate.Year() != 2026 || fake.filterArg.FromDate.Month() != 8 || fake.filterArg.FromDate.Day() != 1 {
+		t.Fatalf("expected from date parsed, got %v", fake.filterArg.FromDate)
+	}
+
+	if fake.filterArg.ToDate.Day() != 15 {
+		t.Fatalf("expected to date parsed, got %v", fake.filterArg.ToDate)
+	}
+}
+
+func TestHandleTransactionsFragmentWithoutFilters(t *testing.T) {
+	fake := &fakeTransactionServicer{}
+	app := &App{service: &service.Services{Transaction: fake, Pocket: &fakePocketServicer{}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if fake.filterArg != nil {
+		t.Fatalf("expected GetWithPockets path without filters, got %v", fake.filterArg)
+	}
+}
+
+func TestHandleTransactionsFragmentBadDate(t *testing.T) {
+	app := &App{service: &service.Services{Transaction: &fakeTransactionServicer{}, Pocket: &fakePocketServicer{}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=banana", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleTransactionsFragmentServiceError(t *testing.T) {
+	app := &App{service: &service.Services{
+		Transaction: &fakeTransactionServicer{filterErr: errors.New("boom")},
+		Pocket:      &fakePocketServicer{},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func deletedTransactionRowToRow() database.GetTransactionsWithPocketNamesRow {
+	row := database.GetTransactionsWithPocketNamesRow{Title: "Makan", Type: "expense"}
+	_ = row.ID.Scan("0197f1a0-0000-0000-0000-000000000004")
+	_ = row.Amount.Scan("10")
+	_ = row.Date.Scan("2026-08-14")
+	return row
 }

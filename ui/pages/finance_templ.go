@@ -156,7 +156,7 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div x-data=\"transactionForm()\" class=\"mx-auto w-full max-w-2xl px-4 py-8\"><h1 class=\"mb-8 text-4xl font-bold tracking-tight\">Transactions</h1><form @submit.prevent=\"create()\" class=\"mb-8 rounded-lg border border-zinc-800 p-4\"><div class=\"flex gap-2\"><input x-ref=\"titleInput\" type=\"text\" placeholder=\"Title\" class=\"flex-1 rounded-lg border border-zinc-800 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-600\"> <input x-ref=\"amountInput\" type=\"number\" step=\"0.01\" placeholder=\"Amount\" class=\"w-36 rounded-lg border border-zinc-800 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-600\"> <input x-ref=\"dateInput\" type=\"date\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 outline-none focus:border-zinc-600\"></div><div class=\"mt-3 flex flex-wrap items-center gap-2\"><div class=\"flex overflow-hidden rounded-lg border border-zinc-800\"><button type=\"button\" @click=\"setType('income')\" :class=\"typeClass('income')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Income</button> <button type=\"button\" @click=\"setType('expense')\" :class=\"typeClass('expense')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Expense</button> <button type=\"button\" @click=\"setType('transfer')\" :class=\"typeClass('transfer')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Transfer</button></div><select x-show=\"type !== 'income'\" x-ref=\"fromSelect\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"><option value=\"\">From pocket</option>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div x-data=\"transactionForm()\" class=\"mx-auto w-full max-w-2xl px-4 py-8\"><h1 class=\"mb-8 text-4xl font-bold tracking-tight\">Transactions</h1><form @submit.prevent=\"filter()\" class=\"mb-8 rounded-lg border border-zinc-800 p-4\"><div class=\"flex flex-wrap items-center gap-2\"><select x-ref=\"filterPocket\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"><option value=\"\">All pockets</option>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -164,7 +164,7 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</select> <select x-show=\"type !== 'expense'\" x-ref=\"toSelect\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"><option value=\"\">To pocket</option>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</select> <input x-ref=\"filterFrom\" type=\"date\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"> <span class=\"text-xs text-zinc-600\">to</span> <input x-ref=\"filterTo\" type=\"date\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"> <button type=\"submit\" class=\"ml-auto cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors duration-100\">Filter</button> <button type=\"button\" @click=\"clearFilter()\" class=\"cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-500 hover:border-zinc-500 hover:text-white transition-colors duration-100\">Clear</button></div></form><form @submit.prevent=\"create()\" class=\"mb-8 rounded-lg border border-zinc-800 p-4\"><div class=\"flex gap-2\"><input x-ref=\"titleInput\" type=\"text\" placeholder=\"Title\" class=\"flex-1 rounded-lg border border-zinc-800 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-600\"> <input x-ref=\"amountInput\" type=\"number\" step=\"0.01\" placeholder=\"Amount\" class=\"w-36 rounded-lg border border-zinc-800 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-600\"> <input x-ref=\"dateInput\" type=\"date\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 outline-none focus:border-zinc-600\"></div><div class=\"mt-3 flex flex-wrap items-center gap-2\"><div class=\"flex overflow-hidden rounded-lg border border-zinc-800\"><button type=\"button\" @click=\"setType('income')\" :class=\"typeClass('income')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Income</button> <button type=\"button\" @click=\"setType('expense')\" :class=\"typeClass('expense')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Expense</button> <button type=\"button\" @click=\"setType('transfer')\" :class=\"typeClass('transfer')\" class=\"px-3 py-1.5 text-xs cursor-pointer transition-colors duration-100\">Transfer</button></div><select x-show=\"type !== 'income'\" x-ref=\"fromSelect\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"><option value=\"\">From pocket</option>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -172,47 +172,42 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</select> <button type=\"submit\" class=\"ml-auto cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors duration-100\"><span x-show=\"!editing\">Add</span> <span x-show=\"editing\">Save</span></button> <button type=\"button\" @click=\"cancelEdit()\" x-show=\"editing\" class=\"cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-500 hover:border-zinc-500 hover:text-white transition-colors duration-100\">Cancel</button></div></form><div class=\"overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Title</th><th class=\"px-4 py-2\">Pocket</th><th class=\"px-4 py-2\">Date</th><th class=\"px-4 py-2 text-right\">Amount</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</select> <select x-show=\"type !== 'expense'\" x-ref=\"toSelect\" class=\"rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600\"><option value=\"\">To pocket</option>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = pocketOptions(pockets).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</select> <button type=\"submit\" class=\"ml-auto cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors duration-100\"><span x-show=\"!editing\">Add</span> <span x-show=\"editing\">Save</span></button> <button type=\"button\" @click=\"cancelEdit()\" x-show=\"editing\" class=\"cursor-pointer rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-500 hover:border-zinc-500 hover:text-white transition-colors duration-100\">Cancel</button></div></form><div class=\"overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Title</th><th class=\"px-4 py-2\">Pocket</th><th class=\"px-4 py-2\">Date</th><th class=\"px-4 py-2 text-right\">Amount</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, t := range transactions {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<tr data-row=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<tr data-row=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(transactionRowData(t))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 130, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 156, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 131, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 157, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td class=\"px-4 py-2 text-zinc-500\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(pocketLabel(t))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 132, Col: 59}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -220,16 +215,29 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			var templ_7745c5c3_Var11 string
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(pocketLabel(t))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 158, Col: 59}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</td><td class=\"px-4 py-2 text-zinc-500\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t.Date.Time.Format("2006-01-02"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 133, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 159, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</td>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</td>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -238,7 +246,7 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<td class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<td class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -251,44 +259,44 @@ func TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(signedAmount(t.Type, t.Amount))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 134, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 160, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</td><td class=\"px-2 py-2 text-right whitespace-nowrap\"><button @click=\"edit($event)\" class=\"cursor-pointer text-zinc-600 hover:text-zinc-300 transition-colors duration-100\">Edit</button> <button @click=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</td><td class=\"px-2 py-2 text-right whitespace-nowrap\"><button @click=\"edit($event)\" class=\"cursor-pointer text-zinc-600 hover:text-zinc-300 transition-colors duration-100\">Edit</button> <button @click=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue("remove('" + t.ID.String() + "')")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 141, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 167, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"ml-2 cursor-pointer text-zinc-600 hover:text-red-400 transition-colors duration-100\">×</button></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" class=\"ml-2 cursor-pointer text-zinc-600 hover:text-red-400 transition-colors duration-100\">×</button></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(transactions) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<tr><td colspan=\"5\" class=\"px-4 py-8 text-center text-zinc-600\">No transactions yet</td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<tr><td colspan=\"5\" class=\"px-4 py-8 text-center text-zinc-600\">No transactions yet</td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</tbody></table></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</tbody></table></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -317,34 +325,21 @@ func TrashView(pockets []database.GetDeletedPocketsRow, transactions []database.
 			templ_7745c5c3_Var17 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div x-data=\"trashView()\" class=\"mx-auto w-full max-w-2xl px-4 py-8\"><h1 class=\"mb-8 text-4xl font-bold tracking-tight\">Trash</h1><div class=\"overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Pocket</th><th class=\"px-4 py-2\">Type</th><th class=\"px-4 py-2\">Deleted</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div x-data=\"trashView()\" class=\"mx-auto w-full max-w-2xl px-4 py-8\"><h1 class=\"mb-8 text-4xl font-bold tracking-tight\">Trash</h1><div class=\"overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Pocket</th><th class=\"px-4 py-2\">Type</th><th class=\"px-4 py-2\">Deleted</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, p := range pockets {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<tr class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<tr class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 174, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 200, Col: 51}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</td><td class=\"px-4 py-2 text-zinc-500\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(p.Type)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 175, Col: 51}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -352,71 +347,84 @@ func TrashView(pockets []database.GetDeletedPocketsRow, transactions []database.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			var templ_7745c5c3_Var19 string
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(p.Type)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 201, Col: 51}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td class=\"px-4 py-2 text-zinc-500\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(p.DeletedAt.Time.Format("2006-01-02"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 176, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 202, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td class=\"px-2 py-2 text-right\"><button @click=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</td><td class=\"px-2 py-2 text-right\"><button @click=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue("restorePocket('" + p.ID.String() + "')")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 179, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 205, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" class=\"cursor-pointer text-zinc-600 hover:text-emerald-400 transition-colors duration-100\">Restore</button></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" class=\"cursor-pointer text-zinc-600 hover:text-emerald-400 transition-colors duration-100\">Restore</button></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(pockets) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<tr><td colspan=\"4\" class=\"px-4 py-8 text-center text-zinc-600\">No deleted pockets</td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<tr><td colspan=\"4\" class=\"px-4 py-8 text-center text-zinc-600\">No deleted pockets</td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</tbody></table></div><div class=\"mt-6 overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Title</th><th class=\"px-4 py-2\">Date</th><th class=\"px-4 py-2 text-right\">Amount</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</tbody></table></div><div class=\"mt-6 overflow-hidden rounded-lg border border-zinc-800\"><table class=\"w-full text-sm\"><thead><tr class=\"border-b border-zinc-800 text-left text-xs uppercase tracking-wider text-zinc-500\"><th class=\"px-4 py-2\">Title</th><th class=\"px-4 py-2\">Date</th><th class=\"px-4 py-2 text-right\">Amount</th><th class=\"px-2 py-2\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, t := range transactions {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<tr class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<tr class=\"border-b border-zinc-800/50 last:border-b-0\"><td class=\"px-4 py-2 text-zinc-200\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(t.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 206, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 232, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</td><td class=\"px-4 py-2 text-zinc-500\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</td><td class=\"px-4 py-2 text-zinc-500\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(t.Date.Time.Format("2006-01-02"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 207, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 233, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</td>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -425,7 +433,7 @@ func TrashView(pockets []database.GetDeletedPocketsRow, transactions []database.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<td class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<td class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -438,44 +446,44 @@ func TrashView(pockets []database.GetDeletedPocketsRow, transactions []database.
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(signedAmount(t.Type, t.Amount))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 208, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 234, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</td><td class=\"px-2 py-2 text-right\"><button @click=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</td><td class=\"px-2 py-2 text-right\"><button @click=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue("restoreTransaction('" + t.ID.String() + "')")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 211, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 237, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" class=\"cursor-pointer text-zinc-600 hover:text-emerald-400 transition-colors duration-100\">Restore</button></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"cursor-pointer text-zinc-600 hover:text-emerald-400 transition-colors duration-100\">Restore</button></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(transactions) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<tr><td colspan=\"4\" class=\"px-4 py-8 text-center text-zinc-600\">No deleted transactions</td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<tr><td colspan=\"4\" class=\"px-4 py-8 text-center text-zinc-600\">No deleted transactions</td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</tbody></table></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</tbody></table></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -505,33 +513,33 @@ func pocketOptions(pockets []database.GetAllPocketsRow) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, p := range pockets {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.ID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 230, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 256, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 230, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/pages/finance.templ`, Line: 256, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</option>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</option>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

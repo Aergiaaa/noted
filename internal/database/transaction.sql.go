@@ -189,6 +189,76 @@ func (q *Queries) GetTransactionByID(ctx context.Context, id pgtype.UUID) (GetTr
 	return i, err
 }
 
+const getTransactionsByFilter = `-- name: GetTransactionsByFilter :many
+select
+	t.id,
+	t.title,
+	t.type,
+	t.amount,
+	t.date,
+	t.from_pocket_id,
+	t.to_pocket_id,
+	fp.name as from_pocket_name,
+	tp.name as to_pocket_name
+from transaction t
+left join pocket fp on fp.id = t.from_pocket_id
+left join pocket tp on tp.id = t.to_pocket_id
+where t.deleted_at is null
+	and ($1::uuid is null or t.from_pocket_id = $1 or t.to_pocket_id = $1)
+	and ($2::date is null or t.date >= $2)
+	and ($3::date is null or t.date <= $3)
+order by t.date desc, t.created_at desc
+limit 50
+`
+
+type GetTransactionsByFilterParams struct {
+	PocketID pgtype.UUID
+	FromDate pgtype.Date
+	ToDate   pgtype.Date
+}
+
+type GetTransactionsByFilterRow struct {
+	ID             pgtype.UUID
+	Title          string
+	Type           string
+	Amount         pgtype.Numeric
+	Date           pgtype.Date
+	FromPocketID   pgtype.UUID
+	ToPocketID     pgtype.UUID
+	FromPocketName pgtype.Text
+	ToPocketName   pgtype.Text
+}
+
+func (q *Queries) GetTransactionsByFilter(ctx context.Context, arg GetTransactionsByFilterParams) ([]GetTransactionsByFilterRow, error) {
+	rows, err := q.db.Query(ctx, getTransactionsByFilter, arg.PocketID, arg.FromDate, arg.ToDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTransactionsByFilterRow
+	for rows.Next() {
+		var i GetTransactionsByFilterRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.Amount,
+			&i.Date,
+			&i.FromPocketID,
+			&i.ToPocketID,
+			&i.FromPocketName,
+			&i.ToPocketName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionsWithPocketNames = `-- name: GetTransactionsWithPocketNames :many
 select
 	t.id,

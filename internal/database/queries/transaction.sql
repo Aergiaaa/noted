@@ -43,6 +43,27 @@ select id, title, type, amount, date, deleted_at
 	order by deleted_at desc
 	limit 50;
 
+-- name: GetTransactionsByFilter :many
+select
+	t.id,
+	t.title,
+	t.type,
+	t.amount,
+	t.date,
+	t.from_pocket_id,
+	t.to_pocket_id,
+	fp.name as from_pocket_name,
+	tp.name as to_pocket_name
+from transaction t
+left join pocket fp on fp.id = t.from_pocket_id
+left join pocket tp on tp.id = t.to_pocket_id
+where t.deleted_at is null
+	and (sqlc.arg('pocket_id')::uuid is null or t.from_pocket_id = sqlc.arg('pocket_id') or t.to_pocket_id = sqlc.arg('pocket_id'))
+	and (sqlc.arg('from_date')::date is null or t.date >= sqlc.arg('from_date'))
+	and (sqlc.arg('to_date')::date is null or t.date <= sqlc.arg('to_date'))
+order by t.date desc, t.created_at desc
+limit 50;
+
 -- name: GetTransactionsWithPocketNames :many
 select
 	t.id,
