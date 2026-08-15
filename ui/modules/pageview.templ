@@ -76,6 +76,10 @@ templ backlinkList(backlinks []database.GetBacklinkPagesRow) {
 }
 
 templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string, pages map[string]string) {
+	if parentId == (pgtype.UUID{}) && len(blockChildren(blocks, parentId)) == 0 {
+		@blockEditor(database.GetBlocksByPageRow{Type: "text"}, pageId, 0, pages)
+	}
+
 	for _, b := range blockChildren(blocks, parentId) {
 		@blockEditor(b, pageId, depth, pages)
 		@blockTree(blocks, b.ID, depth+1, pageId, pages)

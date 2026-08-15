@@ -35,7 +35,11 @@ document.addEventListener('alpine:init', () => {
 			if (!res.ok) return
 			const data = await res.json()
 			await this.fetchPages(1)
-			this.loadContent(data.id)
+			await this.loadContent(data.id)
+			this.$nextTick(() => {
+				const el = document.querySelector('#main-content [x-data^="editor"]') || document.querySelector('#main-content h1')
+				if (el) el.focus()
+			})
 		},
 
 		async loadContent(pageId) {
@@ -56,19 +60,27 @@ document.addEventListener('alpine:init', () => {
 		pageId: props.pageId,
 		depth: props.depth,
 		raw: props.raw,
+		creating: !props.id,
 		saveTimer: null,
 
 		onFocus() {
+			if (this.$el.innerText.replace(/\n$/, '') === this.raw) return
 			this.$el.innerHTML = this.escaped(this.raw).replace(/\n/g, '<br>')
 			this.placeCaret(this.$el)
 		},
 
-		onBlur() {
+		async onBlur() {
 			const text = this.$el.innerText.replace(/\n$/, '')
-			if (text === this.raw) return
-			this.raw = text
-			this.save()
-			this.syncLinks()
+			const changed = text !== this.raw
+			if (changed) {
+				this.raw = text
+				await this.save()
+			}
+			if (changed || this.raw.includes('[[')) {
+				this.syncLinks()
+				const layoutEl = document.querySelector('[x-data="layout"]')
+				if (layoutEl && this.id) Alpine.$data(layoutEl).loadContent(this.pageId)
+			}
 		},
 
 		onLinkMousedown() {},
@@ -84,6 +96,19 @@ document.addEventListener('alpine:init', () => {
 
 		async save() {
 			const text = this.$el.innerText.replace(/\n$/, '')
+			if (this.creating) {
+				const res = await fetch('/api/pages/' + this.pageId + '/blocks', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ type: this.type, content: { text } })
+				})
+				if (!res.ok) return
+				const data = await res.json()
+				this.id = data.id
+				this.creating = false
+				this.$el.parentNode.dataset.id = this.id
+				return
+			}
 			const res = await fetch('/api/blocks/' + this.id, {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
@@ -94,7 +119,6 @@ document.addEventListener('alpine:init', () => {
 
 		async syncLinks() {
 			const titles = [...this.raw.matchAll(/\[\[([^\[\]]+)\]\]/g)].map(m => m[1])
-			if (!titles.length) return
 			const res = await fetch('/api/pages/' + this.pageId + '/wiki-links', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -134,6 +158,7 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		async deleteSelf() {
+			if (this.creating) return
 			const row = this.$el.parentNode
 			const prevRow = row.previousElementSibling
 			const res = await fetch('/api/blocks/' + this.id, {

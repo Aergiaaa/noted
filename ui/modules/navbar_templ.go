@@ -29,7 +29,7 @@ func Navbar() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav x-show=\"navbarVisible\" class=\"flex items-center justify-between px-2 py-2 sticky top-0\"><div class=\"flex items-baseline gap-3\"><div class=\"text-3xl font-bold\">Noted</div><button @click=\"createPage()\" class=\"text-zinc-400 hover:text-white transition-colors duration-100 text-xl px-2\">+</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav x-show=\"navbarVisible\" class=\"flex items-center justify-between px-2 py-2 sticky top-0\"><div class=\"flex items-baseline gap-3\"><button @click=\"sidebarOpen = !sidebarOpen\" title=\"toggle sidebar\" class=\"text-zinc-400 hover:text-white transition-colors duration-100 text-xl px-2\">☰</button><div class=\"text-3xl font-bold\">Noted</div><button @click=\"createPage()\" class=\"text-zinc-400 hover:text-white transition-colors duration-100 text-xl px-2\">+</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
