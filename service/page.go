@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Aergiaaa/noted/internal/database"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PageServicer interface {
@@ -28,9 +29,15 @@ func (p *PageService) Create(ctx context.Context, title string, date *time.Time)
 		return database.CreatePageRow{}, ErrEmptyTitle
 	}
 
-	cleanDate, err := parseDate(*date)
-	if err != nil {
-		return database.CreatePageRow{}, err
+	var (
+		cleanDate pgtype.Date
+		err       error
+	)
+	if date != nil {
+		cleanDate, err = parseDate(*date)
+		if err != nil {
+			return database.CreatePageRow{}, err
+		}
 	}
 
 	params := database.CreatePageParams{
@@ -82,9 +89,15 @@ func (p *PageService) Update(ctx context.Context, title, id string, date *time.T
 		return database.UpdatePageRow{}, err
 	}
 
-	cleanDate, err := parseDate(*date)
-	if err != nil {
-		return database.UpdatePageRow{}, err
+	var (
+		cleanDate pgtype.Date
+		dateErr   error
+	)
+	if date != nil {
+		cleanDate, dateErr = parseDate(*date)
+		if dateErr != nil {
+			return database.UpdatePageRow{}, dateErr
+		}
 	}
 
 	params := database.UpdatePageParams{

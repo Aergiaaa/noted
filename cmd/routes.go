@@ -40,7 +40,7 @@ func (a *App) routes() http.Handler {
 				s.Get("/{id}/backlinks", a.handleNOP)
 				s.Get("/{id}/blocks", a.handleNOP)
 
-				s.Post("/", a.handleNOP)
+				s.Post("/", a.handleCreatePage)
 				s.Post("/{id}/restore", a.handleNOP)
 
 				s.Patch("/{id}", a.handleNOP)
@@ -51,13 +51,13 @@ func (a *App) routes() http.Handler {
 
 			// block routes
 			{
-				s.Post("/pages/{id}/blocks", a.handleNOP)
+				s.Post("/pages/{id}/blocks", a.handleCreateBlock)
 				s.Post("/blocks/{id}/restore", a.handleNOP)
 
-				s.Patch("/blocks/{id}", a.handleNOP)
+				s.Patch("/blocks/{id}", a.handleUpdateBlock)
 				s.Patch("/pages/{id}/blocks/reorder", a.handleNOP)
 
-				s.Delete("/blocks/{id}", a.handleNOP)
+				s.Delete("/blocks/{id}", a.handleDeleteBlock)
 			}
 
 			s.Route("/transactions", func(s chi.Router) {

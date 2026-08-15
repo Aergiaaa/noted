@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	database "github.com/Aergiaaa/noted/internal/database"
+	"github.com/Aergiaaa/noted/service"
 	"github.com/Aergiaaa/noted/ui/modules"
 	"github.com/go-chi/chi"
 )
@@ -77,5 +78,137 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modules.PageView(page.Title, blocks).Render(r.Context(), w)
+	modules.PageView(page.Title, page.ID.String(), blocks).Render(r.Context(), w)
+}
+
+func (a *App) handleCreatePage(w http.ResponseWriter, r *http.Request) {
+	input := struct {
+		Title string `json:"title"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	page, err := a.service.Page.Create(r.Context(), input.Title, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+
+	res := response{
+		ID:    page.ID.String(),
+		Title: page.Title,
+	}
+
+	if err = json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) handleCreateBlock(w http.ResponseWriter, r *http.Request) {
+	pageId := chi.URLParam(r, "id")
+
+	input := struct {
+		Type     string          `json:"type"`
+		Content  json.RawMessage `json:"content"`
+		ParentID string          `json:"parent_id"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	block, err := a.service.Block.Create(r.Context(), service.CreateBlockArgs{
+		PageID:   pageId,
+		ParentID: input.ParentID,
+		Type:     input.Type,
+		Content:  input.Content,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		ID      string          `json:"id"`
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+		Order   int32           `json:"order"`
+	}
+
+	res := response{
+		ID:      block.ID.String(),
+		Type:    block.Type,
+		Content: json.RawMessage(block.Content),
+		Order:   block.Order,
+	}
+
+	if err = json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
+	blockId := chi.URLParam(r, "id")
+
+	input := struct {
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	block, err := a.service.Block.Update(r.Context(), service.UpdateBlockArgs{
+		Id:      blockId,
+		Type:    input.Type,
+		Content: input.Content,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		ID      string          `json:"id"`
+		Type    string          `json:"type"`
+		Content json.RawMessage `json:"content"`
+	}
+
+	res := response{
+		ID:      block.ID.String(),
+		Type:    block.Type,
+		Content: json.RawMessage(block.Content),
+	}
+
+	if err = json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
+	blockId := chi.URLParam(r, "id")
+
+	if err := a.service.Block.Delete(r.Context(), blockId); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
