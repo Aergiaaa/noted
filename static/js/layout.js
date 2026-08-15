@@ -55,7 +55,27 @@ document.addEventListener('alpine:init', () => {
 		type: props.type,
 		pageId: props.pageId,
 		depth: props.depth,
+		raw: props.raw,
 		saveTimer: null,
+
+		onFocus() {
+			this.$el.innerHTML = this.escaped(this.raw).replace(/\n/g, '<br>')
+			this.placeCaret(this.$el)
+		},
+
+		onBlur() {
+			const text = this.$el.innerText.replace(/\n$/, '')
+			if (text === this.raw) return
+			this.raw = text
+			this.save()
+			this.syncLinks()
+		},
+
+		onLinkMousedown() {},
+
+		escaped(text) {
+			return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		},
 
 		onInput() {
 			clearTimeout(this.saveTimer)
@@ -68,6 +88,17 @@ document.addEventListener('alpine:init', () => {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ type: this.type, content: { text } })
+			})
+			if (!res.ok) return
+		},
+
+		async syncLinks() {
+			const titles = [...this.raw.matchAll(/\[\[([^\[\]]+)\]\]/g)].map(m => m[1])
+			if (!titles.length) return
+			const res = await fetch('/api/pages/' + this.pageId + '/wiki-links', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ titles })
 			})
 			if (!res.ok) return
 		},
@@ -118,7 +149,7 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		rowHtml(id) {
-			return '<div x-data="row({id: \'' + id + '\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><div contenteditable="true" spellcheck="false" class="outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})"></div></div>'
+			return '<div x-data="row({id: \'' + id + '\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><div contenteditable="true" spellcheck="false" @focus="onFocus()" @blur="onBlur()" class="outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div></div>'
 		},
 
 		placeCaret(el) {

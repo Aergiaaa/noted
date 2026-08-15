@@ -42,6 +42,7 @@ func (a *App) routes() http.Handler {
 
 				s.Post("/", a.handleCreatePage)
 				s.Post("/{id}/restore", a.handleRestorePage)
+				s.Post("/{id}/wiki-links", a.handleSyncWikiLinks)
 
 				s.Patch("/{id}", a.handleUpdatePage)
 

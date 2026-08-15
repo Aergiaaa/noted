@@ -2,18 +2,23 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Aergiaaa/noted/internal/database"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type EdgeServicer interface {
 	Create(ctx context.Context, arg CreateEdgeArg) error
 	Delete(ctx context.Context, arg DeleteEdgeArg) error
 	GetAll(ctx context.Context) ([]database.GetEdgesRow, error)
+	SyncWikiLinks(ctx context.Context, pageId string, titles []string) error
 }
 
 type EdgeService struct {
 	models *database.Queries
+	pool   *pgxpool.Pool
 }
 
 type CreateEdgeArg struct {
@@ -105,4 +110,47 @@ func (e *EdgeService) Delete(ctx context.Context, arg DeleteEdgeArg) error {
 
 func (e *EdgeService) GetAll(ctx context.Context) ([]database.GetEdgesRow, error) {
 	return e.models.GetEdges(ctx)
+}
+
+func (e *EdgeService) SyncWikiLinks(ctx context.Context, pageId string, titles []string) error {
+	pageUUID, err := parseUUID(pageId)
+	if err != nil {
+		return err
+	}
+
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	q := database.New(tx)
+
+	err = q.DeleteEdgesFromPage(ctx, pageUUID)
+	if err != nil {
+		return err
+	}
+
+	for _, title := range titles {
+		targetId, err := q.GetPageIdByTitle(ctx, title)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+
+		err = q.CreateEdge(ctx, database.CreateEdgeParams{
+			FromID:   pageUUID,
+			FromType: string(PAGE),
+			ToID:     targetId,
+			ToType:   string(PAGE),
+			LinkType: string(EDGE_WIKI_LINK),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
 }

@@ -19,3 +19,9 @@ insert into edge (from_id, from_type, to_id, to_type, link_type) values ($1, $2,
 
 -- name: DeleteEdge :exec
 delete from edge where from_id = $1 and to_id = $2 and link_type = $3;
+
+-- name: DeleteEdgesFromPage :exec
+DELETE FROM edge WHERE from_id = $1 AND from_type = 'page' AND link_type = 'wiki-link';
+
+-- name: GetPageIdByTitle :one
+SELECT id FROM page WHERE title = $1 AND deleted_at IS NULL;

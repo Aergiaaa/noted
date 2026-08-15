@@ -49,6 +49,15 @@ func (q *Queries) DeleteEdge(ctx context.Context, arg DeleteEdgeParams) error {
 	return err
 }
 
+const deleteEdgesFromPage = `-- name: DeleteEdgesFromPage :exec
+DELETE FROM edge WHERE from_id = $1 AND from_type = 'page' AND link_type = 'wiki-link'
+`
+
+func (q *Queries) DeleteEdgesFromPage(ctx context.Context, fromID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteEdgesFromPage, fromID)
+	return err
+}
+
 const getBacklinkPages = `-- name: GetBacklinkPages :many
 select p.id, p.title
 	from edge e
@@ -151,4 +160,15 @@ func (q *Queries) GetEdges(ctx context.Context) ([]GetEdgesRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const getPageIdByTitle = `-- name: GetPageIdByTitle :one
+SELECT id FROM page WHERE title = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) GetPageIdByTitle(ctx context.Context, title string) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getPageIdByTitle, title)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }

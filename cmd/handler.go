@@ -90,7 +90,18 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks).Render(r.Context(), w)
+	pages, err := a.service.Page.GetAll(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pageMap := make(map[string]string, len(pages))
+	for _, p := range pages {
+		pageMap[p.Title] = p.ID.String()
+	}
+
+	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap).Render(r.Context(), w)
 }
 
 func (a *App) handleCreatePage(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +255,25 @@ func (a *App) handleRestoreBlock(w http.ResponseWriter, r *http.Request) {
 	blockId := chi.URLParam(r, "id")
 
 	if err := a.service.Block.Restore(r.Context(), blockId); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleSyncWikiLinks(w http.ResponseWriter, r *http.Request) {
+	pageId := chi.URLParam(r, "id")
+
+	input := struct {
+		Titles []string `json:"titles"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := a.service.Edge.SyncWikiLinks(r.Context(), pageId, input.Titles); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

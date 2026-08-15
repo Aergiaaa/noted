@@ -25,6 +25,6 @@ func InitServices(models *database.Queries, pool *pgxpool.Pool) *Services {
 		Pocket:      &PocketService{models: models},
 		Tag:         &TagService{models: models},
 		Taggable:    &TaggableService{models: models},
-		Edge:        &EdgeService{models: models},
+		Edge:        &EdgeService{models: models, pool: pool},
 	}
 }
