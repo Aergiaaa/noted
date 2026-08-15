@@ -29,3 +29,13 @@ update page
 	set title = $1, date = $2, updated_at = now() 
 	where id = $3 
 	returning id, title, date, updated_at;
+
+-- name: GetPagePaginated :many
+select id,title
+	from page
+	order by updated_at desc
+	limit $1 offset $2;
+
+-- name: CountPages :one
+select count(*)::int
+	from page;

@@ -1,16 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 
-	// "github.com/templui/templui/utils"
-
-	"github.com/Aergiaaa/noted/ui"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func (app *app) routes() http.Handler {
+func (a *App) routes() http.Handler {
 	s := chi.NewMux()
 
 	s.Use(
@@ -19,104 +17,108 @@ func (app *app) routes() http.Handler {
 		middleware.SetHeader("Referrer-Policy", "strict-origin-when-cross-origin"),
 	)
 
-	s.Get("/", app.handleIndex)
-
 	// public page
 	s.Route("/auth", func(s chi.Router) {
 
-		s.Post("/login", app.handleNOP)
-		s.Post("/verify-totp", app.handleNOP)
-		s.Post("/logout", app.handleNOP)
+		s.Get("/login", a.renderLogin)
 
+		s.Get("/logout", a.handleLogout)
+		s.Post("/verify", a.handleVerify)
 	})
 
 	// authorized page
 	s.Group(func(s chi.Router) {
-		s.Use(app.authMiddleware)
+		s.Use(a.authMiddleware)
 
-		s.Route("/pages", func(s chi.Router) {
+		s.Get("/", a.renderIndex)
 
-			s.Get("/", app.handleNOP)
-			s.Get("/{id}", app.handleNOP)
-			s.Get("/{id}/backlinks", app.handleNOP)
-			s.Get("/{id}/blocks", app.handleNOP)
+		s.Route("/api", func(s chi.Router) {
+			s.Route("/pages", func(s chi.Router) {
 
-			s.Post("/", app.handleNOP)
-			s.Post("/{id}/restore", app.handleNOP)
+				s.Get("/", a.handlePages)
+				s.Get("/{id}", a.handleNOP)
+				s.Get("/{id}/backlinks", a.handleNOP)
+				s.Get("/{id}/blocks", a.handleNOP)
 
-			s.Patch("/{id}", app.handleNOP)
+			s.Post("/", a.handleNOP)
+				s.Post("/{id}/restore", a.handleNOP)
 
-			s.Delete("/{id}", app.handleNOP)
+				s.Patch("/{id}", a.handleNOP)
 
+				s.Delete("/{id}", a.handleNOP)
+
+			})
+
+			// block routes
+			{
+				s.Post("/pages/{id}/blocks", a.handleNOP)
+				s.Post("/blocks/{id}/restore", a.handleNOP)
+
+				s.Patch("/blocks/{id}", a.handleNOP)
+				s.Patch("/pages/{id}/blocks/reorder", a.handleNOP)
+
+				s.Delete("/blocks/{id}", a.handleNOP)
+			}
+
+			s.Route("/transactions", func(s chi.Router) {
+
+				s.Get("/", a.handleNOP)
+				s.Get("/{id}", a.handleNOP)
+
+				s.Post("/", a.handleNOP)
+				s.Post("/{id}/restore", a.handleNOP)
+
+				s.Patch("/{id}", a.handleNOP)
+				s.Delete("/{id}", a.handleNOP)
+
+			})
+
+			s.Route("/pockets", func(s chi.Router) {
+
+				s.Get("/", a.handleNOP)
+
+				s.Post("/", a.handleNOP)
+				s.Post("/{id}/restore", a.handleNOP)
+
+				s.Patch("/{id}", a.handleNOP)
+				s.Delete("/{id}", a.handleNOP)
+
+			})
+
+			s.Route("/tags", func(s chi.Router) {
+
+				s.Get("/", a.handleNOP)
+
+				s.Post("/", a.handleNOP)
+				s.Post("/{id}/restore", a.handleNOP)
+				s.Post("/{id}/attach", a.handleNOP)
+
+				s.Delete("/{id}", a.handleNOP)
+				s.Delete("/{id}/detach", a.handleNOP)
+
+			})
+
+			s.Route("/edges", func(s chi.Router) {
+				s.Get("/", a.handleNOP)
+				s.Post("/", a.handleNOP)
+				s.Delete("/", a.handleNOP)
+			})
 		})
 
-		// block routes
-		{
-			s.Post("/pages/{id}/blocks", app.handleNOP)
-			s.Post("/blocks/{id}/restore", app.handleNOP)
-
-			s.Patch("/blocks/{id}", app.handleNOP)
-			s.Patch("/pages/{id}/blocks/reorder", app.handleNOP)
-
-			s.Delete("/blocks/{id}", app.handleNOP)
-		}
-
-		s.Route("/transactions", func(s chi.Router) {
-
-			s.Get("/", app.handleNOP)
-			s.Get("/{id}", app.handleNOP)
-
-			s.Post("/", app.handleNOP)
-			s.Post("/{id}/restore", app.handleNOP)
-
-			s.Patch("/{id}", app.handleNOP)
-			s.Delete("/{id}", app.handleNOP)
-
+		s.NotFound(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "method not allowed",
+			})
 		})
-
-		s.Route("/pockets", func(s chi.Router) {
-
-			s.Get("/", app.handleNOP)
-
-			s.Post("/", app.handleNOP)
-			s.Post("/{id}/restore", app.handleNOP)
-
-			s.Patch("/{id}", app.handleNOP)
-			s.Delete("/{id}", app.handleNOP)
-
-		})
-
-		s.Route("/tags", func(s chi.Router) {
-
-			s.Get("/", app.handleNOP)
-
-			s.Post("/", app.handleNOP)
-			s.Post("/{id}/restore", app.handleNOP)
-			s.Post("/{id}/attach", app.handleNOP)
-
-			s.Delete("/{id}", app.handleNOP)
-			s.Delete("/{id}/detach", app.handleNOP)
-
-		})
-
-		s.Route("/edges", func(s chi.Router) {
-			s.Get("/", app.handleNOP)
-			s.Post("/", app.handleNOP)
-			s.Delete("/", app.handleNOP)
-		})
-
 	})
 
+	// static file
 	s.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	s.Handle("/templui/js/*",
+		http.StripPrefix("/templui/js/", http.FileServer(http.Dir("static/js"))),
+	)
 
 	return s
-}
-
-func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
-	ui.Index().Render(r.Context(), w)
-}
-
-func (a *app) handleNOP(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("NOP"))
 }

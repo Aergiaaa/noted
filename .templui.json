@@ -1,7 +1,7 @@
 {
-  "componentsDir": "templates/components",
-  "utilsDir": "templates/utils",
+  "componentsDir": "ui/components",
+  "utilsDir": "ui/utils",
   "moduleName": "github.com/Aergiaaa/noted",
-  "jsDir": "assets/js",
-  "jsPublicPath": "/assets/js"
+  "jsDir": "static/js",
+  "jsPublicPath": "/static/js"
 }

@@ -1,0 +1,12 @@
+package modules
+
+import "github.com/Aergiaaa/noted/ui/components/button"
+
+templ LogoutButton() {
+	@button.Button(button.Props{
+		Variant: button.VariantDestructive,
+		Href:    "/auth/logout",
+	}) {
+		Logout
+	}
+}

@@ -13,6 +13,8 @@ type PageServicer interface {
 	GetAll(ctx context.Context) ([]database.GetAllPagesRow, error)
 	GetBackLinks(ctx context.Context, id string) ([]database.GetBacklinksRow, error)
 	GetById(ctx context.Context, id string) (database.GetPageByIDRow, error)
+	GetPagePaginated(ctx context.Context, page int, limit int) ([]database.GetPagePaginatedRow, error)
+	GetTotalPage(ctx context.Context) (int32, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, title string, id string, date *time.Time) (database.UpdatePageRow, error)
 }
@@ -101,4 +103,19 @@ func (p *PageService) GetBackLinks(ctx context.Context, id string) ([]database.G
 	}
 
 	return p.models.GetBacklinks(ctx, cleanId)
+}
+
+func (p *PageService) GetPagePaginated(ctx context.Context, page, limit int) ([]database.GetPagePaginatedRow, error) {
+	offset := (page - 1) * limit
+
+	params := database.GetPagePaginatedParams{
+		Limit:  int32(limit),
+		Offset: int32(offset),
+	}
+
+	return p.models.GetPagePaginated(ctx, params)
+}
+
+func (p *PageService) GetTotalPage(ctx context.Context) (int32, error) {
+	return p.models.CountPages(ctx)
 }

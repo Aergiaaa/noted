@@ -1,2 +1,4 @@
-@source "./../../**/*.templ";
+@source "./**/*.templ";
+@source "./**/*.js";
 @source "/home/aergia/go/pkg/mod/github.com/templui/templui@v1.10.0/components/**/*.templ";
+@source "/home/aergia/go/pkg/mod/github.com/templui/templui@v1.10.0/components/**/*.js";

@@ -1,0 +1,25 @@
+package layouts
+
+import "github.com/Aergiaaa/noted/ui/modules"
+
+templ body() {
+	<body class="h-full">
+		<div
+			x-data="layout"
+			class="flex h-full flex-col"
+		>
+			{ children... }
+		</div>
+	</body>
+}
+
+templ navBody() {
+	@body() {
+		@modules.Navbar()
+		@modules.Backdrop()
+		@modules.SideBar()
+		<main class="flex-1">
+			{ children... }
+		</main>
+	}
+}

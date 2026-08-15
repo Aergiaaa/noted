@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countPages = `-- name: CountPages :one
+select count(*)::int
+	from page
+`
+
+func (q *Queries) CountPages(ctx context.Context) (int32, error) {
+	row := q.db.QueryRow(ctx, countPages)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createPage = `-- name: CreatePage :one
 insert into page (title, date) 
 	values ($1, $2) 
@@ -96,6 +108,43 @@ func (q *Queries) GetPageByID(ctx context.Context, id pgtype.UUID) (GetPageByIDR
 	var i GetPageByIDRow
 	err := row.Scan(&i.ID, &i.Title, &i.Date)
 	return i, err
+}
+
+const getPagePaginated = `-- name: GetPagePaginated :many
+select id,title
+	from page
+	order by updated_at desc
+	limit $1 offset $2
+`
+
+type GetPagePaginatedParams struct {
+	Limit  int32
+	Offset int32
+}
+
+type GetPagePaginatedRow struct {
+	ID    pgtype.UUID
+	Title string
+}
+
+func (q *Queries) GetPagePaginated(ctx context.Context, arg GetPagePaginatedParams) ([]GetPagePaginatedRow, error) {
+	rows, err := q.db.Query(ctx, getPagePaginated, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPagePaginatedRow
+	for rows.Next() {
+		var i GetPagePaginatedRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const restorePage = `-- name: RestorePage :exec

@@ -7,15 +7,22 @@ import (
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/internal/env"
 	"github.com/Aergiaaa/noted/service"
+	"github.com/gorilla/sessions"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
-type app struct {
-	host    string
-	port    int
+type config struct {
+	host   string
+	port   int
+	secret string
+	store  *sessions.CookieStore
+}
+
+type App struct {
+	config
+
 	service *service.Services
-	models  *database.Queries
 }
 
 func main() {
@@ -29,13 +36,17 @@ func main() {
 		log.Fatalf("error opening database: %v", err)
 	}
 
-	app := &app{
+	config := config{
 		host:   env.GetEnvString("HOST", "localhost"),
 		port:   env.GetEnvInt("PORT", 3000),
-		models: database.New(db),
+		secret: env.GetEnvString("SECRET", ""),
 	}
+	config.store = sessions.NewCookieStore([]byte(config.secret))
 
-	app.service = service.InitServices(app.models, db)
+	app := &App{
+		config: config,
+	}
+	app.service = service.InitServices(database.New(db), db)
 
 	if err := app.serve(); err != nil {
 		log.Fatalf("error serving app: %v", err)

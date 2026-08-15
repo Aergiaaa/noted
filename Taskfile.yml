@@ -12,11 +12,12 @@ tasks:
       - |
         TEMPLUI_PATH="$(go list -mod=mod -m -f {{`'{{.Dir}}'`}} github.com/templui/templui)" && \
         printf '%s\n' \
-          '@source "./../../**/*.templ";' \
+          '@source "./**/*.templ";' \
+          '@source "./**/*.js";' \
           "@source \"$TEMPLUI_PATH/components/**/*.templ\";" \
+          "@source \"$TEMPLUI_PATH/components/**/*.js\";" \
           > ./static/css/sources.generated.css && \
         tailwindcss -i ./static/css/input.css -o ./static/css/output.css --watch
-
   dev:
     desc: Start development server with hot reload
     cmds:

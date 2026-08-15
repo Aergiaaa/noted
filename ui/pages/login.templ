@@ -1,0 +1,50 @@
+package pages
+
+import (
+	"github.com/Aergiaaa/noted/ui/layouts"
+	"github.com/templui/templui/components/button"
+	"github.com/templui/templui/components/inputotp"
+)
+
+templ Login() {
+	@layouts.Auth() {
+		<div class="flex flex-col items-center justify-center h-full gap-4">
+			<h1 class="text-sm text-zinc-400">Noted, login.</h1>
+			@inputotp.Script()
+			<form method="POST" action="/auth/verify" class="flex flex-col gap-3 items-center justify-center">
+				@inputotp.InputOTP(inputotp.Props{
+					ID:       "otp-form",
+					Name:     "code",
+					HasError: false,
+				}) {
+					@inputotp.Group() {
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 0,
+						})
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 1,
+						})
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 2,
+						})
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 3,
+						})
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 4,
+						})
+						@inputotp.Slot(inputotp.SlotProps{
+							Index: 5,
+						})
+					}
+				}
+				<br/>
+				@button.Button(button.Props{
+					Type: button.TypeSubmit,
+				}) {
+					Verify
+				}
+			</form>
+		</div>
+	}
+}

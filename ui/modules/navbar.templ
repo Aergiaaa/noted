@@ -1,0 +1,11 @@
+package modules
+
+templ Navbar() {
+	<nav
+		x-show="navbarVisible"
+		class="flex items-center justify-between px-2 py-2 sticky top-0"
+	>
+		<div class="text-3xl font-bold">Noted</div>
+		@LogoutButton()
+	</nav>
+}
