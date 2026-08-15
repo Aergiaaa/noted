@@ -117,6 +117,7 @@ func (a *App) routes() http.Handler {
 		s.Route("/fin", func(s chi.Router) {
 			s.Get("/pockets", a.handlePocketsFragment)
 			s.Get("/transactions", a.handleTransactionsFragment)
+			s.Get("/trash", a.handleTrashFragment)
 		})
 	})
 

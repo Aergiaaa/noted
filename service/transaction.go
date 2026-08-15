@@ -13,6 +13,7 @@ type TransactionServicer interface {
 	Delete(ctx context.Context, id string) error
 	GetAll(ctx context.Context) ([]database.GetAllTransactionsRow, error)
 	GetById(ctx context.Context, id string) (database.GetTransactionByIDRow, error)
+	GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error)
 	GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, arg UpdateTransactionArg) (database.UpdateTransactionRow, error)
@@ -113,6 +114,10 @@ func (t *TransactionService) GetById(ctx context.Context, id string) (database.G
 	}
 
 	return t.models.GetTransactionByID(ctx, cleanId)
+}
+
+func (t *TransactionService) GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error) {
+	return t.models.GetDeletedTransactions(ctx)
 }
 
 func (t *TransactionService) GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error) {

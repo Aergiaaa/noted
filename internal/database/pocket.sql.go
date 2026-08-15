@@ -94,23 +94,62 @@ func (q *Queries) GetAllPockets(ctx context.Context) ([]GetAllPocketsRow, error)
 	return items, nil
 }
 
+const getDeletedPockets = `-- name: GetDeletedPockets :many
+select id, name, type, deleted_at
+	from pocket
+	where deleted_at is not null
+	order by deleted_at desc
+	limit 50
+`
+
+type GetDeletedPocketsRow struct {
+	ID        pgtype.UUID
+	Name      string
+	Type      string
+	DeletedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetDeletedPockets(ctx context.Context) ([]GetDeletedPocketsRow, error) {
+	rows, err := q.db.Query(ctx, getDeletedPockets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDeletedPocketsRow
+	for rows.Next() {
+		var i GetDeletedPocketsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPocketBalances = `-- name: GetPocketBalances :many
-select
-	p.id,
-	p.name,
-	p.type,
+select 
+	p.id, 
+	p.name, 
+	p.type, 
 	coalesce(sum(
-		case
-			when t.type = 'expense' and t.from_pocket_id = p.id then -t.amount
-			when t.type = 'income' and t.to_pocket_id = p.id then t.amount
-			when t.type = 'transfer' and t.to_pocket_id = p.id then t.amount
+		case 
+			when t.type = 'income' then t.amount
+			when t.type = 'expense' then -t.amount
 			when t.type = 'transfer' and t.from_pocket_id = p.id then -t.amount
+			when t.type = 'transfer' and t.to_pocket_id = p.id then t.amount
 			else 0
 		end
 	), 0)::numeric as balance
 from pocket p
-left join transaction t
-	on (t.from_pocket_id = p.id or t.to_pocket_id = p.id)
+left join transaction t on (t.from_pocket_id = p.id or t.to_pocket_id = p.id)
 	and t.deleted_at is null
 where p.deleted_at is null
 group by p.id

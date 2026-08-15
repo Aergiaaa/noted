@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,5 +200,192 @@ func TestHandlePagesFallsBackOnGarbageParams(t *testing.T) {
 	}
 	if res.Page != 1 || res.Limit != 10 {
 		t.Fatalf("expected fallback 1/10, got %d/%d", res.Page, res.Limit)
+	}
+}
+
+func deletedPocketRow(name string) database.GetDeletedPocketsRow {
+	row := database.GetDeletedPocketsRow{Name: name, Type: "cash"}
+	_ = row.ID.Scan("0197f1a0-0000-0000-0000-000000000003")
+	_ = row.DeletedAt.Scan(time.Now())
+	return row
+}
+
+func deletedTransactionRow(title string) database.GetDeletedTransactionsRow {
+	row := database.GetDeletedTransactionsRow{Title: title, Type: "expense"}
+	_ = row.ID.Scan("0197f1a0-0000-0000-0000-000000000004")
+	_ = row.Amount.Scan("10")
+	_ = row.Date.Scan("2026-08-14")
+	_ = row.DeletedAt.Scan(time.Now())
+	return row
+}
+
+type fakeTransactionServicer struct {
+	deleted       []database.GetDeletedTransactionsRow
+	getDeletedErr error
+	restoreErr    error
+}
+
+func (f *fakeTransactionServicer) Create(ctx context.Context, arg service.CreateTransactionArg) (database.CreateTransactionRow, error) {
+	return database.CreateTransactionRow{}, nil
+}
+
+func (f *fakeTransactionServicer) Delete(ctx context.Context, id string) error { return nil }
+
+func (f *fakeTransactionServicer) GetAll(ctx context.Context) ([]database.GetAllTransactionsRow, error) {
+	return nil, nil
+}
+
+func (f *fakeTransactionServicer) GetById(ctx context.Context, id string) (database.GetTransactionByIDRow, error) {
+	return database.GetTransactionByIDRow{}, nil
+}
+
+func (f *fakeTransactionServicer) GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error) {
+	return nil, nil
+}
+
+func (f *fakeTransactionServicer) GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error) {
+	return f.deleted, f.getDeletedErr
+}
+
+func (f *fakeTransactionServicer) Restore(ctx context.Context, id string) error { return f.restoreErr }
+
+func (f *fakeTransactionServicer) Update(ctx context.Context, arg service.UpdateTransactionArg) (database.UpdateTransactionRow, error) {
+	return database.UpdateTransactionRow{}, nil
+}
+
+type fakePocketServicer struct {
+	deleted       []database.GetDeletedPocketsRow
+	getDeletedErr error
+	restoreErr    error
+}
+
+func (f *fakePocketServicer) Create(ctx context.Context, name, kind string) (database.CreatePocketRow, error) {
+	return database.CreatePocketRow{}, nil
+}
+
+func (f *fakePocketServicer) Delete(ctx context.Context, id string) error { return nil }
+
+func (f *fakePocketServicer) GetAll(ctx context.Context) ([]database.GetAllPocketsRow, error) {
+	return nil, nil
+}
+
+func (f *fakePocketServicer) GetBalances(ctx context.Context) ([]database.GetPocketBalancesRow, error) {
+	return nil, nil
+}
+
+func (f *fakePocketServicer) GetDeleted(ctx context.Context) ([]database.GetDeletedPocketsRow, error) {
+	return f.deleted, f.getDeletedErr
+}
+
+func (f *fakePocketServicer) Restore(ctx context.Context, id string) error { return f.restoreErr }
+
+func (f *fakePocketServicer) Update(ctx context.Context, name, kind, id string) (database.UpdatePocketRow, error) {
+	return database.UpdatePocketRow{}, nil
+}
+
+func TestHandleRestoreTransaction(t *testing.T) {
+	app := &App{service: &service.Services{Transaction: &fakeTransactionServicer{}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/transactions/0197f1a0-0000-0000-0000-000000000001/restore", nil)
+	w := httptest.NewRecorder()
+
+	app.handleRestoreTransaction(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestHandleRestoreTransactionError(t *testing.T) {
+	app := &App{service: &service.Services{Transaction: &fakeTransactionServicer{restoreErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/transactions/x/restore", nil)
+	w := httptest.NewRecorder()
+
+	app.handleRestoreTransaction(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleRestorePocket(t *testing.T) {
+	app := &App{service: &service.Services{Pocket: &fakePocketServicer{}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/pockets/0197f1a0-0000-0000-0000-000000000001/restore", nil)
+	w := httptest.NewRecorder()
+
+	app.handleRestorePocket(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestHandleRestorePocketError(t *testing.T) {
+	app := &App{service: &service.Services{Pocket: &fakePocketServicer{restoreErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/pockets/x/restore", nil)
+	w := httptest.NewRecorder()
+
+	app.handleRestorePocket(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleTrashFragment(t *testing.T) {
+	pockets := []database.GetDeletedPocketsRow{deletedPocketRow("Cash2")}
+	transactions := []database.GetDeletedTransactionsRow{deletedTransactionRow("Pindah")}
+	app := &App{service: &service.Services{
+		Pocket:      &fakePocketServicer{deleted: pockets},
+		Transaction: &fakeTransactionServicer{deleted: transactions},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTrashFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Cash2") || !strings.Contains(body, "Pindah") {
+		t.Fatalf("expected deleted pocket and transaction in body, got %s", body)
+	}
+}
+
+func TestHandleTrashFragmentPocketError(t *testing.T) {
+	app := &App{service: &service.Services{
+		Pocket:      &fakePocketServicer{getDeletedErr: errors.New("boom")},
+		Transaction: &fakeTransactionServicer{},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTrashFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleTrashFragmentTransactionError(t *testing.T) {
+	app := &App{service: &service.Services{
+		Pocket:      &fakePocketServicer{},
+		Transaction: &fakeTransactionServicer{getDeletedErr: errors.New("boom")},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTrashFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
 	}
 }

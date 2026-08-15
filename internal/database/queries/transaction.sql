@@ -36,6 +36,13 @@ update transaction
 	where id = $7 
 	returning id, title, type, amount, date, from_pocket_id, to_pocket_id, updated_at;
 
+-- name: GetDeletedTransactions :many
+select id, title, type, amount, date, deleted_at
+	from transaction
+	where deleted_at is not null
+	order by deleted_at desc
+	limit 50;
+
 -- name: GetTransactionsWithPocketNames :many
 select
 	t.id,

@@ -339,6 +339,25 @@ document.addEventListener('alpine:init', () => {
 		}
 	}))
 
+	Alpine.data('trashView', () => ({
+		async restorePocket(id) {
+			const res = await fetch('/api/pockets/' + id + '/restore', { method: 'POST' })
+			if (!res.ok) return
+			this.reload()
+		},
+
+		async restoreTransaction(id) {
+			const res = await fetch('/api/transactions/' + id + '/restore', { method: 'POST' })
+			if (!res.ok) return
+			this.reload()
+		},
+
+		reload() {
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadFinance('trash')
+		}
+	}))
+
 	Alpine.data('pageTags', (props) => ({
 		pageId: props.pageId,
 		adding: false,

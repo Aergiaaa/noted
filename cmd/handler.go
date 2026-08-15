@@ -962,6 +962,22 @@ func (a *App) handleTransactionsFragment(w http.ResponseWriter, r *http.Request)
 	pages.TransactionView(transactions, pockets).Render(r.Context(), w)
 }
 
+func (a *App) handleTrashFragment(w http.ResponseWriter, r *http.Request) {
+	pockets, err := a.service.Pocket.GetDeleted(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	transactions, err := a.service.Transaction.GetDeleted(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pages.TrashView(pockets, transactions).Render(r.Context(), w)
+}
+
 func (a *App) handleDeleteEdge(w http.ResponseWriter, r *http.Request) {
 	input := struct {
 		FromID   string `json:"from_id"`

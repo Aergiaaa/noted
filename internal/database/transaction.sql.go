@@ -113,6 +113,50 @@ func (q *Queries) GetAllTransactions(ctx context.Context) ([]GetAllTransactionsR
 	return items, nil
 }
 
+const getDeletedTransactions = `-- name: GetDeletedTransactions :many
+select id, title, type, amount, date, deleted_at
+	from transaction
+	where deleted_at is not null
+	order by deleted_at desc
+	limit 50
+`
+
+type GetDeletedTransactionsRow struct {
+	ID        pgtype.UUID
+	Title     string
+	Type      string
+	Amount    pgtype.Numeric
+	Date      pgtype.Date
+	DeletedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetDeletedTransactions(ctx context.Context) ([]GetDeletedTransactionsRow, error) {
+	rows, err := q.db.Query(ctx, getDeletedTransactions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDeletedTransactionsRow
+	for rows.Next() {
+		var i GetDeletedTransactionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.Amount,
+			&i.Date,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTransactionByID = `-- name: GetTransactionByID :one
 select id, title, type, amount, date, from_pocket_id, to_pocket_id 
 	from transaction 
