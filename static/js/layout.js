@@ -303,7 +303,7 @@ document.addEventListener('alpine:init', () => {
 			this.$refs.amountInput.value = ''
 		},
 
-		filter() {
+		refresh() {
 			const params = new URLSearchParams()
 			const pocket = this.$refs.filterPocket.value
 			const from = this.$refs.filterFrom.value
@@ -314,6 +314,10 @@ document.addEventListener('alpine:init', () => {
 			const qs = params.toString()
 			const layoutEl = document.querySelector('[x-data="layout"]')
 			if (layoutEl) Alpine.$data(layoutEl).loadFinance('transactions' + (qs ? '?' + qs : ''))
+		},
+
+		filter() {
+			this.refresh()
 		},
 
 		clearFilter() {
@@ -375,6 +379,53 @@ document.addEventListener('alpine:init', () => {
 		reload() {
 			const layoutEl = document.querySelector('[x-data="layout"]')
 			if (layoutEl) Alpine.$data(layoutEl).loadFinance('trash')
+		}
+	}))
+
+	Alpine.data('transactionTags', (props) => ({
+		id: props.id,
+		adding: false,
+
+		toggleAdd() {
+			this.adding = !this.adding
+			if (this.adding) {
+				this.$nextTick(() => this.$refs.tagInput.focus())
+			}
+		},
+
+		async add() {
+			const name = this.$refs.tagInput.value.trim()
+			if (!name) return
+			const res = await fetch('/api/tags', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, color: '#3b82f6' })
+			})
+			if (!res.ok) return
+			const tag = await res.json()
+			const attach = await fetch('/api/tags/' + tag.id + '/attach', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ target_id: this.id, target_type: 'transaction' })
+			})
+			if (!attach.ok) return
+			this.reload()
+		},
+
+		async detach(tagId) {
+			const res = await fetch('/api/tags/' + tagId + '/detach', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ target_id: this.id, target_type: 'transaction' })
+			})
+			if (!res.ok) return
+			this.reload()
+		},
+
+		reload() {
+			const formEl = this.$el.closest('[x-data="transactionForm()"]')
+			if (!formEl) return
+			Alpine.$data(formEl).refresh()
 		}
 	}))
 

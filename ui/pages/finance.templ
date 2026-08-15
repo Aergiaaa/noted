@@ -3,6 +3,7 @@ package pages
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -65,7 +66,7 @@ templ PocketView(pockets []database.GetPocketBalancesRow) {
 	</div>
 }
 
-templ TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, pockets []database.GetAllPocketsRow) {
+templ TransactionView(transactions []database.GetTransactionsWithPocketNamesRow, tags map[string][]database.GetTagsByTargetRow, pockets []database.GetAllPocketsRow) {
 	<div x-data="transactionForm()" class="mx-auto w-full max-w-2xl px-4 py-8">
 		<h1 class="mb-8 text-4xl font-bold tracking-tight">Transactions</h1>
 
@@ -167,6 +168,39 @@ templ TransactionView(transactions []database.GetTransactionsWithPocketNamesRow,
 									@click={ "remove('" + t.ID.String() + "')" }
 									class="ml-2 cursor-pointer text-zinc-600 hover:text-red-400 transition-colors duration-100"
 								>×</button>
+							</td>
+						</tr>
+						<tr x-data={ transactionTagsProps(t.ID.String()) } class="border-b border-zinc-800/50 last:border-b-0">
+							<td colspan="5" class="px-4 py-1">
+								<div class="flex flex-wrap items-center gap-2">
+									for _, tag := range tags[t.ID.String()] {
+										<span
+											class="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+											style={ "background-color: " + tag.Color + "33" }
+										>
+											{ tag.Name }
+											<button
+												@click={ "detach('" + tag.ID.String() + "')" }
+												title="remove tag"
+												class="ml-1 cursor-pointer rounded-full px-1 leading-none opacity-60 hover:opacity-100"
+											>×</button>
+										</span>
+									}
+									<input
+										x-show="adding"
+										x-ref="tagInput"
+										type="text"
+										placeholder="Tag name"
+										@keydown.enter="add()"
+										@blur="adding = false"
+										class="rounded-full border border-zinc-800 bg-transparent px-3 py-0.5 text-xs outline-none focus:border-zinc-600"
+									/>
+									<button
+										@click="toggleAdd()"
+										title="add tag"
+										class="cursor-pointer rounded-full border border-dashed border-zinc-700 px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+									>+</button>
+								</div>
 							</td>
 						</tr>
 					}
@@ -311,6 +345,10 @@ func pocketLabel(t database.GetTransactionsWithPocketNamesRow) string {
 	default:
 		return "—"
 	}
+}
+
+func transactionTagsProps(id string) string {
+	return "transactionTags({id: " + strconv.Quote(id) + "})"
 }
 
 type transactionRowJSON struct {

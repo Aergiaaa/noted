@@ -150,3 +150,13 @@ func TestTransactionRowDataEscapes(t *testing.T) {
 		t.Fatalf("title must be escaped in json, got %q", got)
 	}
 }
+
+func TestTransactionTagsProps(t *testing.T) {
+	got := transactionTagsProps(`b54c00db-827a-4a17-b0d0-4d81925b20c7"`)
+
+	want := `transactionTags({id: "b54c00db-827a-4a17-b0d0-4d81925b20c7\""})`
+
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}

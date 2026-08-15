@@ -994,7 +994,18 @@ func (a *App) handleTransactionsFragment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	pages.TransactionView(transactions, pockets).Render(r.Context(), w)
+	tags := make(map[string][]database.GetTagsByTargetRow)
+	for _, t := range transactions {
+		rowTags, err := a.service.Taggable.GetTagsByTargetId(r.Context(), t.ID.String(), "transaction")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		tags[t.ID.String()] = rowTags
+	}
+
+	pages.TransactionView(transactions, tags, pockets).Render(r.Context(), w)
 }
 
 func (a *App) handleTrashFragment(w http.ResponseWriter, r *http.Request) {

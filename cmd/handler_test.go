@@ -402,7 +402,11 @@ func TestHandleTransactionsFragmentWithFilters(t *testing.T) {
 	fake := &fakeTransactionServicer{
 		filtered: []database.GetTransactionsWithPocketNamesRow{deletedTransactionRowToRow()},
 	}
-	app := &App{service: &service.Services{Transaction: fake, Pocket: &fakePocketServicer{}}}
+	app := &App{service: &service.Services{
+		Transaction: fake,
+		Pocket:      &fakePocketServicer{},
+		Taggable:    &fakeTaggableServicer{},
+	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?pocket=0197f1a0-0000-0000-0000-000000000001&from=2026-08-01&to=2026-08-15", nil)
 	w := httptest.NewRecorder()
@@ -432,7 +436,11 @@ func TestHandleTransactionsFragmentWithFilters(t *testing.T) {
 
 func TestHandleTransactionsFragmentWithoutFilters(t *testing.T) {
 	fake := &fakeTransactionServicer{}
-	app := &App{service: &service.Services{Transaction: fake, Pocket: &fakePocketServicer{}}}
+	app := &App{service: &service.Services{
+		Transaction: fake,
+		Pocket:      &fakePocketServicer{},
+		Taggable:    &fakeTaggableServicer{},
+	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions", nil)
 	w := httptest.NewRecorder()
@@ -449,7 +457,11 @@ func TestHandleTransactionsFragmentWithoutFilters(t *testing.T) {
 }
 
 func TestHandleTransactionsFragmentBadDate(t *testing.T) {
-	app := &App{service: &service.Services{Transaction: &fakeTransactionServicer{}, Pocket: &fakePocketServicer{}}}
+	app := &App{service: &service.Services{
+		Transaction: &fakeTransactionServicer{},
+		Pocket:      &fakePocketServicer{},
+		Taggable:    &fakeTaggableServicer{},
+	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=banana", nil)
 	w := httptest.NewRecorder()
@@ -465,6 +477,7 @@ func TestHandleTransactionsFragmentServiceError(t *testing.T) {
 	app := &App{service: &service.Services{
 		Transaction: &fakeTransactionServicer{filterErr: errors.New("boom")},
 		Pocket:      &fakePocketServicer{},
+		Taggable:    &fakeTaggableServicer{},
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
@@ -483,4 +496,91 @@ func deletedTransactionRowToRow() database.GetTransactionsWithPocketNamesRow {
 	_ = row.Amount.Scan("10")
 	_ = row.Date.Scan("2026-08-14")
 	return row
+}
+
+type fakeTaggableServicer struct {
+	targetId string
+	kind     string
+	tags     []database.GetTagsByTargetRow
+	tagsErr  error
+}
+
+func (f *fakeTaggableServicer) Attach(ctx context.Context, arg service.AttachTagArg) error {
+	return nil
+}
+
+func (f *fakeTaggableServicer) Detach(ctx context.Context, arg service.DetachTagArg) error {
+	return nil
+}
+
+func (f *fakeTaggableServicer) GetTagsByTargetId(ctx context.Context, id, kind string) ([]database.GetTagsByTargetRow, error) {
+	f.targetId = id
+	f.kind = kind
+	return f.tags, f.tagsErr
+}
+
+func taggedTransactionRow(title string) database.GetTransactionsWithPocketNamesRow {
+	row := database.GetTransactionsWithPocketNamesRow{Title: title, Type: "income"}
+	_ = row.ID.Scan("0197f1a0-0000-0000-0000-000000000005")
+	_ = row.Amount.Scan("10")
+	_ = row.Date.Scan("2026-08-14")
+	return row
+}
+
+func TestHandleTransactionsFragmentRendersTags(t *testing.T) {
+	taggable := &fakeTaggableServicer{
+		tags: []database.GetTagsByTargetRow{{
+			Name:  "Makan",
+			Color: "#3b82f6",
+		}},
+	}
+	app := &App{service: &service.Services{
+		Transaction: &fakeTransactionServicer{
+			filtered: []database.GetTransactionsWithPocketNamesRow{taggedTransactionRow("Gaji")},
+		},
+		Pocket:   &fakePocketServicer{},
+		Taggable: taggable,
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if taggable.kind != "transaction" {
+		t.Fatalf("expected transaction kind, got %q", taggable.kind)
+	}
+
+	if taggable.targetId != "0197f1a0-0000-0000-0000-000000000005" {
+		t.Fatalf("expected transaction id, got %q", taggable.targetId)
+	}
+
+	if !strings.Contains(w.Body.String(), "Makan") {
+		t.Fatalf("expected tag name in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandleTransactionsFragmentTagsError(t *testing.T) {
+	app := &App{service: &service.Services{
+		Transaction: &fakeTransactionServicer{
+			filtered: []database.GetTransactionsWithPocketNamesRow{taggedTransactionRow("Gaji")},
+		},
+		Pocket: &fakePocketServicer{},
+		Taggable: &fakeTaggableServicer{
+			tagsErr: errors.New("boom"),
+		},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
 }
