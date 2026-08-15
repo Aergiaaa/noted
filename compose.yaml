@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: noted
+      POSTGRES_PASSWORD: noted
+      POSTGRES_DB: noted
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noted -d noted"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    ports:
+      - "3001:3000"
+    environment:
+      DB_URL: postgres://noted:noted@db:5432/noted?sslmode=disable
+      PORT: "3000"
+      SECRET: ${SECRET:-dev-only-change-me-totp-secret-32bytes}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
