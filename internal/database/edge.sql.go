@@ -49,6 +49,42 @@ func (q *Queries) DeleteEdge(ctx context.Context, arg DeleteEdgeParams) error {
 	return err
 }
 
+const getBacklinkPages = `-- name: GetBacklinkPages :many
+select p.id, p.title
+	from edge e
+	join page p on p.id = e.from_id and p.deleted_at is null
+	where e.to_id = $1
+		and e.from_type = 'page'
+		and e.to_type = 'page'
+		and e.link_type = 'wiki-link'
+	order by p.title asc
+`
+
+type GetBacklinkPagesRow struct {
+	ID    pgtype.UUID
+	Title string
+}
+
+func (q *Queries) GetBacklinkPages(ctx context.Context, toID pgtype.UUID) ([]GetBacklinkPagesRow, error) {
+	rows, err := q.db.Query(ctx, getBacklinkPages, toID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetBacklinkPagesRow
+	for rows.Next() {
+		var i GetBacklinkPagesRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBacklinks = `-- name: GetBacklinks :many
 select from_id, from_type, link_type from edge where to_id = $1
 `

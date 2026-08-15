@@ -8,13 +8,44 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow) {
+templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow) {
 	<div class="mx-auto w-full max-w-2xl px-4 py-8">
 		<h1 class="mb-8 text-4xl font-bold tracking-tight">{ title }</h1>
+		@tagPills(tags)
 		<div class="space-y-1">
 			@blockTree(blocks, pgtype.UUID{}, 0, pageId)
 		</div>
+		@backlinkList(backlinks)
 	</div>
+}
+
+templ tagPills(tags []database.GetTagsByTargetRow) {
+	if len(tags) > 0 {
+		<div class="mb-6 flex flex-wrap gap-2">
+			for _, t := range tags {
+				<span
+					class="rounded-full px-2 py-0.5 text-xs font-medium"
+					style={ "background-color: " + t.Color + "33" }
+				>{ t.Name }</span>
+			}
+		</div>
+	}
+}
+
+templ backlinkList(backlinks []database.GetBacklinkPagesRow) {
+	if len(backlinks) > 0 {
+		<div class="mt-12 border-t border-zinc-800 pt-6">
+			<p class="mb-3 text-sm text-zinc-500">Backlinks</p>
+			<div class="space-y-1">
+				for _, b := range backlinks {
+					<button
+						@click={ "loadContent('" + b.ID.String() + "')" }
+						class="block text-sm text-zinc-400 hover:text-white transition-colors duration-100"
+					>{ b.Title }</button>
+				}
+			</div>
+		</div>
+	}
 }
 
 templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string) {

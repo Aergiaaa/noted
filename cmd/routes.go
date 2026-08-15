@@ -36,23 +36,23 @@ func (a *App) routes() http.Handler {
 			s.Route("/pages", func(s chi.Router) {
 
 				s.Get("/", a.handlePages)
-				s.Get("/{id}", a.handleNOP)
-				s.Get("/{id}/backlinks", a.handleNOP)
-				s.Get("/{id}/blocks", a.handleNOP)
+				s.Get("/{id}", a.handleGetPage)
+				s.Get("/{id}/backlinks", a.handleGetBacklinks)
+				s.Get("/{id}/blocks", a.handleGetPageBlocks)
 
 				s.Post("/", a.handleCreatePage)
-				s.Post("/{id}/restore", a.handleNOP)
+				s.Post("/{id}/restore", a.handleRestorePage)
 
-				s.Patch("/{id}", a.handleNOP)
+				s.Patch("/{id}", a.handleUpdatePage)
 
-				s.Delete("/{id}", a.handleNOP)
+				s.Delete("/{id}", a.handleDeletePage)
 
 			})
 
 			// block routes
 			{
 				s.Post("/pages/{id}/blocks", a.handleCreateBlock)
-				s.Post("/blocks/{id}/restore", a.handleNOP)
+				s.Post("/blocks/{id}/restore", a.handleRestoreBlock)
 
 				s.Patch("/blocks/{id}", a.handleUpdateBlock)
 				s.Patch("/pages/{id}/blocks/reorder", a.handleNOP)
@@ -87,21 +87,23 @@ func (a *App) routes() http.Handler {
 
 			s.Route("/tags", func(s chi.Router) {
 
-				s.Get("/", a.handleNOP)
+				s.Get("/", a.handleGetTags)
 
-				s.Post("/", a.handleNOP)
-				s.Post("/{id}/restore", a.handleNOP)
-				s.Post("/{id}/attach", a.handleNOP)
+				s.Post("/", a.handleCreateTag)
+				s.Post("/{id}/restore", a.handleRestoreTag)
+				s.Post("/{id}/attach", a.handleAttachTag)
 
-				s.Delete("/{id}", a.handleNOP)
-				s.Delete("/{id}/detach", a.handleNOP)
+				s.Patch("/{id}", a.handleUpdateTag)
+
+				s.Delete("/{id}", a.handleDeleteTag)
+				s.Delete("/{id}/detach", a.handleDetachTag)
 
 			})
 
 			s.Route("/edges", func(s chi.Router) {
-				s.Get("/", a.handleNOP)
-				s.Post("/", a.handleNOP)
-				s.Delete("/", a.handleNOP)
+				s.Get("/", a.handleGetEdges)
+				s.Post("/", a.handleCreateEdge)
+				s.Delete("/", a.handleDeleteEdge)
 			})
 		})
 
