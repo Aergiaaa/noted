@@ -152,6 +152,8 @@ select
 	t.type,
 	t.amount,
 	t.date,
+	t.from_pocket_id,
+	t.to_pocket_id,
 	fp.name as from_pocket_name,
 	tp.name as to_pocket_name
 from transaction t
@@ -168,6 +170,8 @@ type GetTransactionsWithPocketNamesRow struct {
 	Type           string
 	Amount         pgtype.Numeric
 	Date           pgtype.Date
+	FromPocketID   pgtype.UUID
+	ToPocketID     pgtype.UUID
 	FromPocketName pgtype.Text
 	ToPocketName   pgtype.Text
 }
@@ -187,6 +191,8 @@ func (q *Queries) GetTransactionsWithPocketNames(ctx context.Context) ([]GetTran
 			&i.Type,
 			&i.Amount,
 			&i.Date,
+			&i.FromPocketID,
+			&i.ToPocketID,
 			&i.FromPocketName,
 			&i.ToPocketName,
 		); err != nil {

@@ -273,6 +273,7 @@ document.addEventListener('alpine:init', () => {
 
 	Alpine.data('transactionForm', () => ({
 		type: 'expense',
+		editing: null,
 
 		setType(t) {
 			this.type = t
@@ -282,6 +283,24 @@ document.addEventListener('alpine:init', () => {
 			return t === this.type
 				? 'bg-zinc-700 text-white'
 				: 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+		},
+
+		edit(e) {
+			const row = e.currentTarget.closest('tr')
+			const data = JSON.parse(row.dataset.row)
+			this.editing = data
+			this.setType(data.type)
+			this.$refs.titleInput.value = data.title
+			this.$refs.amountInput.value = data.amount
+			this.$refs.dateInput.value = data.date
+			if (data.from) this.$refs.fromSelect.value = data.from
+			if (data.to) this.$refs.toSelect.value = data.to
+		},
+
+		cancelEdit() {
+			this.editing = null
+			this.$refs.titleInput.value = ''
+			this.$refs.amountInput.value = ''
 		},
 
 		async create() {
@@ -295,10 +314,11 @@ document.addEventListener('alpine:init', () => {
 				amount,
 				date
 			}
-			if (this.type !== 'income') body.from_pocket_id = this.$refs.fromSelect.value || null
-			if (this.type !== 'expense') body.to_pocket_id = this.$refs.toSelect.value || null
-			const res = await fetch('/api/transactions', {
-				method: 'POST',
+			if (this.type !== 'income') body.from_pocket_id = this.$refs.fromSelect.value || (this.editing ? this.editing.from : null) || null
+			if (this.type !== 'expense') body.to_pocket_id = this.$refs.toSelect.value || (this.editing ? this.editing.to : null) || null
+			const url = this.editing ? '/api/transactions/' + this.editing.id : '/api/transactions'
+			const res = await fetch(url, {
+				method: this.editing ? 'PATCH' : 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(body)
 			})

@@ -43,6 +43,8 @@ select
 	t.type,
 	t.amount,
 	t.date,
+	t.from_pocket_id,
+	t.to_pocket_id,
 	fp.name as from_pocket_name,
 	tp.name as to_pocket_name
 from transaction t
