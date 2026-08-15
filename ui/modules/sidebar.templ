@@ -12,6 +12,7 @@ templ SideBar() {
 		class="fixed top-0 left-0 z-50 flex flex-col h-full w-72 bg-zinc-900 border-r border-zinc-800 shadow-2xl"
 	>
 		<div class="flex-1 overflow-y-auto py-2">
+			<p class="px-4 py-2 text-xs uppercase tracking-wider text-zinc-600">Pages</p>
 			<template x-for="page in pages" :key="page.id">
 				<div
 					@click="loadContent(page.id)"
@@ -20,6 +21,17 @@ templ SideBar() {
 					x-text="page.title"
 				></div>
 			</template>
+			<p class="px-4 py-2 pt-6 text-xs uppercase tracking-wider text-zinc-600">Finance</p>
+			<div
+				@click="loadFinance('pockets')"
+				:class="view === 'pockets' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'"
+				class="px-4 py-2 text-sm cursor-pointer truncate transition-colors duration-100"
+			>Pockets</div>
+			<div
+				@click="loadFinance('transactions')"
+				:class="view === 'transactions' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'"
+				class="px-4 py-2 text-sm cursor-pointer truncate transition-colors duration-100"
+			>Transactions</div>
 		</div>
 		<div class="flex items-center gap-1 px-4 py-3 border-t border-zinc-800">
 			<template x-for="n in totalPages" :key="n">

@@ -18,6 +18,7 @@ type PocketServicer interface {
 	Create(ctx context.Context, name string, kind string) (database.CreatePocketRow, error)
 	Delete(ctx context.Context, id string) error
 	GetAll(ctx context.Context) ([]database.GetAllPocketsRow, error)
+	GetBalances(ctx context.Context) ([]database.GetPocketBalancesRow, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, name, kind, id string) (database.UpdatePocketRow, error)
 }
@@ -56,6 +57,10 @@ func (p *PocketService) Delete(ctx context.Context, id string) error {
 
 func (p *PocketService) GetAll(ctx context.Context) ([]database.GetAllPocketsRow, error) {
 	return p.models.GetAllPockets(ctx)
+}
+
+func (p *PocketService) GetBalances(ctx context.Context) ([]database.GetPocketBalancesRow, error) {
+	return p.models.GetPocketBalances(ctx)
 }
 
 func (p *PocketService) Restore(ctx context.Context, id string) error {

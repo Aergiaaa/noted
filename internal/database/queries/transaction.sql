@@ -35,3 +35,19 @@ update transaction
 			updated_at = now() 
 	where id = $7 
 	returning id, title, type, amount, date, from_pocket_id, to_pocket_id, updated_at;
+
+-- name: GetTransactionsWithPocketNames :many
+select
+	t.id,
+	t.title,
+	t.type,
+	t.amount,
+	t.date,
+	fp.name as from_pocket_name,
+	tp.name as to_pocket_name
+from transaction t
+left join pocket fp on fp.id = t.from_pocket_id
+left join pocket tp on tp.id = t.to_pocket_id
+where t.deleted_at is null
+order by t.date desc, t.created_at desc
+limit 50;

@@ -112,6 +112,12 @@ func (a *App) routes() http.Handler {
 		s.Route("/pages", func(s chi.Router) {
 			s.Get("/{id}/fragment", a.handlePageFragment)
 		})
+
+		// finance fragments
+		s.Route("/fin", func(s chi.Router) {
+			s.Get("/pockets", a.handlePocketsFragment)
+			s.Get("/transactions", a.handleTransactionsFragment)
+		})
 	})
 
 	// static file

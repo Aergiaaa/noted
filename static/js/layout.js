@@ -8,6 +8,7 @@ document.addEventListener('alpine:init', () => {
 		totalPages: 1,
 		currentPaginationPage: 1,
 		activePageId: null,
+		view: null,
 
 		init() {
 			window.addEventListener('keydown', e => {
@@ -25,6 +26,18 @@ document.addEventListener('alpine:init', () => {
 			this.totalPages = data.total_pages
 			this.currentPaginationPage = page
 		},
+
+		async loadFinance(view) {
+			this.view = view
+			this.activePageId = null
+			this.sidebarOpen = false
+			const res = await fetch('/fin/' + view)
+			if (!res.ok) return
+			const html = await res.text()
+			const target = document.getElementById('main-content')
+			target.innerHTML = html
+			Alpine.initTree(target)
+		}
 
 		async createPage() {
 			const res = await fetch('/api/pages', {
@@ -44,6 +57,7 @@ document.addEventListener('alpine:init', () => {
 
 		async loadContent(pageId) {
 			this.activePageId = pageId
+			this.view = null
 			this.sidebarOpen = false
 			const res = await fetch('/pages/' + pageId + '/fragment')
 			if (!res.ok) return
@@ -228,6 +242,80 @@ document.addEventListener('alpine:init', () => {
 				drag.row.parentNode.insertBefore(drag.row, this.$el)
 			}
 			drag = null
+		}
+	}))
+
+	Alpine.data('pocketView', () => ({
+		async add() {
+			const name = this.$refs.nameInput.value.trim()
+			if (!name) return
+			const res = await fetch('/api/pockets', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, type: this.$refs.typeSelect.value })
+			})
+			if (!res.ok) return
+			this.reload()
+		},
+
+		async remove(id) {
+			if (!confirm('Delete this pocket?')) return
+			const res = await fetch('/api/pockets/' + id, { method: 'DELETE' })
+			if (!res.ok) return
+			this.reload()
+		},
+
+		reload() {
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadFinance('pockets')
+		}
+	}))
+
+	Alpine.data('transactionForm', () => ({
+		type: 'expense',
+
+		setType(t) {
+			this.type = t
+		},
+
+		typeClass(t) {
+			return t === this.type
+				? 'bg-zinc-700 text-white'
+				: 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+		},
+
+		async create() {
+			const title = this.$refs.titleInput.value.trim()
+			const amount = Number(this.$refs.amountInput.value)
+			if (!title || !amount || amount <= 0) return
+			const date = this.$refs.dateInput.value || new Date().toISOString().slice(0, 10)
+			const body = {
+				title,
+				type: this.type,
+				amount,
+				date
+			}
+			if (this.type !== 'income') body.from_pocket_id = this.$refs.fromSelect.value || null
+			if (this.type !== 'expense') body.to_pocket_id = this.$refs.toSelect.value || null
+			const res = await fetch('/api/transactions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			})
+			if (!res.ok) return
+			this.reload()
+		},
+
+		async remove(id) {
+			if (!confirm('Delete this transaction?')) return
+			const res = await fetch('/api/transactions/' + id, { method: 'DELETE' })
+			if (!res.ok) return
+			this.reload()
+		},
+
+		reload() {
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadFinance('transactions')
 		}
 	}))
 

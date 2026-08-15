@@ -94,6 +94,61 @@ func (q *Queries) GetAllPockets(ctx context.Context) ([]GetAllPocketsRow, error)
 	return items, nil
 }
 
+const getPocketBalances = `-- name: GetPocketBalances :many
+select
+	p.id,
+	p.name,
+	p.type,
+	coalesce(sum(
+		case
+			when t.type = 'expense' and t.from_pocket_id = p.id then -t.amount
+			when t.type = 'income' and t.to_pocket_id = p.id then t.amount
+			when t.type = 'transfer' and t.to_pocket_id = p.id then t.amount
+			when t.type = 'transfer' and t.from_pocket_id = p.id then -t.amount
+			else 0
+		end
+	), 0)::numeric as balance
+from pocket p
+left join transaction t
+	on (t.from_pocket_id = p.id or t.to_pocket_id = p.id)
+	and t.deleted_at is null
+where p.deleted_at is null
+group by p.id
+order by p.updated_at desc
+`
+
+type GetPocketBalancesRow struct {
+	ID      pgtype.UUID
+	Name    string
+	Type    string
+	Balance pgtype.Numeric
+}
+
+func (q *Queries) GetPocketBalances(ctx context.Context) ([]GetPocketBalancesRow, error) {
+	rows, err := q.db.Query(ctx, getPocketBalances)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPocketBalancesRow
+	for rows.Next() {
+		var i GetPocketBalancesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.Balance,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restorePocket = `-- name: RestorePocket :exec
 update pocket 
 	set deleted_at = null 

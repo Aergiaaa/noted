@@ -145,6 +145,61 @@ func (q *Queries) GetTransactionByID(ctx context.Context, id pgtype.UUID) (GetTr
 	return i, err
 }
 
+const getTransactionsWithPocketNames = `-- name: GetTransactionsWithPocketNames :many
+select
+	t.id,
+	t.title,
+	t.type,
+	t.amount,
+	t.date,
+	fp.name as from_pocket_name,
+	tp.name as to_pocket_name
+from transaction t
+left join pocket fp on fp.id = t.from_pocket_id
+left join pocket tp on tp.id = t.to_pocket_id
+where t.deleted_at is null
+order by t.date desc, t.created_at desc
+limit 50
+`
+
+type GetTransactionsWithPocketNamesRow struct {
+	ID             pgtype.UUID
+	Title          string
+	Type           string
+	Amount         pgtype.Numeric
+	Date           pgtype.Date
+	FromPocketName pgtype.Text
+	ToPocketName   pgtype.Text
+}
+
+func (q *Queries) GetTransactionsWithPocketNames(ctx context.Context) ([]GetTransactionsWithPocketNamesRow, error) {
+	rows, err := q.db.Query(ctx, getTransactionsWithPocketNames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTransactionsWithPocketNamesRow
+	for rows.Next() {
+		var i GetTransactionsWithPocketNamesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.Amount,
+			&i.Date,
+			&i.FromPocketName,
+			&i.ToPocketName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restoreTransaction = `-- name: RestoreTransaction :exec
 update transaction 
 	set deleted_at = null 

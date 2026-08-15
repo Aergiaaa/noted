@@ -9,6 +9,7 @@ import (
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/service"
 	"github.com/Aergiaaa/noted/ui/modules"
+	"github.com/Aergiaaa/noted/ui/pages"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -933,6 +934,32 @@ func (a *App) handleRestorePocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handlePocketsFragment(w http.ResponseWriter, r *http.Request) {
+	pockets, err := a.service.Pocket.GetBalances(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pages.PocketView(pockets).Render(r.Context(), w)
+}
+
+func (a *App) handleTransactionsFragment(w http.ResponseWriter, r *http.Request) {
+	transactions, err := a.service.Transaction.GetWithPockets(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pockets, err := a.service.Pocket.GetAll(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pages.TransactionView(transactions, pockets).Render(r.Context(), w)
 }
 
 func (a *App) handleDeleteEdge(w http.ResponseWriter, r *http.Request) {
