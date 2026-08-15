@@ -246,15 +246,32 @@ document.addEventListener('alpine:init', () => {
 	}))
 
 	Alpine.data('pocketView', () => ({
+		editing: null,
+
+		edit(e) {
+			const row = e.currentTarget.closest('tr')
+			const data = JSON.parse(row.dataset.row)
+			this.editing = data
+			this.$refs.nameInput.value = data.name
+			this.$refs.typeSelect.value = data.type
+		},
+
+		cancelEdit() {
+			this.editing = null
+			this.$refs.nameInput.value = ''
+		},
+
 		async add() {
 			const name = this.$refs.nameInput.value.trim()
 			if (!name) return
-			const res = await fetch('/api/pockets', {
-				method: 'POST',
+			const url = this.editing ? '/api/pockets/' + this.editing.id : '/api/pockets'
+			const res = await fetch(url, {
+				method: this.editing ? 'PATCH' : 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ name, type: this.$refs.typeSelect.value })
 			})
 			if (!res.ok) return
+			this.cancelEdit()
 			this.reload()
 		},
 

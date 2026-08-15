@@ -160,3 +160,33 @@ func TestTransactionTagsProps(t *testing.T) {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestPocketRowData(t *testing.T) {
+	row := database.GetPocketBalancesRow{}
+	_ = row.ID.Scan("b54c00db-827a-4a17-b0d0-4d81925b20c7")
+	_ = row.Balance.Scan("25000")
+	row.Name = `BCA "Utama"`
+
+	got := pocketRowData(row)
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("expected valid json, got %q: %v", got, err)
+	}
+
+	if decoded["id"] != "b54c00db-827a-4a17-b0d0-4d81925b20c7" {
+		t.Fatalf("expected id, got %v", decoded["id"])
+	}
+
+	if decoded["name"] != `BCA "Utama"` {
+		t.Fatalf("expected name, got %v", decoded["name"])
+	}
+
+	if decoded["type"] != "" {
+		t.Fatalf("expected type, got %v", decoded["type"])
+	}
+
+	if strings.Contains(got, "<") || strings.Contains(got, "\n") {
+		t.Fatalf("row data must be JSON-safe, got %q", got)
+	}
+}

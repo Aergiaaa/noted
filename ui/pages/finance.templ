@@ -24,14 +24,18 @@ templ PocketView(pockets []database.GetPocketBalancesRow) {
 				</thead>
 				<tbody>
 					for _, p := range pockets {
-						<tr class="border-b border-zinc-800/50 last:border-b-0">
+						<tr data-row={ pocketRowData(p) } class="border-b border-zinc-800/50 last:border-b-0">
 							<td class="px-4 py-2 text-zinc-200">{ p.Name }</td>
 							<td class="px-4 py-2 text-zinc-500">{ p.Type }</td>
 							<td class={ "px-4 py-2 text-right " + moneyColor(p.Balance) }>{ money(p.Balance) }</td>
-							<td class="px-2 py-2 text-right">
+							<td class="px-2 py-2 text-right whitespace-nowrap">
+								<button
+									@click="edit($event)"
+									class="cursor-pointer text-zinc-600 hover:text-zinc-300 transition-colors duration-100"
+								>Edit</button>
 								<button
 									@click={ "remove('" + p.ID.String() + "')" }
-									class="cursor-pointer text-zinc-600 hover:text-red-400 transition-colors duration-100"
+									class="ml-2 cursor-pointer text-zinc-600 hover:text-red-400 transition-colors duration-100"
 								>×</button>
 							</td>
 						</tr>
@@ -60,9 +64,13 @@ templ PocketView(pockets []database.GetPocketBalancesRow) {
 				<option value="ewallet">E-Wallet</option>
 			</select>
 			<button type="submit" class="cursor-pointer rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white transition-colors duration-100">
-				Add
-			</button>
-		</form>
+					<span x-show="!editing">Add</span>
+					<span x-show="editing">Save</span>
+				</button>
+				<button type="button" @click="cancelEdit()" x-show="editing" class="cursor-pointer rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-500 hover:border-zinc-500 hover:text-white transition-colors duration-100">
+					Cancel
+				</button>
+			</form>
 	</div>
 }
 
@@ -349,6 +357,23 @@ func pocketLabel(t database.GetTransactionsWithPocketNamesRow) string {
 
 func transactionTagsProps(id string) string {
 	return "transactionTags({id: " + strconv.Quote(id) + "})"
+}
+
+type pocketRowJSON struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+func pocketRowData(p database.GetPocketBalancesRow) string {
+	row := pocketRowJSON{
+		ID:   p.ID.String(),
+		Name: p.Name,
+		Type: p.Type,
+	}
+
+	b, _ := json.Marshal(row)
+	return string(b)
 }
 
 type transactionRowJSON struct {
