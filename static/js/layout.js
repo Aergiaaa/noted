@@ -37,7 +37,7 @@ document.addEventListener('alpine:init', () => {
 			const target = document.getElementById('main-content')
 			target.innerHTML = html
 			Alpine.initTree(target)
-		}
+		},
 
 		async createPage() {
 			const res = await fetch('/api/pages', {
