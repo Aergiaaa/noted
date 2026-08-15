@@ -8,7 +8,7 @@ import (
 
 type TaggableServicer interface {
 	Attach(ctx context.Context, arg AttachTagArg) error
-	Detach(ctx context.Context, arg DetatchTagArg) error
+	Detach(ctx context.Context, arg DetachTagArg) error
 	GetTagsByTargetId(ctx context.Context, id string, kind string) ([]database.GetTagsByTargetRow, error)
 }
 
@@ -36,7 +36,7 @@ func (t *TaggableService) Attach(ctx context.Context, arg AttachTagArg) error {
 	switch PagTrType(arg.TargetType) {
 	case PAGE, TRANSACTION:
 	default:
-		return ErrTagTargetTypeMissmatch
+		return ErrTagTargetTypeMismatch
 	}
 
 	params := database.AttachTagParams{
@@ -48,13 +48,13 @@ func (t *TaggableService) Attach(ctx context.Context, arg AttachTagArg) error {
 	return t.models.AttachTag(ctx, params)
 }
 
-type DetatchTagArg struct {
+type DetachTagArg struct {
 	TagID      string
 	TargetID   string
 	TargetType string
 }
 
-func (t *TaggableService) Detach(ctx context.Context, arg DetatchTagArg) error {
+func (t *TaggableService) Detach(ctx context.Context, arg DetachTagArg) error {
 	tagId, err := parseUUID(arg.TagID)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (t *TaggableService) Detach(ctx context.Context, arg DetatchTagArg) error {
 	switch PagTrType(arg.TargetType) {
 	case PAGE, TRANSACTION:
 	default:
-		return ErrTagTargetTypeMissmatch
+		return ErrTagTargetTypeMismatch
 	}
 
 	params := database.DetachTagParams{
@@ -89,7 +89,7 @@ func (t *TaggableService) GetTagsByTargetId(ctx context.Context, id, kind string
 	switch PagTrType(kind) {
 	case PAGE, TRANSACTION:
 	default:
-		return []database.GetTagsByTargetRow{}, ErrTagTargetTypeMissmatch
+		return []database.GetTagsByTargetRow{}, ErrTagTargetTypeMismatch
 	}
 
 	params := database.GetTagsByTargetParams{

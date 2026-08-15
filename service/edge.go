@@ -41,7 +41,7 @@ func (e *EdgeService) Create(ctx context.Context, arg CreateEdgeArg) error {
 	switch PagTrType(arg.FromType) {
 	case PAGE, TRANSACTION:
 	default:
-		return ErrEdgeFromTypeMissmatch
+		return ErrEdgeFromTypeMismatch
 	}
 
 	toId, err := parseUUID(arg.ToID)
@@ -52,13 +52,13 @@ func (e *EdgeService) Create(ctx context.Context, arg CreateEdgeArg) error {
 	switch PagTrType(arg.ToType) {
 	case PAGE, TRANSACTION:
 	default:
-		return ErrEdgeToTypeMissmatch
+		return ErrEdgeToTypeMismatch
 	}
 
 	switch EdgeLinkType(arg.LinkType) {
 	case EDGE_FINANCE_LINK, EDGE_PARENT_LINK, EDGE_WIKI_LINK:
 	default:
-		return ErrEdgeLinkTypeMissmatch
+		return ErrEdgeLinkTypeMismatch
 	}
 
 	params := database.CreateEdgeParams{
@@ -91,7 +91,7 @@ func (e *EdgeService) Delete(ctx context.Context, arg DeleteEdgeArg) error {
 	switch EdgeLinkType(arg.LinkType) {
 	case EDGE_FINANCE_LINK, EDGE_PARENT_LINK, EDGE_WIKI_LINK:
 	default:
-		return ErrEdgeLinkTypeMissmatch
+		return ErrEdgeLinkTypeMismatch
 	}
 
 	params := database.DeleteEdgeParams{

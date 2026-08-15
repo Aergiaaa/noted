@@ -34,7 +34,7 @@ func (p *PocketService) Create(ctx context.Context, name, kind string) (database
 	switch PocketKind(kind) {
 	case CASH, BANK, EWALLET:
 	default:
-		return database.CreatePocketRow{}, ErrPocketKindMissmatch
+		return database.CreatePocketRow{}, ErrPocketKindMismatch
 	}
 
 	params := database.CreatePocketParams{
@@ -75,7 +75,7 @@ func (p *PocketService) Update(ctx context.Context, name, kind, id string) (data
 	switch PocketKind(kind) {
 	case CASH, BANK, EWALLET:
 	default:
-		return database.UpdatePocketRow{}, ErrPocketKindMissmatch
+		return database.UpdatePocketRow{}, ErrPocketKindMismatch
 	}
 
 	cleanId, err := parseUUID(id)

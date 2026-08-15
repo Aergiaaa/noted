@@ -47,7 +47,7 @@ func (t *TransactionService) Create(ctx context.Context, arg CreateTransactionAr
 	switch trType {
 	case TRANSACTION_INCOME, TRANSACTION_EXPENSE, TRANSACTION_TRANSFER:
 	default:
-		return database.CreateTransactionRow{}, ErrTransactionTypeMissmatch
+		return database.CreateTransactionRow{}, ErrTransactionTypeMismatch
 	}
 
 	cleanDate, err := parseDate(arg.Date)
@@ -142,7 +142,7 @@ func (t *TransactionService) Update(ctx context.Context, arg UpdateTransactionAr
 	switch trType {
 	case TRANSACTION_INCOME, TRANSACTION_EXPENSE, TRANSACTION_TRANSFER:
 	default:
-		return database.UpdateTransactionRow{}, ErrTransactionTypeMissmatch
+		return database.UpdateTransactionRow{}, ErrTransactionTypeMismatch
 	}
 
 	cleanDate, err := parseDate(arg.Date)

@@ -8,7 +8,7 @@ import (
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/service"
 	"github.com/Aergiaaa/noted/ui/modules"
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 )
 
 func (app *App) handleNOP(w http.ResponseWriter, r *http.Request) {
@@ -525,7 +525,7 @@ func (a *App) handleDetachTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.service.Taggable.Detach(r.Context(), service.DetatchTagArg{
+	if err := a.service.Taggable.Detach(r.Context(), service.DetachTagArg{
 		TagID:      tagId,
 		TargetID:   input.TargetID,
 		TargetType: input.TargetType,

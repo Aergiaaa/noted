@@ -8,16 +8,16 @@ import (
 )
 
 var (
-	ErrEmptyName                = errors.New("name cannot be empty")
-	ErrEmptyColor               = errors.New("color cannot be empty")
-	ErrPocketKindMissmatch      = errors.New("missmatch pocket kind")
-	ErrBlockKindMissmatch       = errors.New("missmatch block kind")
-	ErrTransactionTypeMissmatch = errors.New("missmatch transaction type")
-	ErrEdgeFromTypeMissmatch    = errors.New("missmatch from edge type")
-	ErrEdgeToTypeMissmatch      = errors.New("missmatch to edge type")
-	ErrTagTargetTypeMissmatch   = errors.New("missmatch tag target type")
-	ErrEdgeLinkTypeMissmatch    = errors.New("missmatch edge link type")
-	ErrEmptyTitle               = errors.New("title cannot be empty")
+	ErrEmptyName               = errors.New("name cannot be empty")
+	ErrEmptyColor              = errors.New("color cannot be empty")
+	ErrPocketKindMismatch      = errors.New("mismatch pocket kind")
+	ErrBlockKindMismatch       = errors.New("mismatch block kind")
+	ErrTransactionTypeMismatch = errors.New("mismatch transaction type")
+	ErrEdgeFromTypeMismatch    = errors.New("mismatch from edge type")
+	ErrEdgeToTypeMismatch      = errors.New("mismatch to edge type")
+	ErrTagTargetTypeMismatch   = errors.New("mismatch tag target type")
+	ErrEdgeLinkTypeMismatch    = errors.New("mismatch edge link type")
+	ErrEmptyTitle              = errors.New("title cannot be empty")
 )
 
 type PagTrType string

@@ -55,7 +55,7 @@ func (b *BlockService) Create(ctx context.Context, args CreateBlockArgs) (databa
 	switch BlockType(args.Type) {
 	case BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE:
 	default:
-		return database.CreateBlockRow{}, ErrBlockKindMissmatch
+		return database.CreateBlockRow{}, ErrBlockKindMismatch
 	}
 
 	order, err := b.getOrder(ctx, cleanPageId, cleanParentId)
@@ -116,7 +116,7 @@ func (b *BlockService) Update(ctx context.Context, args UpdateBlockArgs) (databa
 	switch BlockType(args.Type) {
 	case BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE:
 	default:
-		return database.UpdateBlockRow{}, ErrBlockKindMissmatch
+		return database.UpdateBlockRow{}, ErrBlockKindMismatch
 	}
 
 	params := database.UpdateBlockParams{

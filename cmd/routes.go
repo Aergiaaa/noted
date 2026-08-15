@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
 func (a *App) routes() http.Handler {
-	s := chi.NewMux()
+	s := chi.NewRouter()
 
 	s.Use(
 		middleware.SetHeader("X-Frame-Options", "DENY"),
@@ -111,14 +111,6 @@ func (a *App) routes() http.Handler {
 		s.Route("/pages", func(s chi.Router) {
 			s.Get("/{id}/fragment", a.handlePageFragment)
 		})
-
-		s.NotFound(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			json.NewEncoder(w).Encode(map[string]string{
-				"error": "method not allowed",
-			})
-		})
 	})
 
 	// static file
@@ -126,6 +118,14 @@ func (a *App) routes() http.Handler {
 	s.Handle("/templui/js/*",
 		http.StripPrefix("/templui/js/", http.FileServer(http.Dir("static/js"))),
 	)
+
+	s.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "not found",
+		})
+	})
 
 	return s
 }
