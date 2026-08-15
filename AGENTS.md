@@ -3,6 +3,28 @@
 Code written in this repo MUST match the existing style 1:1. Study the current
 code before writing anything new. Rules below.
 
+## Testing (test-first)
+
+- Test first, then implement: write a failing unit test that pins the expected
+  behavior before touching any code. Bug fixes follow the same rule — reproduce
+  the bug in a test first, then fix until it passes.
+- Creating something new (feature, handler, service method, helper) = create
+  the test first, see it fail (`go test ./...` red), then implement until the
+  suite is green.
+- Tests live next to the code: `service/*_test.go`, `cmd/handler_test.go`,
+  `ui/modules/*_test.go`. Stdlib only (`testing`, `httptest`, `errors`).
+- Service tests: `errors.Is` against sentinel errors (`ErrBlockKindMismatch`,
+  etc.) on `&XyzService{}` without models, so tests reach only pre-DB
+  validation; shared fixtures in `service/utils_test.go` (e.g. `validUUID`).
+- Handler tests: `httptest.NewRequest` + `httptest.NewRecorder` with a fake
+  `XyzServicer` wired through `service.Services{...}` (see `fakePageServicer`);
+  assert status codes, error paths return `http.StatusInternalServerError`.
+- templ/components: test pure helpers only (`blockChildren`, `linkSegments`);
+  no template rendering in unit tests.
+- Gate before every commit: `go test ./...`, `go vet ./...`,
+  `gofmt -l cmd service ui` clean, then build + live e2e verify before
+  committing.
+
 ## Language / tooling
 
 - Go 1.26, templ (a-h/templ v0.3), sqlc (pgx/v5), chi router, Tailwind v4,
