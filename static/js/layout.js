@@ -174,4 +174,80 @@ document.addEventListener('alpine:init', () => {
 			drag = null
 		}
 	}))
+
+	Alpine.data('pageTags', (props) => ({
+		pageId: props.pageId,
+		adding: false,
+
+		toggleAdd() {
+			this.adding = !this.adding
+			if (this.adding) {
+				this.$nextTick(() => this.$refs.tagInput.focus())
+			}
+		},
+
+		async add() {
+			const name = this.$refs.tagInput.value.trim()
+			if (!name) return
+			const res = await fetch('/api/tags', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, color: '#3b82f6' })
+			})
+			if (!res.ok) return
+			const tag = await res.json()
+			const attach = await fetch('/api/tags/' + tag.id + '/attach', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ target_id: this.pageId, target_type: 'page' })
+			})
+			if (!attach.ok) return
+			this.reload()
+		},
+
+		async detach(tagId) {
+			const res = await fetch('/api/tags/' + tagId + '/detach', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ target_id: this.pageId, target_type: 'page' })
+			})
+			if (!res.ok) return
+			this.reload()
+		},
+
+		reload() {
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadContent(this.pageId)
+		}
+	}))
+
+	Alpine.data('pageTitle', (props) => ({
+		pageId: props.pageId,
+		saveTimer: null,
+
+		onInput() {
+			clearTimeout(this.saveTimer)
+			this.saveTimer = setTimeout(() => this.save(), 300)
+		},
+
+		onKeydown(e) {
+			if (e.key === 'Enter') {
+				e.preventDefault()
+				this.save()
+				this.$el.blur()
+			}
+		},
+
+		async save() {
+			const title = this.$el.innerText.trim()
+			const res = await fetch('/api/pages/' + this.pageId, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ title })
+			})
+			if (!res.ok) return
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).fetchPages(1)
+		}
+	}))
 })

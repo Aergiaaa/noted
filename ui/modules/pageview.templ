@@ -9,9 +9,16 @@ import (
 )
 
 templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow) {
-	<div class="mx-auto w-full max-w-2xl px-4 py-8">
-		<h1 class="mb-8 text-4xl font-bold tracking-tight">{ title }</h1>
-		@tagPills(tags)
+	<div x-data={ pageTagsProps(pageId) } class="mx-auto w-full max-w-2xl px-4 py-8">
+		<h1
+			x-data={ pageTitleProps(pageId, title) }
+			contenteditable="true"
+			spellcheck="false"
+			@input="onInput()"
+			@keydown="onKeydown($event)"
+			class="mb-8 text-4xl font-bold tracking-tight"
+		>{ title }</h1>
+		@tagPills(tags, pageId)
 		<div class="space-y-1">
 			@blockTree(blocks, pgtype.UUID{}, 0, pageId)
 		</div>
@@ -19,17 +26,36 @@ templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags 
 	</div>
 }
 
-templ tagPills(tags []database.GetTagsByTargetRow) {
-	if len(tags) > 0 {
-		<div class="mb-6 flex flex-wrap gap-2">
-			for _, t := range tags {
-				<span
-					class="rounded-full px-2 py-0.5 text-xs font-medium"
-					style={ "background-color: " + t.Color + "33" }
-				>{ t.Name }</span>
-			}
-		</div>
-	}
+templ tagPills(tags []database.GetTagsByTargetRow, pageId string) {
+	<div class="mb-6 flex flex-wrap items-center gap-2">
+		for _, t := range tags {
+			<span
+				class="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+				style={ "background-color: " + t.Color + "33" }
+			>
+				{ t.Name }
+				<button
+					@click={ "detach('" + t.ID.String() + "')" }
+					title="remove tag"
+					class="ml-1 cursor-pointer rounded-full px-1 leading-none opacity-60 hover:opacity-100"
+				>×</button>
+			</span>
+		}
+		<input
+			x-show="adding"
+			x-ref="tagInput"
+			type="text"
+			placeholder="Tag name"
+			@keydown.enter="add()"
+			@blur="adding = false"
+			class="rounded-full border border-zinc-800 bg-transparent px-3 py-0.5 text-xs outline-none focus:border-zinc-600"
+		/>
+		<button
+			@click="toggleAdd()"
+			title="add tag"
+			class="cursor-pointer rounded-full border border-dashed border-zinc-700 px-2 py-0.5 text-xs text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+		>+</button>
+	</div>
 }
 
 templ backlinkList(backlinks []database.GetBacklinkPagesRow) {
@@ -114,6 +140,14 @@ func editorProps(b database.GetBlocksByPageRow, pageId string, depth int) string
 
 func rowProps(b database.GetBlocksByPageRow, pageId string, depth int) string {
 	return "row({id: " + strconv.Quote(b.ID.String()) + ", pageId: " + strconv.Quote(pageId) + ", depth: " + strconv.Itoa(depth) + "})"
+}
+
+func pageTagsProps(pageId string) string {
+	return "pageTags({pageId: " + strconv.Quote(pageId) + "})"
+}
+
+func pageTitleProps(pageId, title string) string {
+	return "pageTitle({pageId: " + strconv.Quote(pageId) + ", title: " + strconv.Quote(title) + "})"
 }
 
 func editorClass(t string, depth int) string {
