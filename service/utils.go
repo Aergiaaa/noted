@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"time"
 
@@ -19,6 +20,7 @@ var (
 	ErrTagTargetTypeMismatch   = errors.New("mismatch tag target type")
 	ErrEdgeLinkTypeMismatch    = errors.New("mismatch edge link type")
 	ErrEmptyTitle              = errors.New("title cannot be empty")
+	ErrInvalidAmount           = errors.New("amount must be a finite number")
 )
 
 type PagTrType string
@@ -54,9 +56,17 @@ func parseNum[T Number](num T) (pgtype.Numeric, error) {
 	var res pgtype.Numeric
 
 	var err error
-	if val, ok := any(num).(float64); ok {
-		err = res.Scan(strconv.FormatFloat(val, 'f', -1, 64))
-	} else {
+	switch v := any(num).(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return pgtype.Numeric{}, ErrInvalidAmount
+		}
+		err = res.Scan(strconv.FormatFloat(v, 'f', -1, 64))
+	case int:
+		err = res.Scan(strconv.FormatInt(int64(v), 10))
+	case int32:
+		err = res.Scan(strconv.FormatInt(int64(v), 10))
+	default:
 		err = res.Scan(num)
 	}
 
