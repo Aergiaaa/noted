@@ -17,8 +17,11 @@ import (
 )
 
 type fakePageServicer struct {
-	create  func(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error)
-	updated bool
+	create    func(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error)
+	updated   bool
+	searchQ   string
+	searchRes []database.GetPagePaginatedRow
+	searchErr error
 }
 
 func (f *fakePageServicer) Create(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error) {
@@ -579,6 +582,48 @@ func TestHandleTransactionsFragmentTagsError(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	app.handleTransactionsFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func (f *fakePageServicer) Search(ctx context.Context, q string) ([]database.GetPagePaginatedRow, error) {
+	f.searchQ = q
+	return f.searchRes, f.searchErr
+}
+
+func TestHandlePagesSearch(t *testing.T) {
+	fake := &fakePageServicer{
+		searchRes: []database.GetPagePaginatedRow{{Title: "Makanan"}},
+	}
+	app := &App{service: &service.Services{Page: fake}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pages?q=makan", nil)
+	w := httptest.NewRecorder()
+
+	app.handlePages(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if fake.searchQ != "makan" {
+		t.Fatalf("expected query passthrough, got %q", fake.searchQ)
+	}
+
+	if !strings.Contains(w.Body.String(), "Makanan") {
+		t.Fatalf("expected search result in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandlePagesSearchError(t *testing.T) {
+	app := &App{service: &service.Services{Page: &fakePageServicer{searchErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pages?q=makan", nil)
+	w := httptest.NewRecorder()
+
+	app.handlePages(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)

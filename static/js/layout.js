@@ -27,6 +27,32 @@ document.addEventListener('alpine:init', () => {
 			this.currentPaginationPage = page
 		},
 
+		searchTimer: null,
+
+		search() {
+			clearTimeout(this.searchTimer)
+			this.searchTimer = setTimeout(() => {
+				const q = this.$refs.searchInput.value.trim()
+				if (!q) {
+					this.fetchPages(1)
+					return
+				}
+				fetch('/api/pages?q=' + encodeURIComponent(q))
+					.then(res => res.ok ? res.json() : null)
+					.then(data => {
+						if (!data) return
+						this.pages = data.pages
+						this.totalPages = 1
+						this.currentPaginationPage = 1
+					})
+			}, 250)
+		},
+
+		clearSearch() {
+			this.$refs.searchInput.value = ''
+			this.fetchPages(1)
+		},
+
 		async loadFinance(view) {
 			this.view = view
 			this.activePageId = null

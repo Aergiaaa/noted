@@ -27,6 +27,38 @@ func (a *App) handlePages(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		Pages      []pageItem `json:"pages"`
+		Page       int        `json:"page"`
+		Limit      int        `json:"limit"`
+		TotalPages int32      `json:"total_pages"`
+	}
+
+	searchQuery := r.URL.Query().Get("q")
+	if searchQuery != "" {
+		found, err := a.service.Page.Search(r.Context(), searchQuery)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		res := response{
+			Pages:      toPageItems(found),
+			Page:       1,
+			Limit:      limit,
+			TotalPages: 1,
+		}
+
+		if err = json.NewEncoder(w).Encode(res); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		return
+	}
+
 	pages, err := a.service.Page.GetPagePaginated(r.Context(), page, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -39,17 +71,8 @@ func (a *App) handlePages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
-	type response struct {
-		Pages      []database.GetPagePaginatedRow `json:"pages"`
-		Page       int                            `json:"page"`
-		Limit      int                            `json:"limit"`
-		TotalPages int32                          `json:"total_pages"`
-	}
-
 	res := response{
-		Pages:      pages,
+		Pages:      toPageItems(pages),
 		Page:       page,
 		Limit:      limit,
 		TotalPages: totalPages,
@@ -59,6 +82,19 @@ func (a *App) handlePages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+type pageItem struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+func toPageItems(rows []database.GetPagePaginatedRow) []pageItem {
+	items := make([]pageItem, len(rows))
+	for i, r := range rows {
+		items[i] = pageItem{ID: r.ID.String(), Title: r.Title}
+	}
+	return items
 }
 
 func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {

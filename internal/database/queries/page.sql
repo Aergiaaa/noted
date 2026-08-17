@@ -41,3 +41,11 @@ select id,title
 select count(*)::int
 	from page
 	where deleted_at is null;
+
+-- name: SearchPages :many
+select id, title
+	from page
+	where deleted_at is null
+		and title ilike '%' || $1 || '%'
+	order by updated_at desc
+	limit 50;

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Aergiaaa/noted/internal/database"
@@ -18,6 +19,7 @@ type PageServicer interface {
 	GetPagePaginated(ctx context.Context, page int, limit int) ([]database.GetPagePaginatedRow, error)
 	GetTotalPage(ctx context.Context) (int32, error)
 	Restore(ctx context.Context, id string) error
+	Search(ctx context.Context, q string) ([]database.GetPagePaginatedRow, error)
 	Update(ctx context.Context, title string, id string, date *time.Time) (database.UpdatePageRow, error)
 }
 
@@ -132,6 +134,24 @@ func (p *PageService) GetPagePaginated(ctx context.Context, page, limit int) ([]
 
 func (p *PageService) GetTotalPage(ctx context.Context) (int32, error) {
 	return p.models.CountPages(ctx)
+}
+
+func (p *PageService) Search(ctx context.Context, q string) ([]database.GetPagePaginatedRow, error) {
+	if strings.TrimSpace(q) == "" {
+		return []database.GetPagePaginatedRow{}, nil
+	}
+
+	rows, err := p.models.SearchPages(ctx, pgtype.Text{String: q, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]database.GetPagePaginatedRow, len(rows))
+	for i, r := range rows {
+		out[i] = database.GetPagePaginatedRow(r)
+	}
+
+	return out, nil
 }
 
 func (p *PageService) GetBacklinkPages(ctx context.Context, id string) ([]database.GetBacklinkPagesRow, error) {

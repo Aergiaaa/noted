@@ -160,6 +160,40 @@ func (q *Queries) RestorePage(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const searchPages = `-- name: SearchPages :many
+select id, title
+	from page
+	where deleted_at is null
+		and title ilike '%' || $1 || '%'
+	order by updated_at desc
+	limit 50
+`
+
+type SearchPagesRow struct {
+	ID    pgtype.UUID
+	Title string
+}
+
+func (q *Queries) SearchPages(ctx context.Context, dollar_1 pgtype.Text) ([]SearchPagesRow, error) {
+	rows, err := q.db.Query(ctx, searchPages, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchPagesRow
+	for rows.Next() {
+		var i SearchPagesRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePage = `-- name: UpdatePage :one
 update page 
 	set title = $1, date = $2, updated_at = now() 

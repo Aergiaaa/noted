@@ -45,3 +45,16 @@ func TestPageServiceUUIDValidation(t *testing.T) {
 		t.Fatalf("expected error for bad id")
 	}
 }
+
+func TestPageServiceSearch(t *testing.T) {
+	p := &PageService{}
+
+	pages, err := p.Search(context.Background(), "  ")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if len(pages) != 0 {
+		t.Fatalf("expected empty result, got %v", pages)
+	}
+}
