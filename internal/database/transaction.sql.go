@@ -361,8 +361,8 @@ update transaction
 			type = $2, 
 			amount = $3, 
 			date = $4, 
-			from_pocket_id = $5, 
-			to_pocket_id = $6, 
+			from_pocket_id = coalesce($5, from_pocket_id), 
+			to_pocket_id = coalesce($6, to_pocket_id), 
 			updated_at = now() 
 	where id = $7 
 	returning id, title, type, amount, date, from_pocket_id, to_pocket_id, updated_at
