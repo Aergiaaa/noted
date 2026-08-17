@@ -114,4 +114,15 @@
       "rlig" 1,
       "calt" 1;
   }
+
+  .page-title:empty::before,
+  .block-editor:empty::before {
+    content: attr(data-placeholder);
+    color: oklch(0.556 0 0);
+  }
+
+  .dark .page-title:empty::before,
+  .dark .block-editor:empty::before {
+    color: oklch(0.708 0 0);
+  }
 }

@@ -17,9 +17,11 @@ templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags 
 			x-data={ pageTitleProps(pageId, title) }
 			contenteditable="true"
 			spellcheck="false"
+			data-placeholder="Untitled"
 			@input="onInput()"
 			@keydown="onKeydown($event)"
-			class="mb-8 text-4xl font-bold tracking-tight"
+			@blur="onBlur()"
+			class="page-title mb-8 cursor-text text-4xl font-bold tracking-tight outline-none"
 		>{ title }</h1>
 		@tagPills(tags, pageId)
 		<div class="space-y-1">
@@ -105,6 +107,11 @@ templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages
 			title="drag to reorder"
 			class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300"
 		>⠿</div>
+		<button
+			@click="toggleMenu()"
+			title="block type"
+			class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300"
+		>+</button>
 		if b.Type == "table" {
 			@blockTable(b, pageId, depth)
 		} else if b.Type == "finance" {
@@ -116,6 +123,7 @@ templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages
 				x-data={ editorProps(b, pageId, depth) }
 				contenteditable="true"
 				spellcheck="false"
+				data-placeholder="Type / for blocks"
 				@focus="onFocus()"
 				@blur="onBlur()"
 				@input="onInput()"
@@ -156,7 +164,7 @@ templ blockList(b database.GetBlocksByPageRow, pageId string, depth int) {
 		@blur="onBlur()"
 		@input="onInput()"
 		@keydown="onKeydown($event)"
-		class={ "outline-none cursor-text py-0.5 list-none" + indent(depth) }
+		class={ "block-editor outline-none cursor-text py-0.5 list-none" + indent(depth) }
 	>
 		<ul class="ml-4 list-disc">
 			for _, item := range listItems(b.Content) {
@@ -332,7 +340,7 @@ func editorProps(b database.GetBlocksByPageRow, pageId string, depth int) string
 }
 
 func rowProps(b database.GetBlocksByPageRow, pageId string, depth int) string {
-	return "row({id: " + strconv.Quote(b.ID.String()) + ", pageId: " + strconv.Quote(pageId) + ", depth: " + strconv.Itoa(depth) + "})"
+	return "row({id: " + strconv.Quote(b.ID.String()) + ", type: " + strconv.Quote(b.Type) + ", pageId: " + strconv.Quote(pageId) + ", depth: " + strconv.Itoa(depth) + "})"
 }
 
 func pageTagsProps(pageId string) string {
@@ -344,7 +352,7 @@ func pageTitleProps(pageId, title string) string {
 }
 
 func editorClass(t string, depth int) string {
-	base := "outline-none cursor-text py-0.5"
+	base := "block-editor outline-none cursor-text py-0.5"
 
 	if depth > 0 {
 		base += " ml-6"

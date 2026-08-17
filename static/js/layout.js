@@ -7,25 +7,29 @@ function menuTypeList(row) {
 }
 
 async function convertBlock(rowEl, t) {
+	const row = Alpine.$data(rowEl)
+	if (!row) return
 	const ed = rowEl.querySelector('[x-data^="editor"]')
-	if (!ed) return
-	const e = Alpine.$data(ed)
-	clearTimeout(e.saveTimer)
-	e.discard = true
+	const e = ed ? Alpine.$data(ed) : null
+	if (e) {
+		clearTimeout(e.saveTimer)
+		e.discard = true
+	}
 	let content = { text: '' }
 	if (t === 'table') content = { tables: [['']] }
 	if (t === 'finance') content = { finance: { pocket: '' } }
 	const body = { type: t, content }
-	const url = e.creating ? '/api/pages/' + e.pageId + '/blocks' : '/api/blocks/' + e.id
+	const creating = e ? e.creating : false
+	const url = creating ? '/api/pages/' + row.pageId + '/blocks' : '/api/blocks/' + row.id
 	const res = await fetch(url, {
-		method: e.creating ? 'POST' : 'PATCH',
+		method: creating ? 'POST' : 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)
 	})
 	if (!res.ok) return
-	e.creating = false
+	if (e) e.creating = false
 	const layoutEl = document.querySelector('[x-data="layout"]')
-	if (layoutEl) Alpine.$data(layoutEl).loadContent(e.pageId)
+	if (layoutEl) Alpine.$data(layoutEl).loadContent(row.pageId)
 }
 
 function pickSlashType(rowEl, t) {
@@ -410,7 +414,7 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		rowHtml(id) {
-			return '<div x-data="row({id: \'' + id + '\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group relative flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><div contenteditable="true" spellcheck="false" @focus="onFocus()" @blur="onBlur()" @input="onInput()" @keydown="onKeydown($event)" class="outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div><div x-show="menu" @click.away="closeSlash($root)" class="absolute left-6 top-6 z-10 mt-1 w-48 rounded-lg border border-zinc-800 bg-zinc-950 py-1 text-sm shadow-xl"><template x-for="(t, i) in blockTypesList.filter(x => x !== menuType && (!menuFilter || x.includes(menuFilter)))" :key="t"><button :class="i === menuIndex ? \'bg-zinc-800\' : \'\'" @mousedown.prevent="pickSlashType($root, t)" class="block w-full px-3 py-1 text-left text-zinc-300 hover:bg-zinc-800"><span x-text="t" class="capitalize"></span></button></template></div></div>'
+			return '<div x-data="row({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group relative flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><button @click="toggleMenu()" title="block type" class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">+</button><div contenteditable="true" spellcheck="false" data-placeholder="Type / for blocks" @focus="onFocus()" @blur="onBlur()" @input="onInput()" @keydown="onKeydown($event)" class="block-editor outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div><div x-show="menu" @click.away="closeSlash($root)" class="absolute left-6 top-6 z-10 mt-1 w-48 rounded-lg border border-zinc-800 bg-zinc-950 py-1 text-sm shadow-xl"><template x-for="(t, i) in blockTypesList.filter(x => x !== menuType && (!menuFilter || x.includes(menuFilter)))" :key="t"><button :class="i === menuIndex ? \'bg-zinc-800\' : \'\'" @mousedown.prevent="pickSlashType($root, t)" class="block w-full px-3 py-1 text-left text-zinc-300 hover:bg-zinc-800"><span x-text="t" class="capitalize"></span></button></template></div></div>'
 		},
 
 		placeCaret(el) {
@@ -447,6 +451,7 @@ document.addEventListener('alpine:init', () => {
 
 	Alpine.data('row', (props) => ({
 		id: props.id,
+		type: props.type,
 		pageId: props.pageId,
 		depth: props.depth,
 		menu: false,
@@ -454,6 +459,13 @@ document.addEventListener('alpine:init', () => {
 		menuIndex: 0,
 		menuType: 'text',
 		creating: false,
+
+		toggleMenu() {
+			this.menu = !this.menu
+			this.menuFilter = ''
+			this.menuIndex = 0
+			this.menuType = this.type
+		},
 
 		onDragStart() {
 			drag = { id: this.id, row: this.$el }
@@ -743,6 +755,7 @@ document.addEventListener('alpine:init', () => {
 
 	Alpine.data('pageTitle', (props) => ({
 		pageId: props.pageId,
+		title: props.title,
 		saveTimer: null,
 
 		onInput() {
@@ -753,9 +766,16 @@ document.addEventListener('alpine:init', () => {
 		onKeydown(e) {
 			if (e.key === 'Enter') {
 				e.preventDefault()
+				clearTimeout(this.saveTimer)
 				this.save()
 				this.$el.blur()
 			}
+		},
+
+		onBlur() {
+			if (this.$el.innerText.trim() === this.title) return
+			clearTimeout(this.saveTimer)
+			this.save()
 		},
 
 		async save() {
@@ -766,6 +786,7 @@ document.addEventListener('alpine:init', () => {
 				body: JSON.stringify({ title })
 			})
 			if (!res.ok) return
+			this.title = title
 			const layoutEl = document.querySelector('[x-data="layout"]')
 			if (layoutEl) Alpine.$data(layoutEl).fetchPages(1)
 		}
