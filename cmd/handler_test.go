@@ -13,6 +13,7 @@ import (
 
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/service"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -502,10 +503,13 @@ func deletedTransactionRowToRow() database.GetTransactionsWithPocketNamesRow {
 }
 
 type fakeTaggableServicer struct {
-	targetId string
-	kind     string
-	tags     []database.GetTagsByTargetRow
-	tagsErr  error
+	targetId      string
+	kind          string
+	tags          []database.GetTagsByTargetRow
+	tagsErr       error
+	pagesByTag    []database.GetPagePaginatedRow
+	pagesByTagArg string
+	pagesByTagErr error
 }
 
 func (f *fakeTaggableServicer) Attach(ctx context.Context, arg service.AttachTagArg) error {
@@ -627,5 +631,73 @@ func TestHandlePagesSearchError(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func (f *fakeTaggableServicer) GetPagesByTag(ctx context.Context, tagId string) ([]database.GetPagePaginatedRow, error) {
+	f.pagesByTagArg = tagId
+	return f.pagesByTag, f.pagesByTagErr
+}
+
+func TestHandleGetPagesByTag(t *testing.T) {
+	fake := &fakeTaggableServicer{
+		pagesByTag: []database.GetPagePaginatedRow{{Title: "Makanan"}},
+	}
+	app := &App{service: &service.Services{Taggable: fake}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tags/0197f1a0-0000-0000-0000-000000000001/pages", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	app.handleGetPagesByTag(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if fake.pagesByTagArg != "0197f1a0-0000-0000-0000-000000000001" {
+		t.Fatalf("expected tag id passthrough, got %q", fake.pagesByTagArg)
+	}
+
+	if !strings.Contains(w.Body.String(), "Makanan") {
+		t.Fatalf("expected page in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandleGetPagesByTagError(t *testing.T) {
+	app := &App{service: &service.Services{Taggable: &fakeTaggableServicer{pagesByTagErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/tags/0197f1a0-0000-0000-0000-000000000001/pages", nil)
+	w := httptest.NewRecorder()
+
+	app.handleGetPagesByTag(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleTagPagesFragment(t *testing.T) {
+	app := &App{service: &service.Services{Taggable: &fakeTaggableServicer{
+		pagesByTag: []database.GetPagePaginatedRow{{Title: "Makanan"}},
+	}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/tags/0197f1a0-0000-0000-0000-000000000001/pages?name=Makan", nil)
+	w := httptest.NewRecorder()
+
+	app.handleTagPagesFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if !strings.Contains(w.Body.String(), "Makanan") {
+		t.Fatalf("expected page title in body, got %s", w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "Makan") {
+		t.Fatalf("expected tag name in body, got %s", w.Body.String())
 	}
 }

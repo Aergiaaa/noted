@@ -89,6 +89,7 @@ func (a *App) routes() http.Handler {
 			s.Route("/tags", func(s chi.Router) {
 
 				s.Get("/", a.handleGetTags)
+				s.Get("/{id}/pages", a.handleGetPagesByTag)
 
 				s.Post("/", a.handleCreateTag)
 				s.Post("/{id}/restore", a.handleRestoreTag)
@@ -118,6 +119,7 @@ func (a *App) routes() http.Handler {
 			s.Get("/pockets", a.handlePocketsFragment)
 			s.Get("/transactions", a.handleTransactionsFragment)
 			s.Get("/trash", a.handleTrashFragment)
+			s.Get("/tags/{id}/pages", a.handleTagPagesFragment)
 		})
 	})
 

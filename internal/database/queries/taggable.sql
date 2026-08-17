@@ -15,3 +15,13 @@ select t.id, t.name, t.color
 		on t.id = tg.tag_id
 	where tg.target_id = $1 
 		and tg.target_type = $2;
+
+-- name: GetPagesByTag :many
+select p.id, p.title
+	from page p
+	inner join taggable tg on tg.target_id = p.id
+	where tg.tag_id = $1
+		and tg.target_type = 'page'
+		and p.deleted_at is null
+	order by p.updated_at desc
+	limit 50;

@@ -71,3 +71,11 @@ func TestTaggableServiceGetTagsByTargetId(t *testing.T) {
 		t.Fatalf("expected ErrTagTargetTypeMismatch, got %v", err)
 	}
 }
+
+func TestTaggableServiceGetPagesByTag(t *testing.T) {
+	s := &TaggableService{}
+
+	if _, err := s.GetPagesByTag(context.Background(), "nope"); err == nil {
+		t.Fatalf("expected error for bad tag id")
+	}
+}

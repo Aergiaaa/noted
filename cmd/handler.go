@@ -449,6 +449,44 @@ func (a *App) handleGetBacklinks(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleGetPagesByTag(w http.ResponseWriter, r *http.Request) {
+	tagId := chi.URLParam(r, "id")
+
+	pages, err := a.service.Taggable.GetPagesByTag(r.Context(), tagId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	type response struct {
+		Pages []pageItem `json:"pages"`
+	}
+
+	res := response{
+		Pages: toPageItems(pages),
+	}
+
+	if err = json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) handleTagPagesFragment(w http.ResponseWriter, r *http.Request) {
+	tagId := chi.URLParam(r, "id")
+	nameQuery := r.URL.Query().Get("name")
+
+	rows, err := a.service.Taggable.GetPagesByTag(r.Context(), tagId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pages.TagPagesView(nameQuery, rows).Render(r.Context(), w)
+}
+
 func (a *App) handleGetTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := a.service.Tag.GetAll(r.Context())
 	if err != nil {
@@ -458,12 +496,23 @@ func (a *App) handleGetTags(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
+	type tagItem struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+
 	type response struct {
-		Tags []database.GetAllTagsRow `json:"tags"`
+		Tags []tagItem `json:"tags"`
+	}
+
+	items := make([]tagItem, len(tags))
+	for i, t := range tags {
+		items[i] = tagItem{ID: t.ID.String(), Name: t.Name, Color: t.Color}
 	}
 
 	res := response{
-		Tags: tags,
+		Tags: items,
 	}
 
 	if err = json.NewEncoder(w).Encode(res); err != nil {

@@ -9,6 +9,7 @@ import (
 type TaggableServicer interface {
 	Attach(ctx context.Context, arg AttachTagArg) error
 	Detach(ctx context.Context, arg DetachTagArg) error
+	GetPagesByTag(ctx context.Context, tagId string) ([]database.GetPagePaginatedRow, error)
 	GetTagsByTargetId(ctx context.Context, id string, kind string) ([]database.GetTagsByTargetRow, error)
 }
 
@@ -98,4 +99,23 @@ func (t *TaggableService) GetTagsByTargetId(ctx context.Context, id, kind string
 	}
 
 	return t.models.GetTagsByTarget(ctx, params)
+}
+
+func (t *TaggableService) GetPagesByTag(ctx context.Context, tagId string) ([]database.GetPagePaginatedRow, error) {
+	cleanId, err := parseUUID(tagId)
+	if err != nil {
+		return []database.GetPagePaginatedRow{}, err
+	}
+
+	rows, err := t.models.GetPagesByTag(ctx, cleanId)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]database.GetPagePaginatedRow, len(rows))
+	for i, r := range rows {
+		out[i] = database.GetPagePaginatedRow(r)
+	}
+
+	return out, nil
 }

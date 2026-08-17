@@ -9,6 +9,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+templ TagPagesView(name string, pages []database.GetPagePaginatedRow) {
+	<div class="mx-auto w-full max-w-2xl px-4 py-8">
+		<h1 class="mb-8 text-4xl font-bold tracking-tight">Tag: { name }</h1>
+		<div class="space-y-1">
+			for _, p := range pages {
+				<button
+					@click={ "loadContent('" + p.ID.String() + "')" }
+					class="block text-sm text-zinc-400 hover:text-white transition-colors duration-100"
+				>{ p.Title }</button>
+			}
+			if len(pages) == 0 {
+				<p class="text-sm text-zinc-600">No pages with this tag</p>
+			}
+		</div>
+	</div>
+}
+
 templ PocketView(pockets []database.GetPocketBalancesRow) {
 	<div x-data="pocketView()" class="mx-auto w-full max-w-2xl px-4 py-8">
 		<h1 class="mb-8 text-4xl font-bold tracking-tight">Pockets</h1>

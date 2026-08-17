@@ -5,6 +5,7 @@ document.addEventListener('alpine:init', () => {
 		sidebarOpen: false,
 		navbarVisible: true,
 		pages: [],
+		tags: [],
 		totalPages: 1,
 		currentPaginationPage: 1,
 		activePageId: null,
@@ -16,6 +17,14 @@ document.addEventListener('alpine:init', () => {
 				if (e.altKey && e.key === 'e') { e.preventDefault(); this.sidebarOpen = !this.sidebarOpen }
 			})
 			this.fetchPages(1)
+			this.fetchTags()
+		},
+
+		async fetchTags() {
+			const res = await fetch('/api/tags')
+			if (!res.ok) return
+			const data = await res.json()
+			this.tags = data.tags || []
 		},
 
 		async fetchPages(page) {

@@ -29,6 +29,15 @@ templ SideBar() {
 					x-text="page.title"
 				></div>
 			</template>
+			<p class="px-4 py-2 pt-6 text-xs uppercase tracking-wider text-zinc-600">Tags</p>
+			<template x-for="tag in tags" :key="tag.id">
+				<div
+					@click="loadFinance('tags/' + tag.id + '/pages?name=' + encodeURIComponent(tag.name))"
+					:class="view === 'tags/' + tag.id + '/pages' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'"
+					class="px-4 py-2 text-sm cursor-pointer truncate transition-colors duration-100"
+					x-text="tag.name"
+				></div>
+			</template>
 			<p class="px-4 py-2 pt-6 text-xs uppercase tracking-wider text-zinc-600">Finance</p>
 			<div
 				@click="loadFinance('pockets')"

@@ -45,6 +45,42 @@ func (q *Queries) DetachTag(ctx context.Context, arg DetachTagParams) error {
 	return err
 }
 
+const getPagesByTag = `-- name: GetPagesByTag :many
+select p.id, p.title
+	from page p
+	inner join taggable tg on tg.target_id = p.id
+	where tg.tag_id = $1
+		and tg.target_type = 'page'
+		and p.deleted_at is null
+	order by p.updated_at desc
+	limit 50
+`
+
+type GetPagesByTagRow struct {
+	ID    pgtype.UUID
+	Title string
+}
+
+func (q *Queries) GetPagesByTag(ctx context.Context, tagID pgtype.UUID) ([]GetPagesByTagRow, error) {
+	rows, err := q.db.Query(ctx, getPagesByTag, tagID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetPagesByTagRow
+	for rows.Next() {
+		var i GetPagesByTagRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTagsByTarget = `-- name: GetTagsByTarget :many
 select t.id, t.name, t.color 
 	from tag t
