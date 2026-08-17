@@ -1,3 +1,119 @@
+const blockTypesList = ['text', 'heading', 'list', 'table', 'finance']
+
+function menuTypeList(row) {
+	const list = blockTypesList.filter(t => t !== row.menuType)
+	if (!row.menuFilter) return list
+	return list.filter(t => t.includes(row.menuFilter))
+}
+
+async function convertBlock(rowEl, t) {
+	const ed = rowEl.querySelector('[x-data^="editor"]')
+	if (!ed) return
+	const e = Alpine.$data(ed)
+	clearTimeout(e.saveTimer)
+	e.discard = true
+	let content = { text: '' }
+	if (t === 'table') content = { tables: [['']] }
+	if (t === 'finance') content = { finance: { pocket: '' } }
+	const body = { type: t, content }
+	const url = e.creating ? '/api/pages/' + e.pageId + '/blocks' : '/api/blocks/' + e.id
+	const res = await fetch(url, {
+		method: e.creating ? 'POST' : 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	})
+	if (!res.ok) return
+	e.creating = false
+	const layoutEl = document.querySelector('[x-data="layout"]')
+	if (layoutEl) Alpine.$data(layoutEl).loadContent(e.pageId)
+}
+
+function pickSlashType(rowEl, t) {
+	const row = Alpine.$data(rowEl)
+	row.menu = false
+	convertBlock(rowEl, t)
+}
+
+function closeSlash(rowEl) {
+	Alpine.$data(rowEl).menu = false
+}
+
+function tableInput(root) {
+	const t = Alpine.$data(root)
+	clearTimeout(t._timer)
+	t._timer = setTimeout(() => tableSave(root), 400)
+}
+
+function tableTab(root) {
+	const cells = [...root.querySelectorAll('td')]
+	const next = cells[cells.indexOf(document.activeElement) + 1] || cells[0]
+	next.focus()
+}
+
+async function tableSave(root) {
+	const t = Alpine.$data(root)
+	const tables = [...root.querySelectorAll('tr')].map(tr =>
+		[...tr.querySelectorAll('td')].map(td => td.innerText.replace(/\n$/, '')))
+	const res = await fetch('/api/blocks/' + t.id, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ type: 'table', content: { tables } })
+	})
+	if (!res.ok) return
+}
+
+function tableCell() {
+	const td = document.createElement('td')
+	td.contentEditable = 'true'
+	td.spellcheck = false
+	td.setAttribute('@input', 'tableInput($root)')
+	td.setAttribute('@keydown.tab.prevent', 'tableTab($root)')
+	td.className = 'min-w-16 border border-zinc-800 px-2 py-1 outline-none focus:bg-zinc-900'
+	return td
+}
+
+async function tableAddRow(root) {
+	const rows = [...root.querySelectorAll('tr')]
+	const cols = rows.length ? rows[0].querySelectorAll('td').length : 1
+	const tr = document.createElement('tr')
+	for (let i = 0; i < cols; i++) {
+		tr.appendChild(tableCell())
+	}
+	root.querySelector('table').appendChild(tr)
+	Alpine.initTree(tr)
+	await tableSave(root)
+}
+
+async function tableAddCol(root) {
+	const rows = [...root.querySelectorAll('tr')]
+	if (!rows.length) {
+		const tr = document.createElement('tr')
+		tr.appendChild(tableCell())
+		root.querySelector('table').appendChild(tr)
+		Alpine.initTree(tr)
+	} else {
+		rows.forEach(r => {
+			r.appendChild(tableCell())
+			Alpine.initTree(r.lastElementChild)
+		})
+	}
+	await tableSave(root)
+}
+
+async function tableDelRow(root) {
+	const rows = [...root.querySelectorAll('tr')]
+	if (rows.length > 1) rows[rows.length - 1].remove()
+	await tableSave(root)
+}
+
+async function tableDelCol(root) {
+	const rows = [...root.querySelectorAll('tr')]
+	if (rows.every(r => r.querySelectorAll('td').length > 1)) {
+		rows.forEach(r => r.lastElementChild.remove())
+	}
+	await tableSave(root)
+}
+
 document.addEventListener('alpine:init', () => {
 	let drag = null
 
@@ -114,12 +230,17 @@ document.addEventListener('alpine:init', () => {
 
 		onFocus() {
 			if (this.$el.innerText.replace(/\n$/, '') === this.raw) return
-			this.$el.innerHTML = this.escaped(this.raw).replace(/\n/g, '<br>')
+			if (this.type === 'list') {
+				this.$el.innerHTML = '<ul class="ml-4 list-disc">' + this.raw.split('\n').map(i => '<li>' + this.escaped(i) + '</li>').join('') + '</ul>'
+			} else {
+				this.$el.innerHTML = this.escaped(this.raw).replace(/\n/g, '<br>')
+			}
 			this.placeCaret(this.$el)
 		},
 
 		async onBlur() {
-			const text = this.$el.innerText.replace(/\n$/, '')
+			if (this.discard) return
+			const text = this.currentText()
 			const changed = text !== this.raw
 			if (changed) {
 				this.raw = text
@@ -138,13 +259,21 @@ document.addEventListener('alpine:init', () => {
 			return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 		},
 
+		currentText() {
+			if (this.type === 'list') {
+				return [...this.$el.querySelectorAll('li')].map(li => li.innerText.replace(/\n$/, '')).join('\n').replace(/\n+$/, '')
+			}
+			return this.$el.innerText.replace(/\n$/, '')
+		},
+
 		onInput() {
 			clearTimeout(this.saveTimer)
 			this.saveTimer = setTimeout(() => this.save(), 300)
+			this.trackSlash()
 		},
 
 		async save() {
-			const text = this.$el.innerText.replace(/\n$/, '')
+			const text = this.currentText()
 			if (this.creating) {
 				const res = await fetch('/api/pages/' + this.pageId + '/blocks', {
 					method: 'POST',
@@ -176,7 +305,65 @@ document.addEventListener('alpine:init', () => {
 			if (!res.ok) return
 		},
 
+		async convert(t) {
+			convertBlock(this.$el.parentNode, t)
+		},
+
+		trackSlash() {
+			if (this.type !== 'text') return
+			const line = this.$el.innerText.split('\n').pop()
+			const rowEl = this.$el.parentNode
+			if (!rowEl) return
+			const row = Alpine.$data(rowEl)
+			if (!row) return
+			if (line.startsWith('/')) {
+				row.menu = true
+				row.menuFilter = line.slice(1).trim()
+				row.menuIndex = 0
+				row.creating = this.creating
+				row.menuType = this.type
+			} else {
+				row.menu = false
+			}
+		},
+
 		async onKeydown(e) {
+			const rowEl = this.$el.parentNode
+			const row = rowEl ? Alpine.$data(rowEl) : null
+			if (row && row.menu) {
+				const types = menuTypeList(row)
+				if (e.key === 'Escape') {
+					row.menu = false
+					return
+				}
+				if (e.key === 'ArrowDown') {
+					e.preventDefault()
+					row.menuIndex = Math.min(row.menuIndex + 1, types.length - 1)
+					return
+				}
+				if (e.key === 'ArrowUp') {
+					e.preventDefault()
+					row.menuIndex = Math.max(row.menuIndex - 1, 0)
+					return
+				}
+				if (e.key === 'Enter') {
+					e.preventDefault()
+					if (types[row.menuIndex]) pickSlashType(rowEl, types[row.menuIndex])
+					return
+				}
+			}
+			if (this.type === 'list') {
+				if (e.key === 'Enter' && !e.shiftKey) {
+					e.preventDefault()
+					await this.createBelow()
+					return
+				}
+				if (e.key === 'Backspace' && !this.$el.innerText.trim()) {
+					e.preventDefault()
+					await this.deleteSelf()
+				}
+				return
+			}
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault()
 				await this.createBelow()
@@ -223,7 +410,7 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		rowHtml(id) {
-			return '<div x-data="row({id: \'' + id + '\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><div contenteditable="true" spellcheck="false" @focus="onFocus()" @blur="onBlur()" class="outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div></div>'
+			return '<div x-data="row({id: \'' + id + '\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group relative flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><div contenteditable="true" spellcheck="false" @focus="onFocus()" @blur="onBlur()" @input="onInput()" @keydown="onKeydown($event)" class="outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div><div x-show="menu" @click.away="closeSlash($root)" class="absolute left-6 top-6 z-10 mt-1 w-48 rounded-lg border border-zinc-800 bg-zinc-950 py-1 text-sm shadow-xl"><template x-for="(t, i) in blockTypesList.filter(x => x !== menuType && (!menuFilter || x.includes(menuFilter)))" :key="t"><button :class="i === menuIndex ? \'bg-zinc-800\' : \'\'" @mousedown.prevent="pickSlashType($root, t)" class="block w-full px-3 py-1 text-left text-zinc-300 hover:bg-zinc-800"><span x-text="t" class="capitalize"></span></button></template></div></div>'
 		},
 
 		placeCaret(el) {
@@ -236,10 +423,37 @@ document.addEventListener('alpine:init', () => {
 		}
 	}))
 
+	Alpine.data('finance', (props) => ({
+		id: props.id,
+		pageId: props.pageId,
+		pocket: props.pocket,
+
+		init() {
+			this.$el.value = this.pocket
+		},
+
+		async change() {
+			this.pocket = this.$el.value
+			const res = await fetch('/api/blocks/' + this.id, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ type: 'finance', content: { finance: { pocket: this.pocket } } })
+			})
+			if (!res.ok) return
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadContent(this.pageId)
+		}
+	}))
+
 	Alpine.data('row', (props) => ({
 		id: props.id,
 		pageId: props.pageId,
 		depth: props.depth,
+		menu: false,
+		menuFilter: '',
+		menuIndex: 0,
+		menuType: 'text',
+		creating: false,
 
 		onDragStart() {
 			drag = { id: this.id, row: this.$el }

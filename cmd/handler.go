@@ -112,6 +112,18 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	balances := []database.GetPocketBalancesRow{}
+	for _, b := range blocks {
+		if b.Type == "finance" {
+			balances, err = a.service.Pocket.GetBalances(r.Context())
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			break
+		}
+	}
+
 	tags, err := a.service.Taggable.GetTagsByTargetId(r.Context(), id, "page")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -135,7 +147,7 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		pageMap[p.Title] = p.ID.String()
 	}
 
-	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap).Render(r.Context(), w)
+	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap, balances).Render(r.Context(), w)
 }
 
 func (a *App) handleCreatePage(w http.ResponseWriter, r *http.Request) {

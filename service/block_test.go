@@ -69,3 +69,17 @@ func TestBlockServiceUUIDValidation(t *testing.T) {
 		t.Fatalf("expected error for bad id")
 	}
 }
+
+func TestBlockTypeValid(t *testing.T) {
+	for _, v := range []BlockType{BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE, BLOCK_FINANCE} {
+		if !blockTypeValid(string(v)) {
+			t.Fatalf("expected %q to be valid", v)
+		}
+	}
+
+	for _, v := range []string{"", "video", "Text", "table "} {
+		if blockTypeValid(v) {
+			t.Fatalf("expected %q to be invalid", v)
+		}
+	}
+}

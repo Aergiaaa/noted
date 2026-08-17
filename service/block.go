@@ -15,7 +15,17 @@ const (
 	BLOCK_HEADING BlockType = "heading"
 	BLOCK_LIST    BlockType = "list"
 	BLOCK_TABLE   BlockType = "table"
+	BLOCK_FINANCE BlockType = "finance"
 )
+
+func blockTypeValid(t string) bool {
+	switch BlockType(t) {
+	case BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE, BLOCK_FINANCE:
+		return true
+	}
+
+	return false
+}
 
 type BlockServicer interface {
 	Create(ctx context.Context, args CreateBlockArgs) (database.CreateBlockRow, error)
@@ -52,9 +62,7 @@ func (b *BlockService) Create(ctx context.Context, args CreateBlockArgs) (databa
 		}
 	}
 
-	switch BlockType(args.Type) {
-	case BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE:
-	default:
+	if !blockTypeValid(args.Type) {
 		return database.CreateBlockRow{}, ErrBlockKindMismatch
 	}
 
@@ -113,9 +121,7 @@ func (b *BlockService) Update(ctx context.Context, args UpdateBlockArgs) (databa
 		return database.UpdateBlockRow{}, err
 	}
 
-	switch BlockType(args.Type) {
-	case BLOCK_TEXT, BLOCK_HEADING, BLOCK_LIST, BLOCK_TABLE:
-	default:
+	if !blockTypeValid(args.Type) {
 		return database.UpdateBlockRow{}, ErrBlockKindMismatch
 	}
 

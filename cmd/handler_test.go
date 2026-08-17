@@ -271,6 +271,9 @@ type fakePocketServicer struct {
 	deleted       []database.GetDeletedPocketsRow
 	getDeletedErr error
 	restoreErr    error
+	balances      []database.GetPocketBalancesRow
+	balancesErr   error
+	balanceCalls  int
 }
 
 func (f *fakePocketServicer) Create(ctx context.Context, name, kind string) (database.CreatePocketRow, error) {
@@ -284,7 +287,8 @@ func (f *fakePocketServicer) GetAll(ctx context.Context) ([]database.GetAllPocke
 }
 
 func (f *fakePocketServicer) GetBalances(ctx context.Context) ([]database.GetPocketBalancesRow, error) {
-	return nil, nil
+	f.balanceCalls++
+	return f.balances, f.balancesErr
 }
 
 func (f *fakePocketServicer) GetDeleted(ctx context.Context) ([]database.GetDeletedPocketsRow, error) {
@@ -751,4 +755,114 @@ func TestHandlePocketsFragmentSummaryError(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
+}
+
+type fakeBlockServicer struct {
+	blocks []database.GetBlocksByPageRow
+	err    error
+}
+
+func (f *fakeBlockServicer) Create(ctx context.Context, args service.CreateBlockArgs) (database.CreateBlockRow, error) {
+	return database.CreateBlockRow{}, nil
+}
+
+func (f *fakeBlockServicer) Delete(ctx context.Context, id string) error { return nil }
+
+func (f *fakeBlockServicer) GetBlocksByPage(ctx context.Context, id string) ([]database.GetBlocksByPageRow, error) {
+	return f.blocks, f.err
+}
+
+func (f *fakeBlockServicer) Restore(ctx context.Context, id string) error { return nil }
+
+func (f *fakeBlockServicer) Update(ctx context.Context, args service.UpdateBlockArgs) (database.UpdateBlockRow, error) {
+	return database.UpdateBlockRow{}, nil
+}
+
+func (f *fakeBlockServicer) Reorder(ctx context.Context, args []service.ReorderBlockArgs) error {
+	return nil
+}
+
+func TestHandlePageFragmentFinance(t *testing.T) {
+	balance := database.GetPocketBalancesRow{Name: "Wallet Utama", Type: "bank"}
+	_ = balance.Balance.Scan("1500.50")
+
+	pagetag := database.GetTagsByTargetRow{Name: "makan", Color: "red"}
+
+	finBlock := func() database.GetBlocksByPageRow {
+		var id pgtype.UUID
+		_ = id.Scan("0197f1a0-0000-0000-0000-00000000000a")
+		return database.GetBlocksByPageRow{ID: id, Type: "finance"}
+	}
+
+	baseServices := func() service.Services {
+		return service.Services{
+			Page: &fakePageServicer{},
+			Block: &fakeBlockServicer{
+				blocks: []database.GetBlocksByPageRow{finBlock()},
+			},
+			Taggable: &fakeTaggableServicer{tags: []database.GetTagsByTargetRow{pagetag}},
+			Pocket:   &fakePocketServicer{balances: []database.GetPocketBalancesRow{balance}},
+		}
+	}
+
+	t.Run("skips balance fetch without finance block", func(t *testing.T) {
+		pocket := &fakePocketServicer{balances: []database.GetPocketBalancesRow{balance}}
+		app := &App{service: &service.Services{
+			Page:     &fakePageServicer{},
+			Block:    &fakeBlockServicer{blocks: []database.GetBlocksByPageRow{{ID: finBlock().ID, Type: "text"}}},
+			Taggable: &fakeTaggableServicer{},
+			Pocket:   pocket,
+		}}
+
+		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+		w := httptest.NewRecorder()
+
+		app.handlePageFragment(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+
+		if pocket.balanceCalls != 0 {
+			t.Fatalf("expected no balance fetch, got %d calls", pocket.balanceCalls)
+		}
+	})
+
+	t.Run("renders pocket balance for finance block", func(t *testing.T) {
+		base := baseServices()
+		app := &App{service: &base}
+
+		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+		w := httptest.NewRecorder()
+
+		app.handlePageFragment(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+
+		if !strings.Contains(w.Body.String(), "Wallet Utama") {
+			t.Fatalf("expected pocket name in body, got %s", w.Body.String())
+		}
+
+		if !strings.Contains(w.Body.String(), "1500.50") {
+			t.Fatalf("expected balance in body, got %s", w.Body.String())
+		}
+	})
+
+	t.Run("500 when balance fetch fails", func(t *testing.T) {
+		services := baseServices()
+		services.Pocket = &fakePocketServicer{balancesErr: errors.New("boom")}
+
+		app := &App{service: &services}
+
+		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+		w := httptest.NewRecorder()
+
+		app.handlePageFragment(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500, got %d", w.Code)
+		}
+	})
 }

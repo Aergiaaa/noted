@@ -132,3 +132,130 @@ func block(id string, parent pgtype.UUID) database.GetBlocksByPageRow {
 		ParentBlockID: parent,
 	}
 }
+
+func TestListItems(t *testing.T) {
+	cases := []struct {
+		name    string
+		content []byte
+		want    []string
+	}{
+		{
+			name:    "lines",
+			content: []byte(`{"text":"one\ntwo\nthree"}`),
+			want:    []string{"one", "two", "three"},
+		},
+		{
+			name:    "blank lines dropped",
+			content: []byte(`{"text":"one\n\ntwo\n"}`),
+			want:    []string{"one", "two"},
+		},
+		{
+			name:    "no text",
+			content: []byte(`{"text":""}`),
+			want:    []string{""},
+		},
+		{
+			name:    "malformed",
+			content: []byte(`nope`),
+			want:    []string{""},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := listItems(tc.content)
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("expected %v, got %v", tc.want, got)
+			}
+
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("expected %v, got %v", tc.want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestTableGrid(t *testing.T) {
+	cases := []struct {
+		name    string
+		content []byte
+		want    int
+		wantCol int
+	}{
+		{
+			name:    "grid",
+			content: []byte(`{"tables":[["a","b"],["c","d"]]}`),
+			want:    2,
+			wantCol: 2,
+		},
+		{
+			name:    "empty tables",
+			content: []byte(`{"tables":[]}`),
+			want:    1,
+			wantCol: 1,
+		},
+		{
+			name:    "no tables",
+			content: []byte(`{"text":"hi"}`),
+			want:    1,
+			wantCol: 1,
+		},
+		{
+			name:    "malformed",
+			content: []byte(`nope`),
+			want:    1,
+			wantCol: 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tableGrid(tc.content)
+
+			if len(got) != tc.want {
+				t.Fatalf("expected %d rows, got %d: %+v", tc.want, len(got), got)
+			}
+
+			for _, row := range got {
+				if len(row) != tc.wantCol {
+					t.Fatalf("expected %d cols, got %d: %+v", tc.wantCol, len(row), row)
+				}
+			}
+		})
+	}
+}
+
+func TestFinanceBlockValue(t *testing.T) {
+	cases := []struct {
+		name    string
+		content []byte
+		want    string
+	}{
+		{
+			name:    "pocket set",
+			content: []byte(`{"finance":{"pocket":"a8cc0a05-c7d4-475e-ae56-da2db182b4ff"}}`),
+			want:    "a8cc0a05-c7d4-475e-ae56-da2db182b4ff",
+		},
+		{
+			name:    "no finance",
+			content: []byte(`{"text":"hi"}`),
+			want:    "",
+		},
+		{
+			name:    "malformed",
+			content: []byte(`nope`),
+			want:    "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := financeBlockValue(tc.content); got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
