@@ -15,6 +15,7 @@ type TransactionServicer interface {
 	GetById(ctx context.Context, id string) (database.GetTransactionByIDRow, error)
 	GetDeleted(ctx context.Context) ([]database.GetDeletedTransactionsRow, error)
 	GetFiltered(ctx context.Context, arg FilterTransactionsArg) ([]database.GetTransactionsWithPocketNamesRow, error)
+	GetMonthlySummary(ctx context.Context) (database.GetMonthlySummaryRow, error)
 	GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error)
 	Restore(ctx context.Context, id string) error
 	Update(ctx context.Context, arg UpdateTransactionArg) (database.UpdateTransactionRow, error)
@@ -180,6 +181,10 @@ func (t *TransactionService) GetFiltered(ctx context.Context, arg FilterTransact
 
 func (t *TransactionService) GetWithPockets(ctx context.Context) ([]database.GetTransactionsWithPocketNamesRow, error) {
 	return t.models.GetTransactionsWithPocketNames(ctx)
+}
+
+func (t *TransactionService) GetMonthlySummary(ctx context.Context) (database.GetMonthlySummaryRow, error) {
+	return t.models.GetMonthlySummary(ctx)
 }
 
 func (t *TransactionService) Restore(ctx context.Context, id string) error {

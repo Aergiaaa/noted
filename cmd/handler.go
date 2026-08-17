@@ -1028,7 +1028,13 @@ func (a *App) handlePocketsFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages.PocketView(pockets).Render(r.Context(), w)
+	summary, err := a.service.Transaction.GetMonthlySummary(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pages.PocketView(pockets, summary).Render(r.Context(), w)
 }
 
 func (a *App) handleTransactionsFragment(w http.ResponseWriter, r *http.Request) {

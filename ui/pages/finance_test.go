@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	database "github.com/Aergiaaa/noted/internal/database"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type rowInput struct {
@@ -188,5 +189,19 @@ func TestPocketRowData(t *testing.T) {
 
 	if strings.Contains(got, "<") || strings.Contains(got, "\n") {
 		t.Fatalf("row data must be JSON-safe, got %q", got)
+	}
+}
+
+func TestSignedNet(t *testing.T) {
+	var pos, neg pgtype.Numeric
+	_ = pos.Scan("12.50")
+	_ = neg.Scan("-4.25")
+
+	if got := signedNet(pos); got != "+12.50" {
+		t.Fatalf("expected +12.50, got %q", got)
+	}
+
+	if got := signedNet(neg); got != "-4.25" {
+		t.Fatalf("expected -4.25, got %q", got)
 	}
 }

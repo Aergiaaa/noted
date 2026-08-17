@@ -157,6 +157,30 @@ func (q *Queries) GetDeletedTransactions(ctx context.Context) ([]GetDeletedTrans
 	return items, nil
 }
 
+const getMonthlySummary = `-- name: GetMonthlySummary :one
+select
+	coalesce(sum(case when type = 'income' then amount end), 0)::numeric as income,
+	coalesce(sum(case when type = 'expense' then amount end), 0)::numeric as expense,
+	coalesce(sum(case when type = 'transfer' then amount end), 0)::numeric as transfer
+	from transaction
+	where deleted_at is null
+		and date >= date_trunc('month', now())
+		and date < date_trunc('month', now()) + interval '1 month'
+`
+
+type GetMonthlySummaryRow struct {
+	Income   pgtype.Numeric
+	Expense  pgtype.Numeric
+	Transfer pgtype.Numeric
+}
+
+func (q *Queries) GetMonthlySummary(ctx context.Context) (GetMonthlySummaryRow, error) {
+	row := q.db.QueryRow(ctx, getMonthlySummary)
+	var i GetMonthlySummaryRow
+	err := row.Scan(&i.Income, &i.Expense, &i.Transfer)
+	return i, err
+}
+
 const getTransactionByID = `-- name: GetTransactionByID :one
 select id, title, type, amount, date, from_pocket_id, to_pocket_id 
 	from transaction 

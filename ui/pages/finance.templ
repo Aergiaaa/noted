@@ -26,9 +26,23 @@ templ TagPagesView(name string, pages []database.GetPagePaginatedRow) {
 	</div>
 }
 
-templ PocketView(pockets []database.GetPocketBalancesRow) {
+templ PocketView(pockets []database.GetPocketBalancesRow, summary database.GetMonthlySummaryRow) {
 	<div x-data="pocketView()" class="mx-auto w-full max-w-2xl px-4 py-8">
 		<h1 class="mb-8 text-4xl font-bold tracking-tight">Pockets</h1>
+		<div class="mb-8 grid grid-cols-3 gap-3">
+			<div class="rounded-lg border border-zinc-800 p-4">
+				<p class="text-xs uppercase tracking-wider text-zinc-500">Income</p>
+				<p class="mt-1 text-lg font-semibold text-emerald-400">+{ money(summary.Income) }</p>
+			</div>
+			<div class="rounded-lg border border-zinc-800 p-4">
+				<p class="text-xs uppercase tracking-wider text-zinc-500">Expense</p>
+				<p class="mt-1 text-lg font-semibold text-red-400">-{ money(summary.Expense) }</p>
+			</div>
+			<div class="rounded-lg border border-zinc-800 p-4">
+				<p class="text-xs uppercase tracking-wider text-zinc-500">Net</p>
+				<p class={ "mt-1 text-lg font-semibold " + moneyColor(netAmount(summary)) }>{ signedNet(netAmount(summary)) }</p>
+			</div>
+		</div>
 		<div class="overflow-hidden rounded-lg border border-zinc-800">
 			<table class="w-full text-sm">
 				<thead>
@@ -357,6 +371,36 @@ func amountColor(t string) string {
 	}
 
 	return "text-emerald-400"
+}
+
+func netAmount(s database.GetMonthlySummaryRow) pgtype.Numeric {
+	income, err := s.Income.Float64Value()
+	if err != nil {
+		return pgtype.Numeric{}
+	}
+
+	expense, err := s.Expense.Float64Value()
+	if err != nil {
+		return pgtype.Numeric{}
+	}
+
+	var net pgtype.Numeric
+	_ = net.Scan(fmt.Sprintf("%.2f", income.Float64-expense.Float64))
+
+	return net
+}
+
+func signedNet(n pgtype.Numeric) string {
+	f, err := n.Float64Value()
+	if err != nil {
+		return ""
+	}
+
+	if f.Float64 < 0 {
+		return fmt.Sprintf("%.2f", f.Float64)
+	}
+
+	return "+" + fmt.Sprintf("%.2f", f.Float64)
 }
 
 func pocketLabel(t database.GetTransactionsWithPocketNamesRow) string {

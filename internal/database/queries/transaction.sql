@@ -81,3 +81,13 @@ left join pocket tp on tp.id = t.to_pocket_id
 where t.deleted_at is null
 order by t.date desc, t.created_at desc
 limit 50;
+
+-- name: GetMonthlySummary :one
+select
+	coalesce(sum(case when type = 'income' then amount end), 0)::numeric as income,
+	coalesce(sum(case when type = 'expense' then amount end), 0)::numeric as expense,
+	coalesce(sum(case when type = 'transfer' then amount end), 0)::numeric as transfer
+	from transaction
+	where deleted_at is null
+		and date >= date_trunc('month', now())
+		and date < date_trunc('month', now()) + interval '1 month';

@@ -230,6 +230,8 @@ type fakeTransactionServicer struct {
 	filtered      []database.GetTransactionsWithPocketNamesRow
 	filterArg     *service.FilterTransactionsArg
 	filterErr     error
+	summary       database.GetMonthlySummaryRow
+	summaryErr    error
 }
 
 func (f *fakeTransactionServicer) Create(ctx context.Context, arg service.CreateTransactionArg) (database.CreateTransactionRow, error) {
@@ -699,5 +701,54 @@ func TestHandleTagPagesFragment(t *testing.T) {
 
 	if !strings.Contains(w.Body.String(), "Makan") {
 		t.Fatalf("expected tag name in body, got %s", w.Body.String())
+	}
+}
+
+func (f *fakeTransactionServicer) GetMonthlySummary(ctx context.Context) (database.GetMonthlySummaryRow, error) {
+	return f.summary, f.summaryErr
+}
+
+func TestHandlePocketsFragmentSummary(t *testing.T) {
+	summary := database.GetMonthlySummaryRow{}
+	_ = summary.Income.Scan("100")
+	_ = summary.Expense.Scan("40")
+	_ = summary.Transfer.Scan("0")
+
+	app := &App{service: &service.Services{
+		Pocket:      &fakePocketServicer{},
+		Transaction: &fakeTransactionServicer{summary: summary},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/pockets", nil)
+	w := httptest.NewRecorder()
+
+	app.handlePocketsFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if !strings.Contains(w.Body.String(), "100.00") {
+		t.Fatalf("expected income in body, got %s", w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "40.00") {
+		t.Fatalf("expected expense in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandlePocketsFragmentSummaryError(t *testing.T) {
+	app := &App{service: &service.Services{
+		Pocket:      &fakePocketServicer{},
+		Transaction: &fakeTransactionServicer{summaryErr: errors.New("boom")},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/fin/pockets", nil)
+	w := httptest.NewRecorder()
+
+	app.handlePocketsFragment(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
 	}
 }
