@@ -211,7 +211,6 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		async deletePage(pageId) {
-			if (!confirm('Delete this page?')) return
 			const res = await fetch('/api/pages/' + pageId, { method: 'DELETE' })
 			if (!res.ok) return
 			await this.fetchPages(1)
@@ -477,7 +476,6 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		async remove(el) {
-			if (!confirm('Delete this block?')) return
 			const res = await fetch('/api/blocks/' + this.id, { method: 'DELETE' })
 			if (!res.ok) return
 			const prev = el.previousElementSibling
