@@ -14,6 +14,8 @@ import (
 const createTag = `-- name: CreateTag :one
 insert into tag (name, color) 
 	values ($1, $2) 
+	on conflict (name) do update 
+		set deleted_at = null, updated_at = now() 
 	returning id, name, color
 `
 

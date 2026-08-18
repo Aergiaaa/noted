@@ -14,6 +14,7 @@ import (
 const attachTag = `-- name: AttachTag :exec
 insert into taggable (tag_id, target_id, target_type) 
 	values ($1, $2, $3)
+	on conflict (tag_id, target_id, target_type) do nothing
 `
 
 type AttachTagParams struct {

@@ -12,8 +12,7 @@ func (a *App) routes() http.Handler {
 	s := chi.NewRouter()
 
 	s.Use(
-		middleware.SetHeader("X-Frame-Options", "DENY"),
-		middleware.SetHeader("X-Content-Type-Options", "nosniff"),
+		middleware.SetHeader("X-Frame-Options", "DENY"), middleware.SetHeader("X-Content-Type-Options", "nosniff"),
 		middleware.SetHeader("Referrer-Policy", "strict-origin-when-cross-origin"),
 	)
 
@@ -124,9 +123,9 @@ func (a *App) routes() http.Handler {
 	})
 
 	// static file
-	s.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	s.Handle("/static/*", staticNoCache(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
 	s.Handle("/templui/js/*",
-		http.StripPrefix("/templui/js/", http.FileServer(http.Dir("static/js"))),
+		staticNoCache(http.StripPrefix("/templui/js/", http.FileServer(http.Dir("static/js")))),
 	)
 
 	s.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -138,4 +137,11 @@ func (a *App) routes() http.Handler {
 	})
 
 	return s
+}
+
+func staticNoCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
