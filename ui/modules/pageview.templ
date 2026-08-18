@@ -12,7 +12,12 @@ import (
 )
 
 templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow, pages map[string]string, balances []database.GetPocketBalancesRow) {
-	<div x-data={ pageTagsProps(pageId) } class="mx-auto w-full max-w-2xl px-4 py-8">
+	<div x-data={ pageTagsProps(pageId) } class="relative mx-auto w-full max-w-2xl px-4 py-8">
+		<button
+			@click={ "deletePage('" + pageId + "')" }
+			title="delete page"
+			class="absolute top-8 right-4 cursor-pointer rounded-lg border border-zinc-800 px-2 py-1 text-xs text-zinc-500 hover:border-red-500 hover:text-red-400"
+		>Delete</button>
 		<h1
 			x-data={ pageTitleProps(pageId, title) }
 			contenteditable="true"
@@ -112,6 +117,11 @@ templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages
 			title="block type"
 			class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300"
 		>+</button>
+		<button
+			@click="remove($root)"
+			title="delete block"
+			class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-red-400"
+		>×</button>
 		if b.Type == "table" {
 			@blockTable(b, pageId, depth)
 		} else if b.Type == "finance" {

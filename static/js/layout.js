@@ -210,6 +210,15 @@ document.addEventListener('alpine:init', () => {
 			})
 		},
 
+		async deletePage(pageId) {
+			if (!confirm('Delete this page?')) return
+			const res = await fetch('/api/pages/' + pageId, { method: 'DELETE' })
+			if (!res.ok) return
+			await this.fetchPages(1)
+			if (this.pages.length) await this.loadContent(this.pages[0].id)
+			else window.location.reload()
+		},
+
 		async loadContent(pageId) {
 			this.activePageId = pageId
 			this.view = null
@@ -414,7 +423,7 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		rowHtml(id) {
-			return '<div x-data="row({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group relative flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><button @click="toggleMenu()" title="block type" class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">+</button><div contenteditable="true" spellcheck="false" data-placeholder="Type / for blocks" @focus="onFocus()" @blur="onBlur()" @input="onInput()" @keydown="onKeydown($event)" class="block-editor outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div><div x-show="menu" @click.away="closeSlash($root)" class="absolute left-6 top-6 z-10 mt-1 w-48 rounded-lg border border-zinc-800 bg-zinc-950 py-1 text-sm shadow-xl"><template x-for="(t, i) in blockTypesList.filter(x => x !== menuType && (!menuFilter || x.includes(menuFilter)))" :key="t"><button :class="i === menuIndex ? \'bg-zinc-800\' : \'\'" @mousedown.prevent="pickSlashType($root, t)" class="block w-full px-3 py-1 text-left text-zinc-300 hover:bg-zinc-800"><span x-text="t" class="capitalize"></span></button></template></div></div>'
+			return '<div x-data="row({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + '})" data-id="' + id + '" data-depth="' + this.depth + '" @dragenter.prevent="onDragEnter()" @dragover.prevent="onDragOver()" @drop="onDrop()" class="group relative flex items-start"><div draggable="true" @dragstart="onDragStart()" @dragend="onDragEnd()" title="drag to reorder" class="mr-1 hidden cursor-grab select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">⠿</div><button @click="toggleMenu()" title="block type" class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-zinc-300">+</button><button @click="remove($root)" title="delete block" class="mr-1 hidden cursor-pointer select-none px-0.5 pt-0.5 text-zinc-600 group-hover:flex hover:text-red-400">×</button><div contenteditable="true" spellcheck="false" data-placeholder="Type / for blocks" @focus="onFocus()" @blur="onBlur()" @input="onInput()" @keydown="onKeydown($event)" class="block-editor outline-none cursor-text py-0.5" x-data="editor({id: \'' + id + '\', type: \'text\', pageId: \'' + this.pageId + '\', depth: ' + this.depth + ', raw: \'\'})"></div><div x-show="menu" @click.away="closeSlash($root)" class="absolute left-6 top-6 z-10 mt-1 w-48 rounded-lg border border-zinc-800 bg-zinc-950 py-1 text-sm shadow-xl"><template x-for="(t, i) in blockTypesList.filter(x => x !== menuType && (!menuFilter || x.includes(menuFilter)))" :key="t"><button :class="i === menuIndex ? \'bg-zinc-800\' : \'\'" @mousedown.prevent="pickSlashType($root, t)" class="block w-full px-3 py-1 text-left text-zinc-300 hover:bg-zinc-800"><span x-text="t" class="capitalize"></span></button></template></div></div>'
 		},
 
 		placeCaret(el) {
@@ -465,6 +474,21 @@ document.addEventListener('alpine:init', () => {
 			this.menuFilter = ''
 			this.menuIndex = 0
 			this.menuType = this.type
+		},
+
+		async remove(el) {
+			if (!confirm('Delete this block?')) return
+			const res = await fetch('/api/blocks/' + this.id, { method: 'DELETE' })
+			if (!res.ok) return
+			const prev = el.previousElementSibling
+			el.remove()
+			if (prev) {
+				const ed = prev.querySelector('[contenteditable]')
+				if (ed) {
+					ed.focus()
+					Alpine.$data(ed).placeCaret(ed)
+				}
+			}
 		},
 
 		onDragStart() {
