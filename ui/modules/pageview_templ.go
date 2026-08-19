@@ -700,20 +700,20 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"my-2 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2\"><span class=\"text-xs uppercase tracking-wide text-zinc-500\">Balance</span> <select x-data=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div x-data=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(financeProps(b, pageId))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 221, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 218, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" @change=\"change()\" class=\"rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600\"><option value=\"\">— choose pocket —</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" class=\"my-2 rounded-lg border border-zinc-800\"><div class=\"flex items-center gap-3 bg-zinc-900/50 px-3 py-2\"><span class=\"text-xs uppercase tracking-wide text-zinc-500\">Balance</span> <select x-ref=\"pocketSelect\" @change=\"change()\" class=\"rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600\"><option value=\"\">— choose pocket —</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -725,7 +725,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.ID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 227, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 228, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 			if templ_7745c5c3_Err != nil {
@@ -738,7 +738,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 227, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 228, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -751,7 +751,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(blockMoney(p.Balance))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 227, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 228, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -769,7 +769,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(balanceLabel(b.Content, balances))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 230, Col: 73}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 231, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
@@ -780,7 +780,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			return templ_7745c5c3_Err
 		}
 		if pocket := financeBlockValue(b.Content); pocket != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"divide-y divide-zinc-800/60 rounded-lg border border-zinc-800\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"divide-y divide-zinc-800/60\"><div class=\"flex items-center gap-2 px-3 py-1.5\"><input x-ref=\"txTitle\" placeholder=\"Title\" class=\"min-w-0 flex-1 border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600\"> <select x-ref=\"txType\" @change=\"txType = $el.value\" class=\"rounded border border-zinc-800 bg-zinc-950 px-1 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600\"><option value=\"expense\">expense</option> <option value=\"income\">income</option></select> <input x-ref=\"txAmount\" type=\"number\" step=\"0.01\" min=\"0\" placeholder=\"0.00\" class=\"w-24 border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600\"> <input x-ref=\"txDate\" type=\"date\" class=\"rounded border border-zinc-800 bg-zinc-950 px-1 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600\"> <button @click=\"addTx()\" class=\"cursor-pointer rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 hover:text-zinc-100\">+ add</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -792,7 +792,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(tx.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 236, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 266, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -827,7 +827,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(txSignedAmount(tx.Type, tx.Amount))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 238, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 268, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
@@ -840,7 +840,7 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(txDate(tx.Date))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 238, Col: 65}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 268, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 				if templ_7745c5c3_Err != nil {
@@ -861,6 +861,10 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
 		}
 		return nil
 	})
@@ -889,33 +893,33 @@ func blockText(content []byte, pages map[string]string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		for _, seg := range linkSegments(blockTextValue(content), pages) {
 			if seg.id != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<a href=\"#\" @mousedown.prevent=\"onLinkMousedown()\" @click.prevent=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<a href=\"#\" @mousedown.prevent=\"onLinkMousedown()\" @click.prevent=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.ResolveAttributeValue("loadContent('" + seg.id + "')")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 255, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 286, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" class=\"text-blue-400 underline decoration-zinc-700 underline-offset-2 hover:text-blue-300\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\" class=\"text-blue-400 underline decoration-zinc-700 underline-offset-2 hover:text-blue-300\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 257, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 288, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -923,7 +927,7 @@ func blockText(content []byte, pages map[string]string) templ.Component {
 				var templ_7745c5c3_Var46 string
 				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 259, Col: 13}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 290, Col: 13}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {

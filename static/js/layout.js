@@ -439,17 +439,36 @@ document.addEventListener('alpine:init', () => {
 		id: props.id,
 		pageId: props.pageId,
 		pocket: props.pocket,
+		txType: 'expense',
 
 		init() {
-			this.$el.value = this.pocket
+			this.$refs.pocketSelect.value = this.pocket
 		},
 
 		async change() {
-			this.pocket = this.$el.value
+			this.pocket = this.$refs.pocketSelect.value
 			const res = await fetch('/api/blocks/' + this.id, {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ type: 'finance', content: { finance: { pocket: this.pocket } } })
+			})
+			if (!res.ok) return
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).loadContent(this.pageId)
+		},
+
+		async addTx() {
+			const title = this.$refs.txTitle.value.trim()
+			const amount = Number(this.$refs.txAmount.value)
+			if (!title || !amount || amount <= 0 || !this.pocket) return
+			const date = this.$refs.txDate.value || new Date().toISOString().slice(0, 10)
+			const body = { title, type: this.txType, amount, date }
+			if (this.txType === 'expense') body.from_pocket_id = this.pocket
+			else body.to_pocket_id = this.pocket
+			const res = await fetch('/api/transactions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
 			})
 			if (!res.ok) return
 			const layoutEl = document.querySelector('[x-data="layout"]')

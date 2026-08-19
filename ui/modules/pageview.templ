@@ -215,35 +215,66 @@ templ blockTableGrid(content []byte) {
 }
 
 templ blockFinance(b database.GetBlocksByPageRow, pageId string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) {
-	<div class="my-2 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
-		<span class="text-xs uppercase tracking-wide text-zinc-500">Balance</span>
-		<select
-			x-data={ financeProps(b, pageId) }
-			@change="change()"
-			class="rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600"
-		>
-			<option value="">— choose pocket —</option>
-			for _, p := range balances {
-				<option value={ p.ID.String() }>{ p.Name } · { blockMoney(p.Balance) }</option>
-			}
-		</select>
-		<span class="text-sm text-zinc-300">{ balanceLabel(b.Content, balances) }</span>
-	</div>
-	if pocket := financeBlockValue(b.Content); pocket != "" {
-		<div class="divide-y divide-zinc-800/60 rounded-lg border border-zinc-800">
-			for _, tx := range txByPocket[pocket] {
-				<div class="flex items-center justify-between px-3 py-1.5 text-sm">
-					<span class="text-zinc-300">{ tx.Title }</span>
-					<span class={ "text-right whitespace-nowrap " + txAmountColor(tx.Type) }>
-						{ txSignedAmount(tx.Type, tx.Amount) } · { txDate(tx.Date) }
-					</span>
-				</div>
-			}
-			if len(txByPocket[pocket]) == 0 {
-				<p class="px-3 py-1.5 text-xs text-zinc-500">No transactions</p>
-			}
+	<div x-data={ financeProps(b, pageId) } class="my-2 rounded-lg border border-zinc-800">
+		<div class="flex items-center gap-3 bg-zinc-900/50 px-3 py-2">
+			<span class="text-xs uppercase tracking-wide text-zinc-500">Balance</span>
+			<select
+				x-ref="pocketSelect"
+				@change="change()"
+				class="rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600"
+			>
+				<option value="">— choose pocket —</option>
+				for _, p := range balances {
+					<option value={ p.ID.String() }>{ p.Name } · { blockMoney(p.Balance) }</option>
+				}
+			</select>
+			<span class="text-sm text-zinc-300">{ balanceLabel(b.Content, balances) }</span>
 		</div>
-	}
+		if pocket := financeBlockValue(b.Content); pocket != "" {
+			<div class="divide-y divide-zinc-800/60">
+				<div class="flex items-center gap-2 px-3 py-1.5">
+					<input
+						x-ref="txTitle"
+						placeholder="Title"
+						class="min-w-0 flex-1 border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600"
+					/>
+					<select
+						x-ref="txType"
+						@change="txType = $el.value"
+						class="rounded border border-zinc-800 bg-zinc-950 px-1 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600"
+					>
+						<option value="expense">expense</option>
+						<option value="income">income</option>
+					</select>
+					<input
+						x-ref="txAmount"
+						type="number"
+						step="0.01"
+						min="0"
+						placeholder="0.00"
+						class="w-24 border border-zinc-800 bg-zinc-950 px-2 py-1 text-sm outline-none focus:border-zinc-600"
+					/>
+					<input
+						x-ref="txDate"
+						type="date"
+						class="rounded border border-zinc-800 bg-zinc-950 px-1 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600"
+					/>
+					<button @click="addTx()" class="cursor-pointer rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 hover:text-zinc-100">+ add</button>
+				</div>
+				for _, tx := range txByPocket[pocket] {
+					<div class="flex items-center justify-between px-3 py-1.5 text-sm">
+						<span class="text-zinc-300">{ tx.Title }</span>
+						<span class={ "text-right whitespace-nowrap " + txAmountColor(tx.Type) }>
+							{ txSignedAmount(tx.Type, tx.Amount) } · { txDate(tx.Date) }
+						</span>
+					</div>
+				}
+				if len(txByPocket[pocket]) == 0 {
+					<p class="px-3 py-1.5 text-xs text-zinc-500">No transactions</p>
+				}
+			</div>
+		}
+	</div>
 }
 
 templ blockText(content []byte, pages map[string]string) {
