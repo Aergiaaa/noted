@@ -714,8 +714,39 @@ func TestHandleTagPagesFragment(t *testing.T) {
 		t.Fatalf("expected delete tag button in body, got %s", w.Body.String())
 	}
 
-	if !strings.Contains(w.Body.String(), "deleteTag(&#39;0197f1a0-0000-0000-0000-000000000001&#39;)") {
+	if !strings.Contains(w.Body.String(), "askDeleteTag(&#39;0197f1a0-0000-0000-0000-000000000001&#39;)") {
 		t.Fatalf("expected delete tag click in body, got %s", w.Body.String())
+	}
+}
+
+func TestHandlePageFragmentDeleteButton(t *testing.T) {
+	app := &App{service: &service.Services{
+		Page:        &fakePageServicer{},
+		Block:       &fakeBlockServicer{},
+		Taggable:    &fakeTaggableServicer{},
+		Pocket:      &fakePocketServicer{},
+		Transaction: &fakeTransactionServicer{},
+	}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+	w := httptest.NewRecorder()
+
+	app.handlePageFragment(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	if !strings.Contains(w.Body.String(), `title="delete page"`) {
+		t.Fatalf("expected delete page button in body, got %s", w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "askDeletePage(&#39;") {
+		t.Fatalf("expected confirm dialog click in body, got %s", w.Body.String())
+	}
+
+	if strings.Contains(w.Body.String(), "deletePage(&#39;") {
+		t.Fatalf("expected no direct page delete click in body, got %s", w.Body.String())
 	}
 }
 

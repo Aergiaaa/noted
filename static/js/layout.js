@@ -210,7 +210,28 @@ document.addEventListener('alpine:init', () => {
 			})
 		},
 
-		async deletePage(pageId) {
+		confirmCard: null,
+
+		askDelete(message, action) {
+			this.confirmCard = { message, action }
+		},
+
+		cancelDelete() {
+			this.confirmCard = null
+		},
+
+		doDelete() {
+			if (!this.confirmCard) return
+			const action = this.confirmCard.action
+			this.confirmCard = null
+			action()
+		},
+
+		async askDeletePage(pageId) {
+			this.askDelete('Delete this page?', () => this.doDeletePage(pageId))
+		},
+
+		async doDeletePage(pageId) {
 			const res = await fetch('/api/pages/' + pageId, { method: 'DELETE' })
 			if (!res.ok) return
 			await this.fetchPages(1)
@@ -218,7 +239,11 @@ document.addEventListener('alpine:init', () => {
 			else window.location.reload()
 		},
 
-		async deleteTag(tagId) {
+		async askDeleteTag(tagId) {
+			this.askDelete('Delete this tag?', () => this.doDeleteTag(tagId))
+		},
+
+		async doDeleteTag(tagId) {
 			const res = await fetch('/api/tags/' + tagId, { method: 'DELETE' })
 			if (!res.ok) return
 			await this.fetchTags()
@@ -502,6 +527,11 @@ document.addEventListener('alpine:init', () => {
 		},
 
 		async remove(el) {
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).askDelete('Delete this block?', () => this.doRemove(el))
+		},
+
+		async doRemove(el) {
 			const res = await fetch('/api/blocks/' + this.id, { method: 'DELETE' })
 			if (!res.ok) return
 			const prev = el.previousElementSibling
@@ -584,8 +614,14 @@ document.addEventListener('alpine:init', () => {
 			this.reload()
 		},
 
-		async remove(id) {
-			if (!confirm('Delete this pocket?')) return
+		async remove($event) {
+			const row = $event.currentTarget.closest('tr')
+			const data = JSON.parse(row.dataset.row)
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).askDelete('Delete pocket "' + data.name + '"?', () => this.doRemove(data.id))
+		},
+
+		async doRemove(id) {
 			const res = await fetch('/api/pockets/' + id, { method: 'DELETE' })
 			if (!res.ok) return
 			this.reload()
@@ -676,8 +712,14 @@ document.addEventListener('alpine:init', () => {
 			this.reload()
 		},
 
-		async remove(id) {
-			if (!confirm('Delete this transaction?')) return
+		async remove($event) {
+			const row = $event.currentTarget.closest('tr')
+			const data = JSON.parse(row.dataset.row)
+			const layoutEl = document.querySelector('[x-data="layout"]')
+			if (layoutEl) Alpine.$data(layoutEl).askDelete('Delete transaction "' + data.title + '"?', () => this.doRemove(data.id))
+		},
+
+		async doRemove(id) {
 			const res = await fetch('/api/transactions/' + id, { method: 'DELETE' })
 			if (!res.ok) return
 			this.reload()
