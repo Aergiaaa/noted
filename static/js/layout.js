@@ -218,6 +218,13 @@ document.addEventListener('alpine:init', () => {
 			else window.location.reload()
 		},
 
+		async deleteTag(tagId) {
+			const res = await fetch('/api/tags/' + tagId, { method: 'DELETE' })
+			if (!res.ok) return
+			await this.fetchTags()
+			this.loadFinance('pockets')
+		},
+
 		async loadContent(pageId) {
 			this.activePageId = pageId
 			this.view = null

@@ -535,7 +535,7 @@ func (a *App) handleTagPagesFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages.TagPagesView(nameQuery, rows).Render(r.Context(), w)
+	pages.TagPagesView(nameQuery, tagId, rows).Render(r.Context(), w)
 }
 
 func (a *App) handleGetTags(w http.ResponseWriter, r *http.Request) {

@@ -9,8 +9,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-templ TagPagesView(name string, pages []database.GetPagePaginatedRow) {
-	<div class="mx-auto w-full max-w-2xl px-4 py-8">
+templ TagPagesView(name, tagId string, pages []database.GetPagePaginatedRow) {
+	<div class="relative mx-auto w-full max-w-2xl px-4 py-8">
+		<button
+			@click={ "deleteTag('" + tagId + "')" }
+			title="delete tag"
+			class="absolute top-8 right-4 cursor-pointer rounded-lg border border-zinc-800 px-2 py-1 text-xs text-zinc-500 hover:border-red-500 hover:text-red-400"
+		>Delete</button>
 		<h1 class="mb-8 text-4xl font-bold tracking-tight">Tag: { name }</h1>
 		<div class="space-y-1">
 			for _, p := range pages {

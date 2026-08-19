@@ -691,6 +691,9 @@ func TestHandleTagPagesFragment(t *testing.T) {
 	}}}
 
 	req := httptest.NewRequest(http.MethodGet, "/fin/tags/0197f1a0-0000-0000-0000-000000000001/pages?name=Makan", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	w := httptest.NewRecorder()
 
 	app.handleTagPagesFragment(w, req)
@@ -705,6 +708,14 @@ func TestHandleTagPagesFragment(t *testing.T) {
 
 	if !strings.Contains(w.Body.String(), "Makan") {
 		t.Fatalf("expected tag name in body, got %s", w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), `title="delete tag"`) {
+		t.Fatalf("expected delete tag button in body, got %s", w.Body.String())
+	}
+
+	if !strings.Contains(w.Body.String(), "deleteTag(&#39;0197f1a0-0000-0000-0000-000000000001&#39;)") {
+		t.Fatalf("expected delete tag click in body, got %s", w.Body.String())
 	}
 }
 
