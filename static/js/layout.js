@@ -136,6 +136,8 @@ document.addEventListener('alpine:init', () => {
 				if (e.altKey && e.key === 'b') { e.preventDefault(); this.navbarVisible = !this.navbarVisible }
 				if (e.altKey && e.key === 'e') { e.preventDefault(); this.sidebarOpen = !this.sidebarOpen }
 			})
+			const dlg = document.querySelector('#confirm-card-dialog [data-tui-dialog-content]')
+			if (dlg) dlg.addEventListener('close', () => { this.confirmCard = null })
 			this.fetchPages(1)
 			this.fetchTags()
 		},
@@ -214,10 +216,12 @@ document.addEventListener('alpine:init', () => {
 
 		askDelete(message, action) {
 			this.confirmCard = { message, action }
+			window.tui?.dialog?.open('confirm-card-dialog')
 		},
 
 		cancelDelete() {
 			this.confirmCard = null
+			window.tui?.dialog?.close('confirm-card-dialog')
 		},
 
 		doDelete() {
@@ -225,6 +229,7 @@ document.addEventListener('alpine:init', () => {
 			const action = this.confirmCard.action
 			this.confirmCard = null
 			action()
+			window.tui?.dialog?.close('confirm-card-dialog')
 		},
 
 		async askDeletePage(pageId) {
