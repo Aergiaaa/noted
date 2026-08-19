@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -13,6 +14,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func parseFinancePocket(content []byte) string {
+	var c struct {
+		Finance struct {
+			Pocket string `json:"pocket"`
+		} `json:"finance"`
+	}
+	if err := json.Unmarshal(content, &c); err != nil {
+		return ""
+	}
+
+	return c.Finance.Pocket
+}
 
 func (a *App) handlePages(w http.ResponseWriter, r *http.Request) {
 	pageQuery := r.URL.Query().Get("page")
@@ -124,6 +138,31 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	txByPocket := map[string][]database.GetTransactionsWithPocketNamesRow{}
+	var pocketIds []string
+	for _, b := range blocks {
+		if b.Type != "finance" {
+			continue
+		}
+
+		pid := parseFinancePocket(b.Content)
+		if pid == "" || slices.Contains(pocketIds, pid) {
+			continue
+		}
+
+		pocketIds = append(pocketIds, pid)
+	}
+
+	for _, pid := range pocketIds {
+		txs, err := a.service.Transaction.GetFiltered(r.Context(), service.FilterTransactionsArg{PocketID: pid})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		txByPocket[pid] = txs
+	}
+
 	tags, err := a.service.Taggable.GetTagsByTargetId(r.Context(), id, "page")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -147,7 +186,7 @@ func (a *App) handlePageFragment(w http.ResponseWriter, r *http.Request) {
 		pageMap[p.Title] = p.ID.String()
 	}
 
-	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap, balances).Render(r.Context(), w)
+	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap, balances, txByPocket).Render(r.Context(), w)
 }
 
 func (a *App) handleCreatePage(w http.ResponseWriter, r *http.Request) {

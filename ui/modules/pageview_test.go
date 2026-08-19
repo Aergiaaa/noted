@@ -259,3 +259,59 @@ func TestFinanceBlockValue(t *testing.T) {
 		})
 	}
 }
+
+func TestTxSignedAmount(t *testing.T) {
+	var n pgtype.Numeric
+	_ = n.Scan("1500.50")
+
+	for name, tc := range map[string]struct {
+		kind string
+		want string
+	}{
+		"income":   {kind: "income", want: "+1500.50"},
+		"expense":  {kind: "expense", want: "-1500.50"},
+		"transfer": {kind: "transfer", want: "+1500.50"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := txSignedAmount(tc.kind, n); got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+
+	var zero pgtype.Numeric
+	if got := txSignedAmount("income", zero); got != "" {
+		t.Fatalf("expected empty for invalid numeric, got %q", got)
+	}
+}
+
+func TestTxAmountColor(t *testing.T) {
+	for name, tc := range map[string]struct {
+		kind string
+		want string
+	}{
+		"expense":  {kind: "expense", want: "text-red-400"},
+		"income":   {kind: "income", want: "text-emerald-400"},
+		"transfer": {kind: "transfer", want: "text-emerald-400"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := txAmountColor(tc.kind); got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
+func TestTxDate(t *testing.T) {
+	var d pgtype.Date
+	_ = d.Scan("2026-08-19")
+
+	if got := txDate(d); got != "2026-08-19" {
+		t.Fatalf("expected 2026-08-19, got %q", got)
+	}
+
+	var invalid pgtype.Date
+	if got := txDate(invalid); got != "" {
+		t.Fatalf("expected empty for invalid date, got %q", got)
+	}
+}

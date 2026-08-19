@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow, pages map[string]string, balances []database.GetPocketBalancesRow) {
+templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) {
 	<div x-data={ pageTagsProps(pageId) } class="relative mx-auto w-full max-w-2xl px-4 py-8">
 		<button
 			@click={ "deletePage('" + pageId + "')" }
@@ -30,7 +30,7 @@ templ PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags 
 		>{ title }</h1>
 		@tagPills(tags, pageId)
 		<div class="space-y-1">
-			@blockTree(blocks, pgtype.UUID{}, 0, pageId, pages, balances)
+			@blockTree(blocks, pgtype.UUID{}, 0, pageId, pages, balances, txByPocket)
 		</div>
 		@backlinkList(backlinks)
 	</div>
@@ -84,18 +84,18 @@ templ backlinkList(backlinks []database.GetBacklinkPagesRow) {
 	}
 }
 
-templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string, pages map[string]string, balances []database.GetPocketBalancesRow) {
+templ blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) {
 	if parentId == (pgtype.UUID{}) && len(blockChildren(blocks, parentId)) == 0 {
-		@blockEditor(database.GetBlocksByPageRow{Type: "text"}, pageId, 0, pages, balances)
+		@blockEditor(database.GetBlocksByPageRow{Type: "text"}, pageId, 0, pages, balances, txByPocket)
 	}
 
 	for _, b := range blockChildren(blocks, parentId) {
-		@blockEditor(b, pageId, depth, pages, balances)
-		@blockTree(blocks, b.ID, depth+1, pageId, pages, balances)
+		@blockEditor(b, pageId, depth, pages, balances, txByPocket)
+		@blockTree(blocks, b.ID, depth+1, pageId, pages, balances, txByPocket)
 	}
 }
 
-templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages map[string]string, balances []database.GetPocketBalancesRow) {
+templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) {
 	<div
 		x-data={ rowProps(b, pageId, depth) }
 		data-id={ b.ID.String() }
@@ -125,7 +125,7 @@ templ blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages
 		if b.Type == "table" {
 			@blockTable(b, pageId, depth)
 		} else if b.Type == "finance" {
-			@blockFinance(b, pageId, balances)
+			@blockFinance(b, pageId, balances, txByPocket)
 		} else if b.Type == "list" {
 			@blockList(b, pageId, depth)
 		} else {
@@ -214,7 +214,7 @@ templ blockTableGrid(content []byte) {
 	</div>
 }
 
-templ blockFinance(b database.GetBlocksByPageRow, pageId string, balances []database.GetPocketBalancesRow) {
+templ blockFinance(b database.GetBlocksByPageRow, pageId string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) {
 	<div class="my-2 flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
 		<span class="text-xs uppercase tracking-wide text-zinc-500">Balance</span>
 		<select
@@ -229,6 +229,21 @@ templ blockFinance(b database.GetBlocksByPageRow, pageId string, balances []data
 		</select>
 		<span class="text-sm text-zinc-300">{ balanceLabel(b.Content, balances) }</span>
 	</div>
+	if pocket := financeBlockValue(b.Content); pocket != "" {
+		<div class="divide-y divide-zinc-800/60 rounded-lg border border-zinc-800">
+			for _, tx := range txByPocket[pocket] {
+				<div class="flex items-center justify-between px-3 py-1.5 text-sm">
+					<span class="text-zinc-300">{ tx.Title }</span>
+					<span class={ "text-right whitespace-nowrap " + txAmountColor(tx.Type) }>
+						{ txSignedAmount(tx.Type, tx.Amount) } · { txDate(tx.Date) }
+					</span>
+				</div>
+			}
+			if len(txByPocket[pocket]) == 0 {
+				<p class="px-3 py-1.5 text-xs text-zinc-500">No transactions</p>
+			}
+		</div>
+	}
 }
 
 templ blockText(content []byte, pages map[string]string) {
@@ -313,6 +328,35 @@ func financeBlockValue(content []byte) string {
 	}
 
 	return c.Finance.Pocket
+}
+
+func txSignedAmount(kind string, n pgtype.Numeric) string {
+	f, err := n.Float64Value()
+	if err != nil || !f.Valid {
+		return ""
+	}
+
+	if kind == "expense" {
+		return "-" + fmt.Sprintf("%.2f", f.Float64)
+	}
+
+	return "+" + fmt.Sprintf("%.2f", f.Float64)
+}
+
+func txAmountColor(kind string) string {
+	if kind == "expense" {
+		return "text-red-400"
+	}
+
+	return "text-emerald-400"
+}
+
+func txDate(d pgtype.Date) string {
+	if !d.Valid {
+		return ""
+	}
+
+	return d.Time.Format("2006-01-02")
 }
 
 type textSegment struct {

@@ -19,7 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow, pages map[string]string, balances []database.GetPocketBalancesRow) templ.Component {
+func PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags []database.GetTagsByTargetRow, backlinks []database.GetBacklinkPagesRow, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -104,7 +104,7 @@ func PageView(title, pageId string, blocks []database.GetBlocksByPageRow, tags [
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = blockTree(blocks, pgtype.UUID{}, 0, pageId, pages, balances).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = blockTree(blocks, pgtype.UUID{}, 0, pageId, pages, balances, txByPocket).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -269,7 +269,7 @@ func backlinkList(backlinks []database.GetBacklinkPagesRow) templ.Component {
 	})
 }
 
-func blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string, pages map[string]string, balances []database.GetPocketBalancesRow) templ.Component {
+func blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth int, pageId string, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -291,13 +291,13 @@ func blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth
 		}
 		ctx = templ.ClearChildren(ctx)
 		if parentId == (pgtype.UUID{}) && len(blockChildren(blocks, parentId)) == 0 {
-			templ_7745c5c3_Err = blockEditor(database.GetBlocksByPageRow{Type: "text"}, pageId, 0, pages, balances).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = blockEditor(database.GetBlocksByPageRow{Type: "text"}, pageId, 0, pages, balances, txByPocket).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		for _, b := range blockChildren(blocks, parentId) {
-			templ_7745c5c3_Err = blockEditor(b, pageId, depth, pages, balances).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = blockEditor(b, pageId, depth, pages, balances, txByPocket).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -305,7 +305,7 @@ func blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = blockTree(blocks, b.ID, depth+1, pageId, pages, balances).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = blockTree(blocks, b.ID, depth+1, pageId, pages, balances, txByPocket).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -314,7 +314,7 @@ func blockTree(blocks []database.GetBlocksByPageRow, parentId pgtype.UUID, depth
 	})
 }
 
-func blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages map[string]string, balances []database.GetPocketBalancesRow) templ.Component {
+func blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages map[string]string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -384,7 +384,7 @@ func blockEditor(b database.GetBlocksByPageRow, pageId string, depth int, pages 
 				return templ_7745c5c3_Err
 			}
 		} else if b.Type == "finance" {
-			templ_7745c5c3_Err = blockFinance(b, pageId, balances).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = blockFinance(b, pageId, balances, txByPocket).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -679,7 +679,7 @@ func blockTableGrid(content []byte) templ.Component {
 	})
 }
 
-func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []database.GetPocketBalancesRow) templ.Component {
+func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []database.GetPocketBalancesRow, txByPocket map[string][]database.GetTransactionsWithPocketNamesRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -779,6 +779,89 @@ func blockFinance(b database.GetBlocksByPageRow, pageId string, balances []datab
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		if pocket := financeBlockValue(b.Content); pocket != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"divide-y divide-zinc-800/60 rounded-lg border border-zinc-800\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, tx := range txByPocket[pocket] {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"flex items-center justify-between px-3 py-1.5 text-sm\"><span class=\"text-zinc-300\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var38 string
+				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(tx.Title)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 236, Col: 43}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var39 = []any{"text-right whitespace-nowrap " + txAmountColor(tx.Type)}
+				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var39...)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var40 string
+				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var39).String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 1, Col: 0}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var41 string
+				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(txSignedAmount(tx.Type, tx.Amount))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 238, Col: 42}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, " · ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var42 string
+				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(txDate(tx.Date))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 238, Col: 65}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</span></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			if len(txByPocket[pocket]) == 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<p class=\"px-3 py-1.5 text-xs text-zinc-500\">No transactions</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
 		return nil
 	})
 }
@@ -799,50 +882,50 @@ func blockText(content []byte, pages map[string]string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var38 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var38 == nil {
-			templ_7745c5c3_Var38 = templ.NopComponent
+		templ_7745c5c3_Var43 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var43 == nil {
+			templ_7745c5c3_Var43 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, seg := range linkSegments(blockTextValue(content), pages) {
 			if seg.id != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<a href=\"#\" @mousedown.prevent=\"onLinkMousedown()\" @click.prevent=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<a href=\"#\" @mousedown.prevent=\"onLinkMousedown()\" @click.prevent=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var39 string
-				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue("loadContent('" + seg.id + "')")
+				var templ_7745c5c3_Var44 string
+				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.ResolveAttributeValue("loadContent('" + seg.id + "')")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 240, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 255, Col: 52}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\" class=\"text-blue-400 underline decoration-zinc-700 underline-offset-2 hover:text-blue-300\">")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var40 string
-				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 242, Col: 14}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" class=\"text-blue-400 underline decoration-zinc-700 underline-offset-2 hover:text-blue-300\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</a>")
+				var templ_7745c5c3_Var45 string
+				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 257, Col: 14}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				var templ_7745c5c3_Var41 string
-				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
+				var templ_7745c5c3_Var46 string
+				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(seg.text)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 244, Col: 13}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `ui/modules/pageview.templ`, Line: 259, Col: 13}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -919,6 +1002,35 @@ func financeBlockValue(content []byte) string {
 	}
 
 	return c.Finance.Pocket
+}
+
+func txSignedAmount(kind string, n pgtype.Numeric) string {
+	f, err := n.Float64Value()
+	if err != nil || !f.Valid {
+		return ""
+	}
+
+	if kind == "expense" {
+		return "-" + fmt.Sprintf("%.2f", f.Float64)
+	}
+
+	return "+" + fmt.Sprintf("%.2f", f.Float64)
+}
+
+func txAmountColor(kind string) string {
+	if kind == "expense" {
+		return "text-red-400"
+	}
+
+	return "text-emerald-400"
+}
+
+func txDate(d pgtype.Date) string {
+	if !d.Valid {
+		return ""
+	}
+
+	return d.Time.Format("2006-01-02")
 }
 
 type textSegment struct {

@@ -782,6 +782,27 @@ func (f *fakeBlockServicer) Reorder(ctx context.Context, args []service.ReorderB
 	return nil
 }
 
+func TestParseFinancePocket(t *testing.T) {
+	for name, tc := range map[string]struct {
+		content []byte
+		want    string
+	}{
+		"pocket set": {
+			content: []byte(`{"finance":{"pocket":"0197f1a0-0000-0000-0000-00000000000b"}}`),
+			want:    "0197f1a0-0000-0000-0000-00000000000b",
+		},
+		"no pocket":   {content: []byte(`{"finance":{"pocket":""}}`), want: ""},
+		"not finance": {content: []byte(`{"text":"hi"}`), want: ""},
+		"malformed":   {content: []byte(`nope`), want: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := parseFinancePocket(tc.content); got != tc.want {
+				t.Fatalf("expected %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
 func TestHandlePageFragmentFinance(t *testing.T) {
 	balance := database.GetPocketBalancesRow{Name: "Wallet Utama", Type: "bank"}
 	_ = balance.Balance.Scan("1500.50")
@@ -794,14 +815,28 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		return database.GetBlocksByPageRow{ID: id, Type: "finance"}
 	}
 
+	finBlockWithPocket := func() database.GetBlocksByPageRow {
+		var id pgtype.UUID
+		_ = id.Scan("0197f1a0-0000-0000-0000-00000000000a")
+		return database.GetBlocksByPageRow{
+			ID:      id,
+			Type:    "finance",
+			Content: []byte(`{"finance":{"pocket":"0197f1a0-0000-0000-0000-00000000000b"}}`),
+		}
+	}
+
+	txn := database.GetTransactionsWithPocketNamesRow{Title: "Makan siang", Type: "expense"}
+	_ = txn.Amount.Scan("25.00")
+
 	baseServices := func() service.Services {
 		return service.Services{
 			Page: &fakePageServicer{},
 			Block: &fakeBlockServicer{
-				blocks: []database.GetBlocksByPageRow{finBlock()},
+				blocks: []database.GetBlocksByPageRow{finBlockWithPocket()},
 			},
-			Taggable: &fakeTaggableServicer{tags: []database.GetTagsByTargetRow{pagetag}},
-			Pocket:   &fakePocketServicer{balances: []database.GetPocketBalancesRow{balance}},
+			Taggable:    &fakeTaggableServicer{tags: []database.GetTagsByTargetRow{pagetag}},
+			Pocket:      &fakePocketServicer{balances: []database.GetPocketBalancesRow{balance}},
+			Transaction: &fakeTransactionServicer{filtered: []database.GetTransactionsWithPocketNamesRow{txn}},
 		}
 	}
 
@@ -847,6 +882,54 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 
 		if !strings.Contains(w.Body.String(), "1500.50") {
 			t.Fatalf("expected balance in body, got %s", w.Body.String())
+		}
+
+		if !strings.Contains(w.Body.String(), "Makan siang") {
+			t.Fatalf("expected transaction title in body, got %s", w.Body.String())
+		}
+
+		if !strings.Contains(w.Body.String(), "-25.00") {
+			t.Fatalf("expected signed amount in body, got %s", w.Body.String())
+		}
+	})
+
+	t.Run("skips transactions fetch without finance block", func(t *testing.T) {
+		txm := &fakeTransactionServicer{}
+		app := &App{service: &service.Services{
+			Page:        &fakePageServicer{},
+			Block:       &fakeBlockServicer{blocks: []database.GetBlocksByPageRow{{ID: finBlock().ID, Type: "text"}}},
+			Taggable:    &fakeTaggableServicer{},
+			Pocket:      &fakePocketServicer{},
+			Transaction: txm,
+		}}
+
+		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+		w := httptest.NewRecorder()
+
+		app.handlePageFragment(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+
+		if txm.filterArg != nil {
+			t.Fatalf("expected no transaction fetch, got %+v", txm.filterArg)
+		}
+	})
+
+	t.Run("500 when transactions fetch fails", func(t *testing.T) {
+		services := baseServices()
+		services.Transaction = &fakeTransactionServicer{filterErr: errors.New("boom")}
+
+		app := &App{service: &services}
+
+		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
+		w := httptest.NewRecorder()
+
+		app.handlePageFragment(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500, got %d", w.Code)
 		}
 	})
 
