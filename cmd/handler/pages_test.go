@@ -7,6 +7,7 @@ import (
 	"errors"
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/service"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"net/http"
 	"net/http/httptest"
@@ -16,11 +17,17 @@ import (
 )
 
 type fakePageServicer struct {
-	create    func(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error)
-	updated   bool
-	searchQ   string
-	searchRes []database.GetPagePaginatedRow
-	searchErr error
+	create       func(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error)
+	updated      bool
+	searchQ      string
+	searchRes    []database.GetPagePaginatedRow
+	searchErr    error
+	byId         database.GetPageByIDRow
+	byIdErr      error
+	deleteErr    error
+	restoreErr   error
+	backlinks    []database.GetBacklinkPagesRow
+	backlinksErr error
 }
 
 func (f *fakePageServicer) Create(ctx context.Context, title string, date *time.Time) (database.CreatePageRow, error) {
@@ -34,7 +41,7 @@ func (f *fakePageServicer) Create(ctx context.Context, title string, date *time.
 	return database.CreatePageRow{ID: id, Title: title}, nil
 }
 
-func (f *fakePageServicer) Delete(ctx context.Context, id string) error { return nil }
+func (f *fakePageServicer) Delete(ctx context.Context, id string) error { return f.deleteErr }
 func (f *fakePageServicer) GetAll(ctx context.Context) ([]database.GetAllPagesRow, error) {
 	return nil, nil
 }
@@ -44,11 +51,11 @@ func (f *fakePageServicer) GetBackLinks(ctx context.Context, id string) ([]datab
 }
 
 func (f *fakePageServicer) GetBacklinkPages(ctx context.Context, id string) ([]database.GetBacklinkPagesRow, error) {
-	return nil, nil
+	return f.backlinks, f.backlinksErr
 }
 
 func (f *fakePageServicer) GetById(ctx context.Context, id string) (database.GetPageByIDRow, error) {
-	return database.GetPageByIDRow{}, nil
+	return f.byId, f.byIdErr
 }
 
 func (f *fakePageServicer) GetPagePaginated(ctx context.Context, page, limit int) ([]database.GetPagePaginatedRow, error) {
@@ -56,7 +63,7 @@ func (f *fakePageServicer) GetPagePaginated(ctx context.Context, page, limit int
 }
 
 func (f *fakePageServicer) GetTotalPage(ctx context.Context) (int32, error) { return 0, nil }
-func (f *fakePageServicer) Restore(ctx context.Context, id string) error    { return nil }
+func (f *fakePageServicer) Restore(ctx context.Context, id string) error    { return f.restoreErr }
 func (f *fakePageServicer) Update(ctx context.Context, title, id string, date *time.Time) (database.UpdatePageRow, error) {
 	f.updated = true
 	return database.UpdatePageRow{}, nil
@@ -279,28 +286,41 @@ func TestHandlePageFragmentDeleteButton(t *testing.T) {
 }
 
 type fakeBlockServicer struct {
-	blocks []database.GetBlocksByPageRow
-	err    error
+	blocks      []database.GetBlocksByPageRow
+	err         error
+	createArgs  service.CreateBlockArgs
+	createRow   database.CreateBlockRow
+	createErr   error
+	updateArgs  service.UpdateBlockArgs
+	updateRow   database.UpdateBlockRow
+	updateErr   error
+	deleteErr   error
+	restoreErr  error
+	reorderArgs []service.ReorderBlockArgs
+	reorderErr  error
 }
 
 func (f *fakeBlockServicer) Create(ctx context.Context, args service.CreateBlockArgs) (database.CreateBlockRow, error) {
-	return database.CreateBlockRow{}, nil
+	f.createArgs = args
+	return f.createRow, f.createErr
 }
 
-func (f *fakeBlockServicer) Delete(ctx context.Context, id string) error { return nil }
+func (f *fakeBlockServicer) Delete(ctx context.Context, id string) error { return f.deleteErr }
 
 func (f *fakeBlockServicer) GetBlocksByPage(ctx context.Context, id string) ([]database.GetBlocksByPageRow, error) {
 	return f.blocks, f.err
 }
 
-func (f *fakeBlockServicer) Restore(ctx context.Context, id string) error { return nil }
+func (f *fakeBlockServicer) Restore(ctx context.Context, id string) error { return f.restoreErr }
 
 func (f *fakeBlockServicer) Update(ctx context.Context, args service.UpdateBlockArgs) (database.UpdateBlockRow, error) {
-	return database.UpdateBlockRow{}, nil
+	f.updateArgs = args
+	return f.updateRow, f.updateErr
 }
 
 func (f *fakeBlockServicer) Reorder(ctx context.Context, args []service.ReorderBlockArgs) error {
-	return nil
+	f.reorderArgs = args
+	return f.reorderErr
 }
 
 func TestParseFinancePocket(t *testing.T) {
@@ -469,4 +489,197 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 			t.Fatalf("expected 500, got %d", w.Code)
 		}
 	})
+}
+
+func TestHandleGetPage(t *testing.T) {
+	var id pgtype.UUID
+	_ = id.Scan("0197f1a0-0000-0000-0000-000000000001")
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{
+		byId: database.GetPageByIDRow{ID: id, Title: "Alpha"},
+	}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetPage(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var res struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	if res.ID != "0197f1a0-0000-0000-0000-000000000001" {
+		t.Fatalf("expected id, got %q", res.ID)
+	}
+	if res.Title != "Alpha" {
+		t.Fatalf("expected title, got %q", res.Title)
+	}
+}
+
+func TestHandleGetPageError(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{byIdErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/x", nil)
+	w := httptest.NewRecorder()
+
+	h.GetPage(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleDeletePage(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{}}}
+
+	req := httptest.NewRequest(http.MethodDelete, "/pages/0197f1a0-0000-0000-0000-000000000001", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.DeletePage(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestHandleDeletePageError(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{deleteErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodDelete, "/pages/x", nil)
+	w := httptest.NewRecorder()
+
+	h.DeletePage(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleRestorePage(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/pages/0197f1a0-0000-0000-0000-000000000001/restore", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.RestorePage(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+}
+
+func TestHandleRestorePageError(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{restoreErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/pages/x/restore", nil)
+	w := httptest.NewRecorder()
+
+	h.RestorePage(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleGetPageBlocks(t *testing.T) {
+	var id pgtype.UUID
+	_ = id.Scan("0197f1a0-0000-0000-0000-000000000001")
+	h := Handler{Service: &service.Services{Block: &fakeBlockServicer{
+		blocks: []database.GetBlocksByPageRow{{ID: id, Type: "text", Content: []byte(`{"text":"hi"}`)}},
+	}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/blocks", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetPageBlocks(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var res struct {
+		Blocks []database.GetBlocksByPageRow `json:"blocks"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+
+	if len(res.Blocks) != 1 || res.Blocks[0].Type != "text" {
+		t.Fatalf("expected block in response, got %+v", res.Blocks)
+	}
+}
+
+func TestHandleGetPageBlocksError(t *testing.T) {
+	h := Handler{Service: &service.Services{Block: &fakeBlockServicer{err: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/x/blocks", nil)
+	w := httptest.NewRecorder()
+
+	h.GetPageBlocks(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleGetBacklinks(t *testing.T) {
+	var id pgtype.UUID
+	_ = id.Scan("0197f1a0-0000-0000-0000-000000000001")
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{
+		backlinks: []database.GetBacklinkPagesRow{{ID: id, Title: "Linked Page"}},
+	}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/backlinks", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "0197f1a0-0000-0000-0000-000000000001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	w := httptest.NewRecorder()
+
+	h.GetBacklinks(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var res struct {
+		Backlinks []database.GetBacklinkPagesRow `json:"backlinks"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+
+	if len(res.Backlinks) != 1 || res.Backlinks[0].Title != "Linked Page" {
+		t.Fatalf("expected backlink in response, got %+v", res.Backlinks)
+	}
+}
+
+func TestHandleGetBacklinksError(t *testing.T) {
+	h := Handler{Service: &service.Services{Page: &fakePageServicer{backlinksErr: errors.New("boom")}}}
+
+	req := httptest.NewRequest(http.MethodGet, "/pages/x/backlinks", nil)
+	w := httptest.NewRecorder()
+
+	h.GetBacklinks(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
 }
