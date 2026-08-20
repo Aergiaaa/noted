@@ -3,19 +3,14 @@ package main
 import (
 	"net/http"
 
-	"github.com/Aergiaaa/noted/ui/pages"
 	"github.com/gorilla/sessions"
 	"github.com/pquerna/otp/totp"
 )
 
-func (a *App) renderLogin(w http.ResponseWriter, r *http.Request) {
-	pages.Login().Render(r.Context(), w)
-}
-
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	session, err := a.store.Get(r, "session")
 	if err != nil {
-		a.renderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
+		a.handle.RenderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
 		return
 	}
 
@@ -31,13 +26,13 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	isValid := totp.Validate(code, a.secret)
 	if !isValid {
-		a.renderError(w, r, http.StatusUnauthorized, "Error: wrong otp")
+		a.handle.RenderError(w, r, http.StatusUnauthorized, "Error: wrong otp")
 		return
 	}
 
 	session, err := a.store.Get(r, "session")
 	if err != nil {
-		a.renderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
+		a.handle.RenderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
 		return
 	}
 
@@ -52,7 +47,7 @@ func (a *App) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := session.Save(r, w); err != nil {
-		a.renderError(w, r, http.StatusInternalServerError, "Error: cannot create session")
+		a.handle.RenderError(w, r, http.StatusInternalServerError, "Error: cannot create session")
 		return
 	}
 
@@ -63,7 +58,7 @@ func (a *App) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, err := a.store.Get(r, "session")
 		if err != nil {
-			a.renderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
+			a.handle.RenderError(w, r, http.StatusBadRequest, "Error: cannot fetch session")
 			return
 		}
 

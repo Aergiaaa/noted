@@ -3,12 +3,9 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"slices"
 	"strconv"
 
 	database "github.com/Aergiaaa/noted/internal/database"
-	"github.com/Aergiaaa/noted/service"
-	"github.com/Aergiaaa/noted/ui/modules"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -266,82 +263,4 @@ func (h *Handler) SyncWikiLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) PageFragment(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-
-	page, err := h.Service.Page.GetById(r.Context(), id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	blocks, err := h.Service.Block.GetBlocksByPage(r.Context(), id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	balances := []database.GetPocketBalancesRow{}
-	for _, b := range blocks {
-		if b.Type == "finance" {
-			balances, err = h.Service.Pocket.GetBalances(r.Context())
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			break
-		}
-	}
-
-	txByPocket := map[string][]database.GetTransactionsWithPocketNamesRow{}
-	var pocketIds []string
-	for _, b := range blocks {
-		if b.Type != "finance" {
-			continue
-		}
-
-		pid := parseFinancePocket(b.Content)
-		if pid == "" || slices.Contains(pocketIds, pid) {
-			continue
-		}
-
-		pocketIds = append(pocketIds, pid)
-	}
-
-	for _, pid := range pocketIds {
-		txs, err := h.Service.Transaction.GetFiltered(r.Context(), service.FilterTransactionsArg{PocketID: pid})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		txByPocket[pid] = txs
-	}
-
-	tags, err := h.Service.Taggable.GetTagsByTargetId(r.Context(), id, "page")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	backlinks, err := h.Service.Page.GetBacklinkPages(r.Context(), id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	pages, err := h.Service.Page.GetAll(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	pageMap := make(map[string]string, len(pages))
-	for _, p := range pages {
-		pageMap[p.Title] = p.ID.String()
-	}
-
-	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap, balances, txByPocket).Render(r.Context(), w)
 }

@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/Aergiaaa/noted/service"
-	"github.com/Aergiaaa/noted/ui/pages"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -210,17 +209,4 @@ func (h *Handler) GetPagesByTag(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-func (h *Handler) TagPagesFragment(w http.ResponseWriter, r *http.Request) {
-	tagId := chi.URLParam(r, "id")
-	nameQuery := r.URL.Query().Get("name")
-
-	rows, err := h.Service.Taggable.GetPagesByTag(r.Context(), tagId)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	pages.TagPagesView(nameQuery, tagId, rows).Render(r.Context(), w)
 }

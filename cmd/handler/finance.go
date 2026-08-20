@@ -7,7 +7,6 @@ import (
 
 	database "github.com/Aergiaaa/noted/internal/database"
 	"github.com/Aergiaaa/noted/service"
-	"github.com/Aergiaaa/noted/ui/pages"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -316,98 +315,4 @@ func (h *Handler) RestorePocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) PocketsFragment(w http.ResponseWriter, r *http.Request) {
-	pockets, err := h.Service.Pocket.GetBalances(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	summary, err := h.Service.Transaction.GetMonthlySummary(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	pages.PocketView(pockets, summary).Render(r.Context(), w)
-}
-
-func (h *Handler) TransactionsFragment(w http.ResponseWriter, r *http.Request) {
-	pocketQuery := r.URL.Query().Get("pocket")
-	fromQuery := r.URL.Query().Get("from")
-	toQuery := r.URL.Query().Get("to")
-
-	var transactions []database.GetTransactionsWithPocketNamesRow
-	var err error
-
-	if pocketQuery != "" || fromQuery != "" || toQuery != "" {
-		var fromDate, toDate time.Time
-		if fromQuery != "" {
-			fromDate, err = time.Parse(time.DateOnly, fromQuery)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-		if toQuery != "" {
-			toDate, err = time.Parse(time.DateOnly, toQuery)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-
-		transactions, err = h.Service.Transaction.GetFiltered(r.Context(), service.FilterTransactionsArg{
-			PocketID: pocketQuery,
-			FromDate: fromDate,
-			ToDate:   toDate,
-		})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		transactions, err = h.Service.Transaction.GetWithPockets(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	pockets, err := h.Service.Pocket.GetAll(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	tags := make(map[string][]database.GetTagsByTargetRow)
-	for _, t := range transactions {
-		rowTags, err := h.Service.Taggable.GetTagsByTargetId(r.Context(), t.ID.String(), "transaction")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		tags[t.ID.String()] = rowTags
-	}
-
-	pages.TransactionView(transactions, tags, pockets).Render(r.Context(), w)
-}
-
-func (h *Handler) TrashFragment(w http.ResponseWriter, r *http.Request) {
-	pockets, err := h.Service.Pocket.GetDeleted(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	transactions, err := h.Service.Transaction.GetDeleted(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	pages.TrashView(pockets, transactions).Render(r.Context(), w)
 }

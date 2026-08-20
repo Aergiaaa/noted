@@ -19,7 +19,7 @@ func (a *App) routes() http.Handler {
 
 	// public page
 	s.Route("/auth", func(s chi.Router) {
-		s.Get("/login", a.renderLogin)
+		s.Get("/login", a.handle.RenderLogin)
 		s.Get("/logout", a.handleLogout)
 		s.Post("/verify", a.handleVerify)
 	})
@@ -28,7 +28,7 @@ func (a *App) routes() http.Handler {
 	s.Group(func(s chi.Router) {
 		s.Use(a.authMiddleware)
 
-		s.Get("/", a.renderIndex)
+		s.Get("/", a.handle.RenderIndex)
 
 		s.Route("/api", func(s chi.Router) {
 			s.Route("/pages", func(s chi.Router) {
