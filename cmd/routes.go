@@ -12,15 +12,14 @@ func (a *App) routes() http.Handler {
 	s := chi.NewRouter()
 
 	s.Use(
-		middleware.SetHeader("X-Frame-Options", "DENY"), middleware.SetHeader("X-Content-Type-Options", "nosniff"),
+		middleware.SetHeader("X-Frame-Options", "DENY"),
+		middleware.SetHeader("X-Content-Type-Options", "nosniff"),
 		middleware.SetHeader("Referrer-Policy", "strict-origin-when-cross-origin"),
 	)
 
 	// public page
 	s.Route("/auth", func(s chi.Router) {
-
 		s.Get("/login", a.renderLogin)
-
 		s.Get("/logout", a.handleLogout)
 		s.Post("/verify", a.handleVerify)
 	})
@@ -34,91 +33,91 @@ func (a *App) routes() http.Handler {
 		s.Route("/api", func(s chi.Router) {
 			s.Route("/pages", func(s chi.Router) {
 
-				s.Get("/", a.handlePages)
-				s.Get("/{id}", a.handleGetPage)
-				s.Get("/{id}/backlinks", a.handleGetBacklinks)
-				s.Get("/{id}/blocks", a.handleGetPageBlocks)
+				s.Get("/", a.handle.Pages)
+				s.Get("/{id}", a.handle.GetPage)
+				s.Get("/{id}/backlinks", a.handle.GetBacklinks)
+				s.Get("/{id}/blocks", a.handle.GetPageBlocks)
 
-				s.Post("/", a.handleCreatePage)
-				s.Post("/{id}/restore", a.handleRestorePage)
-				s.Post("/{id}/wiki-links", a.handleSyncWikiLinks)
+				s.Post("/", a.handle.CreatePage)
+				s.Post("/{id}/restore", a.handle.RestorePage)
+				s.Post("/{id}/wiki-links", a.handle.SyncWikiLinks)
 
-				s.Patch("/{id}", a.handleUpdatePage)
+				s.Patch("/{id}", a.handle.UpdatePage)
 
-				s.Delete("/{id}", a.handleDeletePage)
+				s.Delete("/{id}", a.handle.DeletePage)
 
 			})
 
 			// block routes
 			{
-				s.Post("/pages/{id}/blocks", a.handleCreateBlock)
-				s.Post("/blocks/{id}/restore", a.handleRestoreBlock)
+				s.Post("/pages/{id}/blocks", a.handle.CreateBlock)
+				s.Post("/blocks/{id}/restore", a.handle.RestoreBlock)
 
-				s.Patch("/blocks/{id}", a.handleUpdateBlock)
-				s.Patch("/pages/{id}/blocks/reorder", a.handleReorderBlocks)
+				s.Patch("/blocks/{id}", a.handle.UpdateBlock)
+				s.Patch("/pages/{id}/blocks/reorder", a.handle.ReorderBlocks)
 
-				s.Delete("/blocks/{id}", a.handleDeleteBlock)
+				s.Delete("/blocks/{id}", a.handle.DeleteBlock)
 			}
 
 			s.Route("/transactions", func(s chi.Router) {
 
-				s.Get("/", a.handleTransactions)
-				s.Get("/{id}", a.handleGetTransaction)
+				s.Get("/", a.handle.Transactions)
+				s.Get("/{id}", a.handle.GetTransaction)
 
-				s.Post("/", a.handleCreateTransaction)
-				s.Post("/{id}/restore", a.handleRestoreTransaction)
+				s.Post("/", a.handle.CreateTransaction)
+				s.Post("/{id}/restore", a.handle.RestoreTransaction)
 
-				s.Patch("/{id}", a.handleUpdateTransaction)
-				s.Delete("/{id}", a.handleDeleteTransaction)
+				s.Patch("/{id}", a.handle.UpdateTransaction)
+				s.Delete("/{id}", a.handle.DeleteTransaction)
 
 			})
 
 			s.Route("/pockets", func(s chi.Router) {
 
-				s.Get("/", a.handlePockets)
+				s.Get("/", a.handle.Pockets)
 
-				s.Post("/", a.handleCreatePocket)
-				s.Post("/{id}/restore", a.handleRestorePocket)
+				s.Post("/", a.handle.CreatePocket)
+				s.Post("/{id}/restore", a.handle.RestorePocket)
 
-				s.Patch("/{id}", a.handleUpdatePocket)
-				s.Delete("/{id}", a.handleDeletePocket)
+				s.Patch("/{id}", a.handle.UpdatePocket)
+				s.Delete("/{id}", a.handle.DeletePocket)
 
 			})
 
 			s.Route("/tags", func(s chi.Router) {
 
-				s.Get("/", a.handleGetTags)
-				s.Get("/{id}/pages", a.handleGetPagesByTag)
+				s.Get("/", a.handle.GetTags)
+				s.Get("/{id}/pages", a.handle.GetPagesByTag)
 
-				s.Post("/", a.handleCreateTag)
-				s.Post("/{id}/restore", a.handleRestoreTag)
-				s.Post("/{id}/attach", a.handleAttachTag)
+				s.Post("/", a.handle.CreateTag)
+				s.Post("/{id}/restore", a.handle.RestoreTag)
+				s.Post("/{id}/attach", a.handle.AttachTag)
 
-				s.Patch("/{id}", a.handleUpdateTag)
+				s.Patch("/{id}", a.handle.UpdateTag)
 
-				s.Delete("/{id}", a.handleDeleteTag)
-				s.Delete("/{id}/detach", a.handleDetachTag)
+				s.Delete("/{id}", a.handle.DeleteTag)
+				s.Delete("/{id}/detach", a.handle.DetachTag)
 
 			})
 
 			s.Route("/edges", func(s chi.Router) {
-				s.Get("/", a.handleGetEdges)
-				s.Post("/", a.handleCreateEdge)
-				s.Delete("/", a.handleDeleteEdge)
+				s.Get("/", a.handle.GetEdges)
+				s.Post("/", a.handle.CreateEdge)
+				s.Delete("/", a.handle.DeleteEdge)
 			})
 		})
 
 		// page fragment
 		s.Route("/pages", func(s chi.Router) {
-			s.Get("/{id}/fragment", a.handlePageFragment)
+			s.Get("/{id}/fragment", a.handle.PageFragment)
 		})
 
 		// finance fragments
 		s.Route("/fin", func(s chi.Router) {
-			s.Get("/pockets", a.handlePocketsFragment)
-			s.Get("/transactions", a.handleTransactionsFragment)
-			s.Get("/trash", a.handleTrashFragment)
-			s.Get("/tags/{id}/pages", a.handleTagPagesFragment)
+			s.Get("/pockets", a.handle.PocketsFragment)
+			s.Get("/transactions", a.handle.TransactionsFragment)
+			s.Get("/trash", a.handle.TrashFragment)
+			s.Get("/tags/{id}/pages", a.handle.TagPagesFragment)
 		})
 	})
 

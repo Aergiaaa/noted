@@ -11,14 +11,24 @@ import (
 	"time"
 )
 
-func (app *App) serve() error {
-	s := &http.Server{
+const (
+	READ_TIMEOUT_SEC  = 10 * time.Second
+	WRITE_TIMEOUT_SEC = 30 * time.Second
+	IDLE_TIMEOUT      = time.Minute
+)
+
+func createServer(app *App) *http.Server {
+	return &http.Server{
 		Addr:         fmt.Sprintf(":%d", app.port),
 		Handler:      app.routes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  IDLE_TIMEOUT,
+		ReadTimeout:  READ_TIMEOUT_SEC,
+		WriteTimeout: WRITE_TIMEOUT_SEC,
 	}
+}
+
+func (app *App) serve() error {
+	s := createServer(app)
 
 	log.Printf("Starting server on %s", s.Addr)
 

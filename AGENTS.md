@@ -11,7 +11,7 @@ code before writing anything new. Rules below.
 - Creating something new (feature, handler, service method, helper) = create
   the test first, see it fail (`go test ./...` red), then implement until the
   suite is green.
-- Tests live next to the code: `service/*_test.go`, `cmd/handler_test.go`,
+- Tests live next to the code: `service/*_test.go`, `cmd/handler/*_test.go`,
   `ui/modules/*_test.go`. Stdlib only (`testing`, `httptest`, `errors`).
 - Service tests: `errors.Is` against sentinel errors (`ErrBlockKindMismatch`,
   etc.) on `&XyzService{}` without models, so tests reach only pre-DB
@@ -42,7 +42,10 @@ code before writing anything new. Rules below.
 
 ## Go — cmd/ (HTTP layer)
 
-- Handlers are methods on `*App`: `func (a *App) name(w http.ResponseWriter, r *http.Request)`.
+- Handlers are methods on `*handler.Handler` (package `cmd/handler/`, split per
+  domain: pages.go, blocks.go, tags.go, finance.go, edges.go), wired on `App`
+  as `handle *handler.Handler` and called via `a.handle.X`.
+  `func (h *Handler) name(w http.ResponseWriter, r *http.Request)`.
 - Router in `cmd/routes.go`: route groups with comments like `// public page`,
   `// authorized page`, `// block routes`, blank lines separating method groups.
 - `handleNOP` is a skeleton stub: route shapes are declared first as NOP, then
