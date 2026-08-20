@@ -25,7 +25,7 @@ func (h *Handler) RenderLogin(w http.ResponseWriter, r *http.Request) {
 	pages.Login().Render(r.Context(), w)
 }
 
-func (h *Handler) PageFragment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RenderPageFragment(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	page, err := h.Service.Page.GetById(r.Context(), id)
@@ -103,7 +103,7 @@ func (h *Handler) PageFragment(w http.ResponseWriter, r *http.Request) {
 	modules.PageView(page.Title, page.ID.String(), blocks, tags, backlinks, pageMap, balances, txByPocket).Render(r.Context(), w)
 }
 
-func (h *Handler) PocketsFragment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RenderPocketsFragment(w http.ResponseWriter, r *http.Request) {
 	pockets, err := h.Service.Pocket.GetBalances(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -119,7 +119,7 @@ func (h *Handler) PocketsFragment(w http.ResponseWriter, r *http.Request) {
 	pages.PocketView(pockets, summary).Render(r.Context(), w)
 }
 
-func (h *Handler) TransactionsFragment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RenderTransactionsFragment(w http.ResponseWriter, r *http.Request) {
 	pocketQuery := r.URL.Query().Get("pocket")
 	fromQuery := r.URL.Query().Get("from")
 	toQuery := r.URL.Query().Get("to")
@@ -181,7 +181,7 @@ func (h *Handler) TransactionsFragment(w http.ResponseWriter, r *http.Request) {
 	pages.TransactionView(transactions, tags, pockets).Render(r.Context(), w)
 }
 
-func (h *Handler) TrashFragment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RenderTrashFragment(w http.ResponseWriter, r *http.Request) {
 	pockets, err := h.Service.Pocket.GetDeleted(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -197,7 +197,7 @@ func (h *Handler) TrashFragment(w http.ResponseWriter, r *http.Request) {
 	pages.TrashView(pockets, transactions).Render(r.Context(), w)
 }
 
-func (h *Handler) TagPagesFragment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RenderTagPagesFragment(w http.ResponseWriter, r *http.Request) {
 	tagId := chi.URLParam(r, "id")
 	nameQuery := r.URL.Query().Get("name")
 

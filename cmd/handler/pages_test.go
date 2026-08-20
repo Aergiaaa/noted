@@ -266,7 +266,7 @@ func TestHandlePageFragmentDeleteButton(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 	w := httptest.NewRecorder()
 
-	h.PageFragment(w, req)
+	h.RenderPageFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -393,7 +393,7 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 		w := httptest.NewRecorder()
 
-		h.PageFragment(w, req)
+		h.RenderPageFragment(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", w.Code)
@@ -411,7 +411,7 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 		w := httptest.NewRecorder()
 
-		h.PageFragment(w, req)
+		h.RenderPageFragment(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", w.Code)
@@ -447,7 +447,7 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 		w := httptest.NewRecorder()
 
-		h.PageFragment(w, req)
+		h.RenderPageFragment(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", w.Code)
@@ -467,7 +467,7 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 		w := httptest.NewRecorder()
 
-		h.PageFragment(w, req)
+		h.RenderPageFragment(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("expected 500, got %d", w.Code)
@@ -483,7 +483,7 @@ func TestHandlePageFragmentFinance(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/pages/0197f1a0-0000-0000-0000-000000000001/fragment", nil)
 		w := httptest.NewRecorder()
 
-		h.PageFragment(w, req)
+		h.RenderPageFragment(w, req)
 
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("expected 500, got %d", w.Code)

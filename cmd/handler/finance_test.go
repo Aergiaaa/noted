@@ -193,7 +193,7 @@ func TestHandleTrashFragment(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
 	w := httptest.NewRecorder()
 
-	h.TrashFragment(w, req)
+	h.RenderTrashFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -214,7 +214,7 @@ func TestHandleTrashFragmentPocketError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
 	w := httptest.NewRecorder()
 
-	h.TrashFragment(w, req)
+	h.RenderTrashFragment(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -230,7 +230,7 @@ func TestHandleTrashFragmentTransactionError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/trash", nil)
 	w := httptest.NewRecorder()
 
-	h.TrashFragment(w, req)
+	h.RenderTrashFragment(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -250,7 +250,7 @@ func TestHandleTransactionsFragmentWithFilters(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?pocket=0197f1a0-0000-0000-0000-000000000001&from=2026-08-01&to=2026-08-15", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -284,7 +284,7 @@ func TestHandleTransactionsFragmentWithoutFilters(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -305,7 +305,7 @@ func TestHandleTransactionsFragmentBadDate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=banana", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -322,7 +322,7 @@ func TestHandleTransactionsFragmentServiceError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -363,7 +363,7 @@ func TestHandleTransactionsFragmentRendersTags(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -396,7 +396,7 @@ func TestHandleTransactionsFragmentTagsError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/transactions?from=2026-08-01", nil)
 	w := httptest.NewRecorder()
 
-	h.TransactionsFragment(w, req)
+	h.RenderTransactionsFragment(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -421,7 +421,7 @@ func TestHandlePocketsFragmentSummary(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/pockets", nil)
 	w := httptest.NewRecorder()
 
-	h.PocketsFragment(w, req)
+	h.RenderPocketsFragment(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -445,7 +445,7 @@ func TestHandlePocketsFragmentSummaryError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/fin/pockets", nil)
 	w := httptest.NewRecorder()
 
-	h.PocketsFragment(w, req)
+	h.RenderPocketsFragment(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)

@@ -109,15 +109,15 @@ func (a *App) routes() http.Handler {
 
 		// page fragment
 		s.Route("/pages", func(s chi.Router) {
-			s.Get("/{id}/fragment", a.handle.PageFragment)
+			s.Get("/{id}/fragment", a.handle.RenderPageFragment)
 		})
 
 		// finance fragments
 		s.Route("/fin", func(s chi.Router) {
-			s.Get("/pockets", a.handle.PocketsFragment)
-			s.Get("/transactions", a.handle.TransactionsFragment)
-			s.Get("/trash", a.handle.TrashFragment)
-			s.Get("/tags/{id}/pages", a.handle.TagPagesFragment)
+			s.Get("/pockets", a.handle.RenderPocketsFragment)
+			s.Get("/transactions", a.handle.RenderTransactionsFragment)
+			s.Get("/trash", a.handle.RenderTrashFragment)
+			s.Get("/tags/{id}/pages", a.handle.RenderTagPagesFragment)
 		})
 	})
 
