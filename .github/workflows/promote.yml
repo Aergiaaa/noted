@@ -1,4 +1,5 @@
-# Auto-opens a feat/* → staging PR once CI is green on that branch.
+# Auto-opens a work-branch → staging PR once CI is green on that branch.
+# Work-branch prefixes (see DEVELOPMENT.md): feat/fix/ci/chore/docs/refactor/test.
 # NOTE: workflow_run always executes the file as it exists on the DEFAULT
 # branch (main), not on the feat branch — fixes to THIS file only take
 # effect after they are released to main (verified live, Sep 2026).
@@ -20,7 +21,7 @@ permissions:
 
 jobs:
   auto-pr:
-    if: github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'feat/')
+    if: github.event.workflow_run.conclusion == 'success' && (startsWith(github.event.workflow_run.head_branch, 'feat/') || startsWith(github.event.workflow_run.head_branch, 'fix/') || startsWith(github.event.workflow_run.head_branch, 'ci/') || startsWith(github.event.workflow_run.head_branch, 'chore/') || startsWith(github.event.workflow_run.head_branch, 'docs/') || startsWith(github.event.workflow_run.head_branch, 'refactor/') || startsWith(github.event.workflow_run.head_branch, 'test/'))
     runs-on: ubuntu-latest
     steps:
       - name: Open PR to staging if none exists
