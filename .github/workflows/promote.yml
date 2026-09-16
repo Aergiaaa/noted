@@ -1,4 +1,7 @@
 # Auto-opens a feat/* → staging PR once CI is green on that branch.
+# NOTE: workflow_run always executes the file as it exists on the DEFAULT
+# branch (main), not on the feat branch — fixes to THIS file only take
+# effect after they are released to main (verified live, Sep 2026).
 # staging is the integration line; main stays manual (stable releases via
 # `make release`, i.e. a staging → main PR after soak).
 # NOTE: PRs opened with GITHUB_TOKEN do not retrigger CI themselves — the
