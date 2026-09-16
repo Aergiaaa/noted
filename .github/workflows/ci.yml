@@ -12,10 +12,13 @@ jobs:
   back:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
+          # go.sum lives in back/, not the repo root — without this the
+          # cache step warns "Dependencies file is not found".
+          cache-dependency-path: back/go.sum
       - name: vet + build
         working-directory: back
         run: |
@@ -32,7 +35,7 @@ jobs:
   front:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
