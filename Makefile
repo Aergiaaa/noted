@@ -33,11 +33,12 @@ test-cover-back:
 test-cover-front:
 	cd front && bunx --bun vitest run --coverage
 
-# Local equivalent of the promote workflow: merge the current feat/* branch
-# into staging, but only after the 100% gates pass.
+# Local equivalent of the promote workflow: merge the current work branch
+# (feat|fix|ci|chore|docs|refactor|test/*, see DEVELOPMENT.md) into staging,
+# but only after the 100% gates pass.
 promote: test-cover
 	@branch=$$(git branch --show-current); \
-	case "$$branch" in feat/*) ;; *) echo "promote only runs on feat/* (on $$branch)"; exit 1;; esac; \
+	case "$$branch" in feat/*|fix/*|ci/*|chore/*|docs/*|refactor/*|test/*) ;; *) echo "promote only runs on work branches (feat|fix|ci|chore|docs|refactor|test)/* (on $$branch)"; exit 1;; esac; \
 	git checkout staging && git merge --no-ff "$$branch" -m "Promote $$branch to staging (gates green, 100% coverage)"
 
 # Stable releases stay manual: merge soaked staging into main.
