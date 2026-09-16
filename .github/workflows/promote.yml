@@ -25,8 +25,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          if [ "$(gh pr list --head "$BRANCH" --base staging --json number --jq 'length')" -eq 0 ]; then
-            gh pr create --head "$BRANCH" --base staging \
+          # --repo: this job has no checkout, so gh cannot infer the repo
+          # from git context (without it the list fails and the branch
+          # silently falls into the else leg).
+          existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base staging --json number --jq 'length')
+          if [ "$existing" -eq 0 ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base staging \
               --title "Promote $BRANCH to staging" \
               --body "CI green at 100% coverage on $BRANCH. Merge to staging; main stays manual for stable releases."
           else
