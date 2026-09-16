@@ -1,0 +1,18 @@
+docs/
+
+# Secrets / local state (never commit)
+.env
+.data/
+
+# SQLite artifacts
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Coverage / test output
+coverage/
+test-results/
+
+# Go build artifacts (binaries land here via `go build ./...`)
+/back/server

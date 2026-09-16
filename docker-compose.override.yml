@@ -1,0 +1,31 @@
+# Dev overrides: live reload, local SQLite bind, plain HTTP.
+# Applied automatically by `docker compose up` (without --profile prod).
+# NOTE: for local iteration prefer `make dev` (no containers needed).
+services:
+  api:
+    build:
+      context: ./back
+      target: build
+    entrypoint: go
+    command: ["run", "./cmd/server"]
+    working_dir: /src
+    volumes:
+      - ./back:/src
+      - ./.data:/data
+    environment:
+      - APP_ENV=dev
+      - DATA_PATH=/data/noted.db
+      - CGO_ENABLED=0
+    ports:
+      - "8080:8080"
+
+  web:
+    image: oven/bun:1
+    working_dir: /app
+    command: bun run dev --host 0.0.0.0 --port 5173
+    volumes:
+      - ./front:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api

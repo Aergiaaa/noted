@@ -1,0 +1,34 @@
+# Auto-opens a feat/* → staging PR once CI is green on that branch.
+# staging is the integration line; main stays manual (stable releases via
+# `make release`, i.e. a staging → main PR after soak).
+# NOTE: PRs opened with GITHUB_TOKEN do not retrigger CI themselves — the
+# branch's own push-run is the green evidence. Protect `staging` with the
+# `ci` status check so a stale branch can't merge (see repo settings).
+name: promote
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  auto-pr:
+    if: github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'feat/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open PR to staging if none exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "$(gh pr list --head "$BRANCH" --base staging --json number --jq 'length')" -eq 0 ]; then
+            gh pr create --head "$BRANCH" --base staging \
+              --title "Promote $BRANCH to staging" \
+              --body "CI green at 100% coverage on $BRANCH. Merge to staging; main stays manual for stable releases."
+          else
+            echo "PR already open for $BRANCH"
+          fi

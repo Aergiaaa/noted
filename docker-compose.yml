@@ -1,0 +1,70 @@
+# Prod compose. Dev overrides live in docker-compose.override.yml
+# (applied automatically by `docker compose up`).
+# Prod with TLS: docker compose --profile prod up -d
+services:
+  api:
+    build: ./back
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - noted-data:/data
+    networks:
+      - noted-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+  web:
+    build: ./front
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - noted-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+  # Optional prod TLS terminator (Caddy auto-HTTPS → web:80).
+  proxy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - noted-certs:/data
+      - noted-certs:/config
+    depends_on:
+      - web
+    networks:
+      - noted-net
+    profiles:
+      - prod
+
+networks:
+  noted-net:
+    driver: bridge
+
+volumes:
+  noted-data:
+  noted-backups:
+  noted-certs:

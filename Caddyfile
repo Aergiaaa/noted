@@ -1,0 +1,5 @@
+# F1: Caddyfile placeholder. Prod TLS config lands in F12.
+# {$APP_ORIGIN_HOST} must be set via .env / environment in F12.
+:80 {
+	reverse_proxy web:80
+}
