@@ -9,6 +9,11 @@ services:
     entrypoint: go
     command: ["run", "./cmd/server"]
     working_dir: /src
+    # Reset the prod hardening for the dev loop: /tmp is mounted noexec
+    # (go run must fork/exec its binary) and the rootfs is read-only
+    # (GOCACHE must be writable). Prod keeps both - it runs a static binary.
+    read_only: false
+    tmpfs: !reset []
     volumes:
       - ./back:/src
       - ./.data:/data
@@ -23,6 +28,17 @@ services:
     image: oven/bun:1
     working_dir: /app
     command: bun run dev --host 0.0.0.0 --port 5173
+    # Prod healthcheck probes nginx on :80; the dev image ships only bun
+    # (no wget) and Vite listens on :5173.
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - 'const r = await fetch("http://localhost:5173/"); if (!r.ok) process.exit(1)'
+      interval: 15s
+      timeout: 5s
+      retries: 3
     volumes:
       - ./front:/app
     ports:

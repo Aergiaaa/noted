@@ -9,8 +9,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"noted/internal/db"
 )
 
 // --- /healthz ---
@@ -176,6 +180,12 @@ func TestNewServer_wiresAddrHandlerAndTimeout(t *testing.T) {
 
 // --- run ---
 
+// testConfig gives run() an isolated temp DB so tests never touch .data/.
+func testConfig(t *testing.T, addr string) Config {
+	t.Helper()
+	return Config{Addr: addr, DataPath: filepath.Join(t.TempDir(), "noted.db")}
+}
+
 func waitForHealthz(t *testing.T, addr string) {
 	t.Helper()
 	url := fmt.Sprintf("http://%s/healthz", addr)
@@ -195,7 +205,7 @@ func waitForHealthz(t *testing.T, addr string) {
 }
 
 func TestRun_gracefulShutdownOnCancel(t *testing.T) {
-	cfg := Config{Addr: "127.0.0.1:18081"}
+	cfg := testConfig(t, "127.0.0.1:18081")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -223,7 +233,7 @@ func TestRun_bindError_returned(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 
-	cfg := Config{Addr: ln.Addr().String()}
+	cfg := testConfig(t, ln.Addr().String())
 	if err := run(context.Background(), cfg); err == nil {
 		t.Fatal("run with occupied addr returned nil, want bind error")
 	}
@@ -235,7 +245,7 @@ func TestRun_shutdownTimeout_returned(t *testing.T) {
 	defer func() { shutdownTimeout = old }()
 
 	// Distinct port per test.
-	cfg := Config{Addr: "127.0.0.1:18082"}
+	cfg := testConfig(t, "127.0.0.1:18082")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -264,5 +274,55 @@ func TestRun_shutdownTimeout_returned(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("run did not return after cancel")
+	}
+}
+
+func TestRun_dbOpenError_returned(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(base, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Addr: "127.0.0.1:18083", DataPath: filepath.Join(base, "noted.db")}
+
+	err := run(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("run with unopenable DATA_PATH returned nil, want db error")
+	}
+	if !strings.Contains(err.Error(), "db:") {
+		t.Fatalf("error = %v, want db: prefix", err)
+	}
+}
+
+func TestRun_boot_migratesDataFile(t *testing.T) {
+	cfg := testConfig(t, "127.0.0.1:18084")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- run(ctx, cfg) }()
+	waitForHealthz(t, cfg.Addr)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not shut down after cancel")
+	}
+
+	h, err := db.Open(cfg.DataPath)
+	if err != nil {
+		t.Fatalf("reopen migrated db: %v", err)
+	}
+	defer func() { _ = h.Close() }()
+
+	var version int
+	if err := h.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 1 {
+		t.Fatalf("user_version = %d, want 1 (boot migration ran)", version)
 	}
 }
