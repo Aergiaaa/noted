@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,10 +12,12 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"noted/internal/db"
 )
 
 // Config holds env-driven settings. See .env.example / DEPLOYMENT.md.
-// F1 only reads them; later features (auth, DB) will use them.
+// DataPath is opened (and migrated) by run(); auth uses the rest in F4.
 type Config struct {
 	AppEnv          string
 	AppOrigin       string
@@ -74,9 +77,15 @@ func newServer(cfg Config) *http.Server {
 var shutdownTimeout = 30 * time.Second
 
 // run serves until ctx is cancelled or SIGINT/SIGTERM arrives, then shuts
-// down gracefully. Startup (bind) and shutdown errors are returned so the
-// caller — and tests — can observe them.
+// down gracefully. Startup (DB + bind) and shutdown errors are returned so
+// the caller — and tests — can observe them.
 func run(ctx context.Context, cfg Config) error {
+	database, err := db.Open(cfg.DataPath)
+	if err != nil {
+		return fmt.Errorf("db: %w", err)
+	}
+	defer func() { _ = database.Close() }()
+
 	srv := newServer(cfg)
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
