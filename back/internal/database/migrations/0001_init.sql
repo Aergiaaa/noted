@@ -1,6 +1,6 @@
 -- 0001_init.sql - full MVP schema (DATABASE.md).
 -- Pragmas (WAL, busy_timeout, foreign_keys, synchronous) live in the
--- connection DSN (internal/db/db.go), not here: sqlc parses this file.
+-- connection DSN (internal/database/db.go), not here: sqlc parses this file.
 
 CREATE TABLE notes (
     id         TEXT PRIMARY KEY,

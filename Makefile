@@ -1,12 +1,14 @@
 .PHONY: dev test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup
 
 # Local iteration: Go api :8080 + Vite :5173 (no containers needed).
-# DATA_PATH is absolute: the server runs from back/, but the SQLite file
-# belongs in the repo-root .data/ this target creates (and .gitignore hides).
+# DB_PATH is absolute: the server runs from back/, but the SQLite file
+# belongs in the repo-root .db/ this target creates (and .gitignore hides).
+# Teardown kills only the two background jobs - never `kill 0`: bash 5.3
+# (this system's /bin/sh) segfaults on a self group-kill inside a trap.
 dev:
-	mkdir -p .data
-	trap 'kill 0' INT TERM EXIT; \
-	(cd back && CGO_ENABLED=0 DATA_PATH=$(CURDIR)/.data/noted.db go run ./cmd/server) & \
+	mkdir -p .db
+	trap 'kill $$(jobs -p) 2>/dev/null || true' INT TERM EXIT; \
+	(cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server) & \
 	(cd front && bun run dev) & \
 	wait
 
@@ -23,7 +25,7 @@ test-front:
 # Coverage gates: both suites must hold 100% or the target fails.
 # Backend excludes main.go's `func main` (thin boot entrypoint, only
 # exercisable by running the real binary) and sqlc output under
-# internal/db/generated (TESTING.md: generated code is never tested);
+# internal/database/generated (TESTING.md: generated code is never tested);
 # every other function must be 100%.
 # Frontend excludes src/main.tsx (createRoot entrypoint) and enforces
 # 100% lines/functions/branches/statements via vitest thresholds.
@@ -55,7 +57,7 @@ sqlc:
 
 # Verify migrations apply cleanly (wired in F2).
 migrate-check:
-	cd back && CGO_ENABLED=0 go test ./internal/db -run '^TestMigrate_freshDb_appliesCleanAndIsIdempotent$$' -count=1 -v
+	cd back && CGO_ENABLED=0 go test ./internal/database -run '^TestMigrate_freshDb_appliesCleanAndIsIdempotent$$' -count=1 -v
 
 compose-up:
 	docker compose up --build

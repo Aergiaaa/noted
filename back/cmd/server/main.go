@@ -2,27 +2,20 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/go-chi/chi/v5"
-
-	"noted/internal/db"
+	"noted/cmd/server/handler"
+	"noted/internal/database"
 )
 
 // Config holds env-driven settings. See .env.example / DEPLOYMENT.md.
-// DataPath is opened (and migrated) by run(); auth uses the rest in F4.
+// DBPath is opened (and migrated) by run(); auth uses the rest in F4.
 type Config struct {
 	AppEnv          string
 	AppOrigin       string
 	TZ              string
-	DataPath        string
+	DBPath          string
 	CurrencyDefault string
 	SetupToken      string
 	TOTPEncKey      string
@@ -30,87 +23,32 @@ type Config struct {
 	Addr            string
 }
 
-func configFromEnv() Config {
-	return Config{
-		AppEnv:          envOr("APP_ENV", "dev"),
-		AppOrigin:       envOr("APP_ORIGIN", "http://localhost:5173"),
-		TZ:              envOr("TZ", "UTC"),
-		DataPath:        envOr("DATA_PATH", "./.data/noted.db"),
-		CurrencyDefault: envOr("CURRENCY_DEFAULT", "USD"),
-		SetupToken:      os.Getenv("SETUP_TOKEN"),
-		TOTPEncKey:      os.Getenv("TOTP_ENC_KEY"),
-		TrustedProxies:  os.Getenv("TRUSTED_PROXIES"),
-		Addr:            envOr("ADDR", ":8080"),
-	}
+// app carries the server's wiring (config + handler layer today; db and
+// services in later features) so run() and the router share one receiver
+// instead of passing Config through every call. Server lifecycle lives in
+// server.go, routes in router.go; handlers live in the handler package,
+// one file per endpoint.
+type app struct {
+	conf    Config
+	handler *handler.Handler
 }
 
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-// NewRouter builds the HTTP router. F1: only GET /healthz (no auth).
-func NewRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	return r
-}
-
-// newServer wires timeouts + handler in one place so run() and tests
-// share the same constructor.
-func newServer(cfg Config) *http.Server {
-	return &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           NewRouter(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-}
-
-// shutdownTimeout bounds graceful shutdown. Package var (not const) so tests
-// can force the timeout-error branch without waiting the full 30s.
-var shutdownTimeout = 30 * time.Second
-
-// run serves until ctx is cancelled or SIGINT/SIGTERM arrives, then shuts
-// down gracefully. Startup (DB + bind) and shutdown errors are returned so
-// the caller — and tests — can observe them.
-func run(ctx context.Context, cfg Config) error {
-	database, err := db.Open(cfg.DataPath)
+// run opens (and migrates) the database, then serves until ctx is cancelled
+// or SIGINT/SIGTERM arrives, shutting down gracefully. Startup (DB + bind)
+// and shutdown errors are returned so the caller — and tests — can observe
+// them.
+func (a *app) run(ctx context.Context) error {
+	db, err := database.Open(a.conf.DBPath)
 	if err != nil {
-		return fmt.Errorf("db: %w", err)
+		return fmt.Errorf("error opening db: %w", err)
 	}
-	defer func() { _ = database.Close() }()
+	defer dbCloseWithErr(db)
 
-	srv := newServer(cfg)
-
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	errCh := make(chan error, 1)
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		sctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := srv.Shutdown(sctx); err != nil {
-			return err
-		}
-		return <-errCh
+	if err := a.serve(ctx); err != nil {
+		return fmt.Errorf("error serving app: %w", err)
 	}
+
+	return nil
 }
 
 // main is a thin entrypoint by design: all logic lives in run() so tests
@@ -118,7 +56,46 @@ func run(ctx context.Context, cfg Config) error {
 // coverage gate (see Makefile test-cover-back) — it can only be exercised
 // by booting the real binary.
 func main() {
-	if err := run(context.Background(), configFromEnv()); err != nil {
+	conf := newConfigFromEnv()
+	h := handler.New()
+
+	a := newApp(conf, h)
+
+	ctx := context.Background()
+	if err := a.run(ctx); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func newApp(conf Config, h *handler.Handler) *app {
+	return &app{
+		conf:    conf,
+		handler: h,
+	}
+}
+
+func newConfigFromEnv() Config {
+	return Config{
+		AppEnv:          getEnv("APP_ENV", "dev"),
+		AppOrigin:       getEnv("APP_ORIGIN", "http://localhost:5173"),
+		TZ:              getEnv("TZ", "UTC"),
+		DBPath:          getEnv("DB_PATH", "./.db/noted.db"),
+		CurrencyDefault: getEnv("CURRENCY_DEFAULT", "USD"),
+		SetupToken:      getEnv("SETUP_TOKEN", ""),
+		TOTPEncKey:      getEnv("TOTP_ENC_KEY", ""),
+		TrustedProxies:  getEnv("TRUSTED_PROXIES", ""),
+		Addr:            getEnv("ADDR", ":8080"),
+	}
+}
+
+// dbCloser is the Close half of *sql.DB, extracted as an interface so tests
+// can stub the error branch (sql.DB.Close does not fail on demand).
+type dbCloser interface{ Close() error }
+
+// dbCloseWithErr closes the database, logging — not returning — a close
+// error: by the time the defer runs, run()'s result is already decided.
+func dbCloseWithErr(db dbCloser) {
+	if err := db.Close(); err != nil {
+		log.Printf("error closing db: %v", err)
 	}
 }

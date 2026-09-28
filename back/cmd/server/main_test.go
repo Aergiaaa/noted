@@ -1,137 +1,62 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"noted/internal/db"
+	"noted/cmd/server/handler"
+	"noted/internal/database"
 )
 
-// --- /healthz ---
+// --- getEnv / newConfigFromEnv ---
 
-func TestHealthz_returns200OkTrue(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	rec := httptest.NewRecorder()
+func TestGetEnv(t *testing.T) {
+	const KEY = "NOTED_TEST_GETENV"
 
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	var body map[string]bool
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if !body["ok"] {
-		t.Fatalf("body = %v, want {ok:true}", body)
-	}
-}
-
-func TestHealthz_contentTypeAndExactBody(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
-		t.Fatalf("Content-Type = %q, want %q", ct, "application/json")
-	}
-	if got, want := rec.Body.String(), "{\"ok\":true}\n"; got != want {
-		t.Fatalf("body = %q, want %q", got, want)
-	}
-}
-
-func TestHealthz_wrongMethod_returns405(t *testing.T) {
-	for _, method := range []string{
-		http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
-	} {
-		t.Run(method, func(t *testing.T) {
-			req := httptest.NewRequest(method, "/healthz", nil)
-			rec := httptest.NewRecorder()
-
-			NewRouter().ServeHTTP(rec, req)
-
-			if rec.Code != http.StatusMethodNotAllowed {
-				t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
-			}
-		})
-	}
-}
-
-func TestHealthz_unknownRoute_returns404(t *testing.T) {
-	for _, path := range []string{"/nope", "/healthz/", "/api/healthz"} {
-		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			rec := httptest.NewRecorder()
-
-			NewRouter().ServeHTTP(rec, req)
-
-			if rec.Code != http.StatusNotFound {
-				t.Fatalf("GET %s status = %d, want %d", path, rec.Code, http.StatusNotFound)
-			}
-		})
-	}
-}
-
-func TestHealthz_queryParams_ignored(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/healthz?foo=bar", nil)
-	rec := httptest.NewRecorder()
-
-	NewRouter().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-}
-
-// --- envOr / configFromEnv ---
-
-func TestEnvOr(t *testing.T) {
-	const key = "NOTED_TEST_ENVOR"
-
-	if err := os.Unsetenv(key); err != nil {
+	if err := os.Unsetenv(KEY); err != nil {
 		t.Fatal(err)
 	}
-	if got := envOr(key, "fallback"); got != "fallback" {
+	if got := getEnv(KEY, "fallback"); got != "fallback" {
 		t.Fatalf("unset: got %q, want %q", got, "fallback")
 	}
 
-	t.Setenv(key, "")
-	if got := envOr(key, "fallback"); got != "fallback" {
+	t.Setenv(KEY, "")
+	if got := getEnv(KEY, "fallback"); got != "fallback" {
 		t.Fatalf("empty: got %q, want %q", got, "fallback")
 	}
 
-	t.Setenv(key, "value")
-	if got := envOr(key, "fallback"); got != "value" {
+	t.Setenv(KEY, "value")
+	if got := getEnv(KEY, "fallback"); got != "value" {
 		t.Fatalf("set: got %q, want %q", got, "value")
 	}
 }
 
-func TestConfigFromEnv_defaults(t *testing.T) {
+func TestNewConfigFromEnv_defaults(t *testing.T) {
 	// Empty string forces the fallback branch regardless of ambient env.
 	for _, k := range []string{
-		"APP_ENV", "APP_ORIGIN", "TZ", "DATA_PATH",
+		"APP_ENV", "APP_ORIGIN", "TZ", "DB_PATH",
 		"CURRENCY_DEFAULT", "SETUP_TOKEN", "TOTP_ENC_KEY",
 		"TRUSTED_PROXIES", "ADDR",
 	} {
 		t.Setenv(k, "")
 	}
 
-	cfg := configFromEnv()
+	cfg := newConfigFromEnv()
 
 	want := Config{
 		AppEnv: "dev", AppOrigin: "http://localhost:5173", TZ: "UTC",
-		DataPath: "./.data/noted.db", CurrencyDefault: "USD",
+		DBPath: "./.db/noted.db", CurrencyDefault: "USD",
 		SetupToken: "", TOTPEncKey: "", TrustedProxies: "", Addr: ":8080",
 	}
 	if cfg != want {
@@ -139,21 +64,21 @@ func TestConfigFromEnv_defaults(t *testing.T) {
 	}
 }
 
-func TestConfigFromEnv_overrides(t *testing.T) {
+func TestNewConfigFromEnv_overrides(t *testing.T) {
 	t.Setenv("APP_ENV", "prod")
 	t.Setenv("APP_ORIGIN", "https://noted.example.com")
 	t.Setenv("TZ", "Europe/Berlin")
-	t.Setenv("DATA_PATH", "/data/noted.db")
+	t.Setenv("DB_PATH", "/data/noted.db")
 	t.Setenv("CURRENCY_DEFAULT", "EUR")
 	t.Setenv("SETUP_TOKEN", "setup-123")
 	t.Setenv("TOTP_ENC_KEY", "enc-456")
 	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
 	t.Setenv("ADDR", "127.0.0.1:9090")
 
-	cfg := configFromEnv()
+	cfg := newConfigFromEnv()
 
 	if cfg.AppEnv != "prod" || cfg.AppOrigin != "https://noted.example.com" ||
-		cfg.TZ != "Europe/Berlin" || cfg.DataPath != "/data/noted.db" ||
+		cfg.TZ != "Europe/Berlin" || cfg.DBPath != "/data/noted.db" ||
 		cfg.CurrencyDefault != "EUR" || cfg.SetupToken != "setup-123" ||
 		cfg.TOTPEncKey != "enc-456" || cfg.TrustedProxies != "10.0.0.0/8" ||
 		cfg.Addr != "127.0.0.1:9090" {
@@ -161,29 +86,31 @@ func TestConfigFromEnv_overrides(t *testing.T) {
 	}
 }
 
-// --- newServer ---
-
-func TestNewServer_wiresAddrHandlerAndTimeout(t *testing.T) {
-	cfg := Config{Addr: "127.0.0.1:8080"}
-	srv := newServer(cfg)
-
-	if srv.Addr != cfg.Addr {
-		t.Fatalf("Addr = %q, want %q", srv.Addr, cfg.Addr)
-	}
-	if srv.Handler == nil {
-		t.Fatal("Handler is nil")
-	}
-	if srv.ReadHeaderTimeout != 5*time.Second {
-		t.Fatalf("ReadHeaderTimeout = %v, want 5s", srv.ReadHeaderTimeout)
-	}
-}
-
 // --- run ---
 
-// testConfig gives run() an isolated temp DB so tests never touch .data/.
+// testConfig gives run() an isolated temp DB so tests never touch .db/.
 func testConfig(t *testing.T, addr string) Config {
 	t.Helper()
-	return Config{Addr: addr, DataPath: filepath.Join(t.TempDir(), "noted.db")}
+	return Config{Addr: addr, DBPath: filepath.Join(t.TempDir(), "noted.db")}
+}
+
+// newTestApp wires a fresh handler layer so tests never repeat New().
+func newTestApp(cfg Config) *app {
+	return newApp(cfg, handler.New())
+}
+
+// freeAddr returns a 127.0.0.1 host:port that was free a moment ago, so
+// tests don't collide on fixed ports (they stay serial anyway: they swap
+// package-level shutdownTimeout / log output).
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+	return addr
 }
 
 func waitForHealthz(t *testing.T, addr string) {
@@ -205,12 +132,12 @@ func waitForHealthz(t *testing.T, addr string) {
 }
 
 func TestRun_gracefulShutdownOnCancel(t *testing.T) {
-	cfg := testConfig(t, "127.0.0.1:18081")
+	cfg := testConfig(t, freeAddr(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- run(ctx, cfg) }()
+	go func() { errCh <- newTestApp(cfg).run(ctx) }()
 
 	waitForHealthz(t, cfg.Addr)
 	cancel()
@@ -234,23 +161,22 @@ func TestRun_bindError_returned(t *testing.T) {
 	defer func() { _ = ln.Close() }()
 
 	cfg := testConfig(t, ln.Addr().String())
-	if err := run(context.Background(), cfg); err == nil {
+	if err := newTestApp(cfg).run(context.Background()); err == nil {
 		t.Fatal("run with occupied addr returned nil, want bind error")
 	}
 }
 
 func TestRun_shutdownTimeout_returned(t *testing.T) {
 	old := shutdownTimeout
-	shutdownTimeout = 300 * time.Millisecond // fail fast, don't wait 30s
+	shutdownTimeout = 300 * time.Millisecond // fail fast, don't wait 25s
 	defer func() { shutdownTimeout = old }()
 
-	// Distinct port per test.
-	cfg := testConfig(t, "127.0.0.1:18082")
+	cfg := testConfig(t, freeAddr(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- run(ctx, cfg) }()
+	go func() { errCh <- newTestApp(cfg).run(ctx) }()
 
 	waitForHealthz(t, cfg.Addr)
 
@@ -282,24 +208,24 @@ func TestRun_dbOpenError_returned(t *testing.T) {
 	if err := os.WriteFile(base, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{Addr: "127.0.0.1:18083", DataPath: filepath.Join(base, "noted.db")}
+	cfg := Config{Addr: freeAddr(t), DBPath: filepath.Join(base, "noted.db")}
 
-	err := run(context.Background(), cfg)
+	err := newTestApp(cfg).run(context.Background())
 	if err == nil {
-		t.Fatal("run with unopenable DATA_PATH returned nil, want db error")
+		t.Fatal("run with unopenable DB_PATH returned nil, want db error")
 	}
-	if !strings.Contains(err.Error(), "db:") {
-		t.Fatalf("error = %v, want db: prefix", err)
+	if !strings.Contains(err.Error(), "error opening db:") {
+		t.Fatalf("error = %v, want \"error opening db:\" wrap", err)
 	}
 }
 
 func TestRun_boot_migratesDataFile(t *testing.T) {
-	cfg := testConfig(t, "127.0.0.1:18084")
+	cfg := testConfig(t, freeAddr(t))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- run(ctx, cfg) }()
+	go func() { errCh <- newTestApp(cfg).run(ctx) }()
 	waitForHealthz(t, cfg.Addr)
 	cancel()
 
@@ -312,7 +238,7 @@ func TestRun_boot_migratesDataFile(t *testing.T) {
 		t.Fatal("run did not shut down after cancel")
 	}
 
-	h, err := db.Open(cfg.DataPath)
+	h, err := database.Open(cfg.DBPath)
 	if err != nil {
 		t.Fatalf("reopen migrated db: %v", err)
 	}
@@ -324,5 +250,37 @@ func TestRun_boot_migratesDataFile(t *testing.T) {
 	}
 	if version != 1 {
 		t.Fatalf("user_version = %d, want 1 (boot migration ran)", version)
+	}
+}
+
+// --- dbCloseWithErr ---
+
+type stubCloser struct{ err error }
+
+func (s *stubCloser) Close() error { return s.err }
+
+func TestDBCloseWithErr_logsOnCloseError(t *testing.T) {
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	dbCloseWithErr(&stubCloser{err: errors.New("boom")})
+
+	if got := buf.String(); !strings.Contains(got, "error closing db: boom") {
+		t.Fatalf("log = %q, want close error line", got)
+	}
+}
+
+func TestDBCloseWithErr_silentOnSuccess(t *testing.T) {
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	dbCloseWithErr(&stubCloser{})
+
+	if buf.Len() != 0 {
+		t.Fatalf("log = %q, want silent", buf.String())
 	}
 }

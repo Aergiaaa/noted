@@ -1,7 +1,7 @@
-// Package db owns the SQLite connection: pragmas, file permissions, and the
+// Package database owns the SQLite connection: pragmas, file permissions, and the
 // embedded migration runner. Services take sqlc's *generated.Queries built
 // from a handle opened here; nothing else opens connections.
-package db
+package database
 
 import (
 	"database/sql"
@@ -16,15 +16,15 @@ import (
 )
 
 // driverName is a var rather than a const so tests can force sql.Open's
-// unknown-driver error branch (same trick as main.go's shutdownTimeout).
+// unknown-driver error branch (same trick as server.go's shutdownTimeout).
 var driverName = "sqlite"
 
-// dirPerm/filePerm: only the owner may reach the database or its directory.
-// MkdirAll applies dirPerm on creation; an existing DB file is tightened to
-// filePerm in prepare.
+// DIR_PERM/FILE_PERM: only the owner may reach the database or its directory.
+// MkdirAll applies DIR_PERM on creation; an existing DB file is tightened to
+// FILE_PERM in prepare.
 const (
-	dirPerm  os.FileMode = 0o700
-	filePerm os.FileMode = 0o600
+	DIR_PERM  os.FileMode = 0o700
+	FILE_PERM os.FileMode = 0o600
 )
 
 // dsn builds the SQLite data source name. Pragmas are per-connection DSN
@@ -64,19 +64,19 @@ func Open(path string) (*sql.DB, error) {
 
 // prepare makes the parent directory (0700 when created) and the database
 // file (0600), tightening a pre-existing file. Pre-existing directories are
-// left as the operator made them: DATA_PATH may point into a volume that is
+// left as the operator made them: DB_PATH may point into a volume that is
 // already correct, and chmod-ing it could fail on a read-only mount.
 func prepare(path string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
+	if err := os.MkdirAll(dir, DIR_PERM); err != nil {
 		return fmt.Errorf("db dir %s: %w", dir, err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL, filePerm)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL, FILE_PERM)
 	switch {
 	case err == nil:
 		err = f.Close()
 	case errors.Is(err, fs.ErrExist):
-		err = os.Chmod(path, filePerm)
+		err = os.Chmod(path, FILE_PERM)
 	}
 	if err != nil {
 		return fmt.Errorf("db file %s: %w", path, err)
