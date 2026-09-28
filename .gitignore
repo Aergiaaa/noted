@@ -2,7 +2,7 @@ docs/
 
 # Secrets / local state (never commit)
 .env
-.data/
+.db/
 
 # SQLite artifacts
 *.db

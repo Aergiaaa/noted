@@ -9,25 +9,46 @@ services:
     entrypoint: go
     command: ["run", "./cmd/server"]
     working_dir: /src
-    # Reset the prod hardening for the dev loop: /tmp is mounted noexec
-    # (go run must fork/exec its binary) and the rootfs is read-only
-    # (GOCACHE must be writable). Prod keeps both - it runs a static binary.
+    # Reset the prod hardening for the dev loop: prod mounts /tmp noexec
+    # (go run must fork/exec its binary) and keeps the rootfs read-only.
+    # Here /tmp comes from the dev-tmp volume instead. Prod runs a static
+    # binary and needs neither.
     read_only: false
     tmpfs: !reset []
+    # Run as the host user: root inside the container would create
+    # root-owned files in the bind mounts (.db, front/node_modules/.vite)
+    # and break the host-side `make dev` loop.
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./back:/src
-      - ./.data:/data
+      - ./.db:/data
+      # Persist go build cache across container recreation (image /tmp is
+      # 1777, so the named volume inherits it and stays uid-writable).
+      - dev-tmp:/tmp
     environment:
       - APP_ENV=dev
-      - DATA_PATH=/data/noted.db
+      - DB_PATH=/data/noted.db
       - CGO_ENABLED=0
+      # golang image bakes GOPATH=/go (module cache, world-accessible);
+      # a non-root uid has no writable HOME, so point the build cache at /tmp.
+      - GOCACHE=/tmp/gocache
+      - HOME=/tmp
     ports:
       - "8080:8080"
 
   web:
     image: oven/bun:1
+    # Drop the inherited prod build (./front -> nginx): with both build and
+    # image set, `--build` would tag the nginx app AS oven/bun:1 and break
+    # the dev command below (bun: not found).
+    build: !reset null
     working_dir: /app
     command: bun run dev --host 0.0.0.0 --port 5173
+    # Same host-uid rule as api: vite writes node_modules/.vite in the
+    # ./front bind mount, and root-owned cache breaks host-side `bun`.
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - HOME=/tmp
     # Prod healthcheck probes nginx on :80; the dev image ships only bun
     # (no wget) and Vite listens on :5173.
     healthcheck:
@@ -45,3 +66,6 @@ services:
       - "5173:5173"
     depends_on:
       - api
+
+volumes:
+  dev-tmp:
