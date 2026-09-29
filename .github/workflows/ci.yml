@@ -24,13 +24,13 @@ jobs:
         run: |
           go vet ./...
           CGO_ENABLED=0 go build ./...
-      - name: test with 100% gate (excl. main.go func main entrypoint)
+      - name: test with 100% gate (excl. main.go func main + sqlc generated)
         working-directory: back
         run: |
           mkdir -p coverage
           CGO_ENABLED=0 go test -count=1 -coverprofile=coverage/cover.out ./...
           CGO_ENABLED=0 go tool cover -func=coverage/cover.out | tee coverage/func.txt
-          awk '$1 == "total:" { next } $1 ~ /main\.go:/ && $2 == "main" { next } $3 != "100.0%" { bad=1; print "BELOW 100%: " $0 } END { exit bad }' coverage/func.txt
+          awk '$1 == "total:" { next } $1 ~ /generated\// { next } $1 ~ /main\.go:/ && $2 == "main" { next } $3 != "100.0%" { bad=1; print "BELOW 100%: " $0 } END { exit bad }' coverage/func.txt
 
   front:
     runs-on: ubuntu-latest

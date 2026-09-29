@@ -11,6 +11,7 @@ services:
     networks:
       - noted-net
     healthcheck:
+      # Hardcoded :8080 — must match ADDR in .env.
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
       interval: 10s
       timeout: 3s
