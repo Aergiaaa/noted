@@ -16,7 +16,10 @@ import (
 var shutdownTimeout = 25 * time.Second
 
 // newServer wires the handler + timeouts in one place so serve() and tests
-// share the same constructor.
+// share the same constructor. ReadTimeout/WriteTimeout cap the whole
+// request/response, not just the headers: a future import (large upload)
+// or export (long stream) endpoint must lift them or the transfer gets
+// cut off mid-flight — healthz and the F2 routes stay well inside 10s/30s.
 func (a *app) newServer() *http.Server {
 	return &http.Server{
 		Addr:              a.conf.Addr,

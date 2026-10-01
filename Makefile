@@ -3,14 +3,23 @@
 # Local iteration: Go api :8080 + Vite :5173 (no containers needed).
 # DB_PATH is absolute: the server runs from back/, but the SQLite file
 # belongs in the repo-root .db/ this target creates (and .gitignore hides).
-# Teardown kills only the two background jobs - never `kill 0`: bash 5.3
-# (this system's /bin/sh) segfaults on a self group-kill inside a trap.
+# Teardown walks each background job's whole process tree before killing
+# the job: `go run` and `bun run dev` are wrappers, and killing only them
+# orphans the server/vite children (which keep :8080/:5173 bound until
+# killed by hand). Never `kill 0`: bash 5.3 (this system's /bin/sh)
+# segfaults on a self group-kill inside a trap. The first job to end takes
+# the whole target down with its status (`wait -n`, bash >= 4.3): a
+# crashed server must not leave vite running in a hanging recipe.
 dev:
 	mkdir -p .db
-	trap 'kill $$(jobs -p) 2>/dev/null || true' INT TERM EXIT; \
+	killtree() { for c in $$(pgrep -P $$1 2>/dev/null); do killtree $$c; done; kill -TERM $$1 2>/dev/null || true; }; \
+	cleanup() { for j in $$(jobs -p); do killtree $$j; done; wait; }; \
+	trap 'cleanup; exit 0' INT TERM; \
+	trap cleanup EXIT; \
 	(cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server) & \
 	(cd front && bun run dev) & \
-	wait
+	if [ -n "$${BASH_VERSION:-}" ]; then wait -n; else wait; fi; status=$$?; \
+	cleanup; exit $$status
 
 # Full test suite: backend (go test) + frontend (vitest).
 test: test-back test-front
@@ -59,6 +68,13 @@ sqlc:
 migrate-check:
 	cd back && CGO_ENABLED=0 go test ./internal/database -run '^TestMigrate_freshDb_appliesCleanAndIsIdempotent$$' -count=1 -v
 
+# UID/GID: bash and zsh never export their same-named readonly shell
+# variables, so compose's "${UID:-1000}" interpolation always fell back
+# to 1000 and containers chowned bind-mounted files to the wrong user on
+# any host with a different uid. Export the real host ids here (direct
+# `docker compose up` invocations still get the 1000 fallback).
+compose-up: export UID := $(shell id -u)
+compose-up: export GID := $(shell id -g)
 compose-up:
 	docker compose up --build
 
