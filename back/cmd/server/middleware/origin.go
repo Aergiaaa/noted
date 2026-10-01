@@ -19,13 +19,19 @@ func OriginCheck(appOrigin string) func(http.Handler) http.Handler {
 	allow := strings.TrimSuffix(appOrigin, "/")
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isMutation(r.Method) && !requestOriginOK(r, allow) {
-				handler.WriteError(w, http.StatusForbidden, "forbidden origin", nil)
-				return
-			}
-			next.ServeHTTP(w, r)
+			originCheck(w, r, next, allow)
 		})
 	}
+}
+
+// originCheck is OriginCheck's handler body: reject a cross-site
+// mutation, otherwise pass the request on.
+func originCheck(w http.ResponseWriter, r *http.Request, next http.Handler, allow string) {
+	if isMutation(r.Method) && !requestOriginOK(r, allow) {
+		handler.WriteError(w, http.StatusForbidden, "forbidden origin", nil)
+		return
+	}
+	next.ServeHTTP(w, r)
 }
 
 func isMutation(method string) bool {

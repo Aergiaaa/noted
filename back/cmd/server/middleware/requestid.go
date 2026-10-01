@@ -20,13 +20,19 @@ const maxRequestIDLen = 64
 // it on the response.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := validRequestID(r.Header.Get(RequestIDHeader))
-		if id == "" {
-			id = rand.Text()
-		}
-		w.Header().Set(RequestIDHeader, id)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+		requestID(w, r, next)
 	})
+}
+
+// requestID is RequestID's handler body: validate or mint the id, echo it
+// on the response, and pass the enriched request down the chain.
+func requestID(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	id := validRequestID(r.Header.Get(RequestIDHeader))
+	if id == "" {
+		id = rand.Text()
+	}
+	w.Header().Set(RequestIDHeader, id)
+	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
 }
 
 // validRequestID returns s when it is a plain token (alphanumeric, "-",
