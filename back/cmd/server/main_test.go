@@ -86,6 +86,22 @@ func TestNewConfigFromEnv_overrides(t *testing.T) {
 	}
 }
 
+func TestNewConfigFromEnv_staleDataPath_warns(t *testing.T) {
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	t.Setenv("DATA_PATH", "/data/old.db")
+	t.Setenv("DB_PATH", "")
+
+	_ = newConfigFromEnv()
+
+	if got := buf.String(); !strings.Contains(got, "DATA_PATH was renamed to DB_PATH") {
+		t.Fatalf("log = %q, want stale DATA_PATH warning", got)
+	}
+}
+
 // --- run ---
 
 // testConfig gives run() an isolated temp DB so tests never touch .db/.

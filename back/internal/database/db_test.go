@@ -161,18 +161,77 @@ func TestOpen_unknownDriver_error(t *testing.T) {
 	}
 }
 
-func TestOpen_pathIsDirectory_pingError(t *testing.T) {
+func TestOpen_pathIsDirectory_dbFileError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "asdir")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// prepare tightens the existing entry to 0600; restore so t.TempDir
-	// cleanup can walk it.
-	t.Cleanup(func() { _ = os.Chmod(path, 0o700) })
 
 	_, err := Open(path)
 	if err == nil {
-		t.Fatal("Open on a directory returned nil, want ping error")
+		t.Fatal("Open on a directory returned nil, want db file error")
+	}
+	if !strings.Contains(err.Error(), "db file") {
+		t.Fatalf("error = %v, want db file error", err)
+	}
+	// prepare must not chmod it: 0600 would drop the x bit, and t.TempDir
+	// cleanup could no longer walk the directory.
+	wantPerm(t, path, 0o755)
+}
+
+func TestOpen_danglingSymlink_statError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noted.db")
+	if err := os.Symlink(filepath.Join(dir, "missing.db"), path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := Open(path)
+	if err == nil {
+		t.Fatal("Open on a dangling symlink returned nil, want db file error")
+	}
+	if !strings.Contains(err.Error(), "db file") {
+		t.Fatalf("error = %v, want db file error", err)
+	}
+}
+
+func TestOpen_symlinkToDb_tightensTarget(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real.db")
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "noted.db")
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	h, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open through symlink: %v", err)
+	}
+	t.Cleanup(func() { _ = h.Close() })
+
+	wantPerm(t, target, 0o600)
+	if v := userVersion(t, h); v != 1 {
+		t.Fatalf("user_version = %d, want 1", v)
+	}
+}
+
+func TestOpen_notADatabase_pingError(t *testing.T) {
+	// A regular file passes prepare (tightened to 0600), but SQLite
+	// rejects its content when the DSN pragmas run on connect.
+	path := freshPath(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("not a sqlite database"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Open(path)
+	if err == nil {
+		t.Fatal("Open on a non-database file returned nil, want ping error")
 	}
 	if !strings.Contains(err.Error(), "ping") {
 		t.Fatalf("error = %v, want ping error", err)

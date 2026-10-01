@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -87,7 +87,9 @@ func loadMigrations(fsys fs.FS, dir string) ([]migration, error) {
 		}
 		// Atoi cannot fail here: the regexp guarantees four ASCII digits.
 		v, _ := strconv.Atoi(g[1])
-		body, err := fs.ReadFile(fsys, filepath.Join(dir, e.Name()))
+		// path.Join (not filepath.Join): io/fs paths are always
+		// slash-separated, including on Windows.
+		body, err := fs.ReadFile(fsys, path.Join(dir, e.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", e.Name(), err)
 		}
