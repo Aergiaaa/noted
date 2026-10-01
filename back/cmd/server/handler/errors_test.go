@@ -44,28 +44,22 @@ func TestWriteError_envelopeShapePerStatus(t *testing.T) {
 			if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 				t.Fatalf("Content-Type = %q, want application/json", ct)
 			}
-			var body struct {
-				Error struct {
-					Code    string            `json:"code"`
-					Message string            `json:"message"`
-					Fields  map[string]string `json:"fields"`
-				} `json:"error"`
-			}
+			var body apiError
 			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body.Error.Code != tt.code {
-				t.Errorf("code = %q, want %q", body.Error.Code, tt.code)
+			if body.Code != tt.code {
+				t.Errorf("code = %q, want %q", body.Code, tt.code)
 			}
-			if body.Error.Message != tt.wantMsg {
-				t.Errorf("message = %q, want %q", body.Error.Message, tt.wantMsg)
+			if body.Message != tt.wantMsg {
+				t.Errorf("message = %q, want %q", body.Message, tt.wantMsg)
 			}
 			if tt.fields == nil {
-				if body.Error.Fields != nil {
-					t.Errorf("fields = %v, want omitted", body.Error.Fields)
+				if body.Fields != nil {
+					t.Errorf("fields = %v, want omitted", body.Fields)
 				}
-			} else if !reflect.DeepEqual(body.Error.Fields, tt.fields) {
-				t.Errorf("fields = %v, want %v", body.Error.Fields, tt.fields)
+			} else if !reflect.DeepEqual(body.Fields, tt.fields) {
+				t.Errorf("fields = %v, want %v", body.Fields, tt.fields)
 			}
 		})
 	}
@@ -76,12 +70,12 @@ func TestWriteError_explicitMessageOverridesDefault(t *testing.T) {
 
 	WriteError(rec, http.StatusForbidden, "forbidden origin", nil)
 
-	var body map[string]map[string]any
+	var body apiError
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if got := body["error"]["message"]; got != "forbidden origin" {
-		t.Fatalf("message = %v, want %q", got, "forbidden origin")
+	if body.Message != "forbidden origin" {
+		t.Fatalf("message = %v, want %q", body.Message, "forbidden origin")
 	}
 }
 
@@ -159,15 +153,11 @@ func assertErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) 
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	var env struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
+	var env apiError
 	if err := json.Unmarshal(body, &env); err != nil {
 		t.Fatalf("decode body %q: %v", body, err)
 	}
-	if env.Error.Code != want {
-		t.Fatalf("code = %q, want %q (body %q)", env.Error.Code, want, body)
+	if env.Code != want {
+		t.Fatalf("code = %q, want %q (body %q)", env.Code, want, body)
 	}
 }
