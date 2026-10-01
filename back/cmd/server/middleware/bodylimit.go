@@ -11,7 +11,13 @@ const MaxBodyBytes = 1 << 20
 // on read, so a GET/HEAD with no body is unaffected.
 func BodyLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
-		next.ServeHTTP(w, r)
+		bodyLimit(w, r, next)
 	})
+}
+
+// bodyLimit is BodyLimit's handler body: install the cap, then pass the
+// request on.
+func bodyLimit(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+	next.ServeHTTP(w, r)
 }

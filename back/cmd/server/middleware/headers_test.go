@@ -9,10 +9,10 @@ import (
 // wantHeaders mirrors SECURITY.md's "HTTP headers" table line for line;
 // a doc change must fail here until both agree.
 var wantHeaders = map[string]string{
-	"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-	"X-Content-Type-Options":  "nosniff",
-	"Referrer-Policy":         "no-referrer",
-	"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
+	"Content-Security-Policy":      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+	"X-Content-Type-Options":       "nosniff",
+	"Referrer-Policy":              "no-referrer",
+	"Permissions-Policy":           "camera=(), microphone=(), geolocation=()",
 	"Cross-Origin-Opener-Policy":   "same-origin",
 	"Cross-Origin-Resource-Policy": "same-origin",
 	"X-Frame-Options":              "DENY",

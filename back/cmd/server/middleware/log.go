@@ -12,17 +12,23 @@ import (
 // (SECURITY.md "Abuse / session / logging").
 func AccessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		sw := &statusWriter{ResponseWriter: w}
-		next.ServeHTTP(sw, r)
-
-		status := sw.status
-		if status == 0 {
-			status = http.StatusOK // handler returned without writing
-		}
-		log.Printf("request rid=%s method=%s uri=%s status=%d dur=%s",
-			RequestIDFrom(r), r.Method, r.URL.RequestURI(), status, time.Since(start))
+		accessLog(w, r, next)
 	})
+}
+
+// accessLog is AccessLog's handler body: run the handler, then emit the
+// one line per request.
+func accessLog(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	start := time.Now()
+	sw := &statusWriter{ResponseWriter: w}
+	next.ServeHTTP(sw, r)
+
+	status := sw.status
+	if status == 0 {
+		status = http.StatusOK // handler returned without writing
+	}
+	log.Printf("request rid=%s method=%s uri=%s status=%d dur=%s",
+		RequestIDFrom(r), r.Method, r.URL.RequestURI(), status, time.Since(start))
 }
 
 // statusWriter records the first status written so the log reports what

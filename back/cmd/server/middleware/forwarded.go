@@ -17,12 +17,20 @@ func Forwarded(trustedProxies string) func(http.Handler) http.Handler {
 	trusted := parseTrustedProxies(trustedProxies)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip, secure := clientIPAndProto(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Forwarded-Proto"), trusted)
-			ctx := context.WithValue(r.Context(), clientIPKey, ip)
-			ctx = context.WithValue(ctx, secureKey, secure)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			resolveForwarded(w, r, next, trusted)
 		})
 	}
+}
+
+// resolveForwarded is Forwarded's handler body: resolve the client IP
+// and scheme, stash both in the context, then pass the request on.
+func resolveForwarded(w http.ResponseWriter, r *http.Request, next http.Handler, trusted []*net.IPNet) {
+	ip, secure := clientIPAndProto(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Forwarded-Proto"), trusted)
+
+	ctx := context.WithValue(r.Context(), clientIPKey, ip)
+	ctx = context.WithValue(ctx, secureKey, secure)
+
+	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
 // parseTrustedProxies turns the env list into matchers. Unparsable
@@ -30,7 +38,7 @@ func Forwarded(trustedProxies string) func(http.Handler) http.Handler {
 // silently trusting something is not, and a typo must not go unnoticed.
 func parseTrustedProxies(csv string) []*net.IPNet {
 	var nets []*net.IPNet
-	for _, entry := range strings.Split(csv, ",") {
+	for entry := range strings.SplitSeq(csv, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue

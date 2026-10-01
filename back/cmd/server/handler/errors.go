@@ -6,15 +6,20 @@ import (
 	"net/http"
 )
 
-// apiError is the frozen error envelope (API.md): every non-2xx response
-// body is exactly {"error": {code, message, fields?}} so front/lib/api.ts
-// (F5) can parse one shape for all statuses.
+// Error is the inner object of the frozen error envelope (API.md): every
+// non-2xx response body is exactly {"error": {code, message, fields?}} so
+// front/lib/api.ts (F5) can parse one shape for all statuses.
+type Error struct {
+	Code    string            `json:"code"`
+	Message string            `json:"message"`
+	Fields  map[string]string `json:"fields,omitempty"`
+}
+
+// apiError wraps Error under the envelope's "error" key — the wire shape
+// is a single object with one nested member, so the struct stays two
+// lines and callers build one literal.
 type apiError struct {
-	Error struct {
-		Code    string            `json:"code"`
-		Message string            `json:"message"`
-		Fields  map[string]string `json:"fields,omitempty"`
-	} `json:"error"`
+	Error `json:"error"`
 }
 
 // errorCodes maps every status the API may return to its frozen code and
@@ -29,7 +34,7 @@ var errorCodes = map[int]struct{ code, message string }{
 	http.StatusConflict:              {"conflict", "conflict"},
 	http.StatusRequestEntityTooLarge: {"payload_too_large", "request body too large"},
 	http.StatusTooManyRequests:       {"rate_limited", "too many requests"},
-	http.StatusInternalServerError: {"internal_error", "internal server error"},
+	http.StatusInternalServerError:   {"internal_error", "internal server error"},
 }
 
 // WriteError writes the error envelope for status. An empty message picks
@@ -44,10 +49,7 @@ func WriteError(w http.ResponseWriter, status int, message string, fields map[st
 		message = e.message
 	}
 
-	var body apiError
-	body.Error.Code = e.code
-	body.Error.Message = message
-	body.Error.Fields = fields
+	body := apiError{Error: Error{Code: e.code, Message: message, Fields: fields}}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
