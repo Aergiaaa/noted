@@ -63,9 +63,13 @@ func Open(path string) (*sql.DB, error) {
 }
 
 // prepare makes the parent directory (0700 when created) and the database
-// file (0600), tightening a pre-existing file. Pre-existing directories are
-// left as the operator made them: DB_PATH may point into a volume that is
-// already correct, and chmod-ing it could fail on a read-only mount.
+// file (0600), tightening a pre-existing regular file. Pre-existing
+// directories are left as the operator made them: DB_PATH may point into a
+// volume that is already correct, and chmod-ing it could fail on a
+// read-only mount. Anything else at path (a directory, a symlink to one,
+// a device node) is an error rather than a chmod target: tightening a
+// directory to 0600 drops its x bit, so the failed boot would still be
+// broken after the operator fixes the config.
 func prepare(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, DIR_PERM); err != nil {
@@ -76,10 +80,25 @@ func prepare(path string) error {
 	case err == nil:
 		err = f.Close()
 	case errors.Is(err, fs.ErrExist):
-		err = os.Chmod(path, FILE_PERM)
+		err = tightenExisting(path)
 	}
 	if err != nil {
 		return fmt.Errorf("db file %s: %w", path, err)
 	}
 	return nil
+}
+
+// tightenExisting stats an already-present DB_PATH and tightens it to
+// FILE_PERM only when it is a regular file. os.Stat follows symlinks, so
+// a symlink to the database tightens the real file — the one SQLite
+// opens — while a symlink to a directory fails the check untouched.
+func tightenExisting(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file (%s)", fi.Mode())
+	}
+	return os.Chmod(path, FILE_PERM)
 }

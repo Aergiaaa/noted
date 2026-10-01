@@ -75,6 +75,7 @@ func newApp(conf Config, h *handler.Handler) *app {
 }
 
 func newConfigFromEnv() Config {
+	warnStaleDataPath()
 	return Config{
 		AppEnv:          getEnv("APP_ENV", "dev"),
 		AppOrigin:       getEnv("APP_ORIGIN", "http://localhost:5173"),
