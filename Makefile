@@ -56,9 +56,27 @@ promote: test-cover
 	case "$$branch" in feat/*|fix/*|ci/*|chore/*|docs/*|refactor/*|test/*) ;; *) echo "promote only runs on work branches (feat|fix|ci|chore|docs|refactor|test)/* (on $$branch)"; exit 1;; esac; \
 	git checkout staging && git merge --no-ff "$$branch" -m "Promote $$branch to staging (gates green, 100% coverage)"
 
-# Stable releases stay manual: merge soaked staging into main.
+# Stable releases stay manual (DEVELOPMENT.md) and must go through a PR:
+# the repo ruleset on main declines direct pushes (GH013 "Changes must be
+# made through a pull request", no bypass actors). Staging gets main merged
+# in first because the required status checks (back, front) run with strict
+# up-to-date, so the PR head has to contain main. Reuses an open staging →
+# main PR if one exists; idempotent to re-run if a step was interrupted.
 release:
-	git checkout main && git merge --no-ff staging -m "Release staging to main (stable)"
+	@command -v gh >/dev/null 2>&1 || { echo "release: gh CLI is required"; exit 1; }
+	git fetch origin main staging
+	@dirty=$$(git status --porcelain); if [ -n "$$dirty" ]; then echo "release: working tree not clean:"; echo "$$dirty"; exit 1; fi
+	@if [ "$$(git rev-list --count origin/main..origin/staging)" -eq 0 ]; then echo "release: staging has nothing that main lacks"; exit 1; fi
+	git checkout staging && git pull --ff-only origin staging
+	git merge origin/main -m "Sync main into staging before release" && git push origin staging
+	git checkout main && git pull --ff-only origin main
+	@pr=$$(gh pr list --base main --head staging --state open --json url --jq '.[0].url'); \
+	[ -n "$$pr" ] || pr=$$(gh pr create --base main --head staging --title "Release staging to main (stable)" --body "Manual release of soaked staging (make release)."); \
+	echo "release: waiting for checks on $$pr"; \
+	gh pr checks "$$pr" --watch || exit 1; \
+	gh pr merge "$$pr" --merge
+	git pull --ff-only origin main
+	@echo "release: main is at $$(git rev-parse --short main)"
 
 # Regenerate sqlc queries (wired in F2).
 sqlc:
