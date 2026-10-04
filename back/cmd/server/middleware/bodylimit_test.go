@@ -32,7 +32,7 @@ func TestBodyLimit_overLimit_handlerGetsMaxBytesError(t *testing.T) {
 	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, readErr = io.ReadAll(r.Body)
 	})
-	payload := strings.Repeat("x", MaxBodyBytes+1)
+	payload := strings.Repeat("x", MAX_BODY_BYTES+1)
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(payload))
 
 	BodyLimit(next).ServeHTTP(httptest.NewRecorder(), req)

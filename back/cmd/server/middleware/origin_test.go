@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const testAppOrigin = "http://localhost:5173"
+const TEST_APP_ORIGIN = "http://localhost:5173"
 
 // serveOrigin runs OriginCheck around a stub endpoint that reports
 // whether the request was allowed through.
@@ -23,7 +23,7 @@ func serveOrigin(t *testing.T, method, uri string, mutate func(*http.Request)) (
 		mutate(req)
 	}
 	rec := httptest.NewRecorder()
-	OriginCheck(testAppOrigin)(next).ServeHTTP(rec, req)
+	OriginCheck(TEST_APP_ORIGIN)(next).ServeHTTP(rec, req)
 	return rec, passed
 }
 
@@ -66,7 +66,7 @@ func TestOriginCheck_mutationWithForeignOrigin_403(t *testing.T) {
 func TestOriginCheck_mutationWithTrustedOrigin_allowed(t *testing.T) {
 	// Configured APP_ORIGIN, and the request's own host (same-origin
 	// behind the dev/prod proxy).
-	for _, origin := range []string{testAppOrigin, "http://example.com"} {
+	for _, origin := range []string{TEST_APP_ORIGIN, "http://example.com"} {
 		t.Run(origin, func(t *testing.T) {
 			rec, passed := serveOrigin(t, http.MethodPost, "/api/notes", func(r *http.Request) {
 				r.Header.Set("Origin", origin)
@@ -92,7 +92,7 @@ func TestOriginCheck_mutationWithoutOriginOrReferer_allowed(t *testing.T) {
 func TestOriginCheck_refererCheckedWhenOriginMissing(t *testing.T) {
 	t.Run("trusted referer allowed", func(t *testing.T) {
 		_, passed := serveOrigin(t, http.MethodPost, "/api/notes", func(r *http.Request) {
-			r.Header.Set("Referer", testAppOrigin+"/notes")
+			r.Header.Set("Referer", TEST_APP_ORIGIN+"/notes")
 		})
 		if !passed {
 			t.Fatal("trusted referer rejected")
