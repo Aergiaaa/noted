@@ -56,6 +56,15 @@ func WriteError(w http.ResponseWriter, status int, message string, fields map[st
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+// WriteJSON writes the success body for status: one JSON object (API.md
+// success shapes). Errors have their own WriteError above so no caller
+// can invent a second failure format.
+func WriteJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 // DecodeJSON reads one JSON object from the request body into dst and
 // reports whether it succeeded. On failure it has already written the
 // envelope: 413 when middleware.BodyLimit tripped (MaxBytesReader), 400

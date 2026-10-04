@@ -20,8 +20,19 @@ DELETE
 FROM sessions
 WHERE id = ?;
 
+-- name: DeleteSessionByTokenHash :exec
+-- Logout: the cookie proves possession, so the hash alone addresses the row.
+DELETE
+FROM sessions
+WHERE token_hash = ?;
+
 -- name: DeleteExpiredSessions :exec
 -- Purge on login/periodically: absolute cap already passed.
 DELETE
 FROM sessions
 WHERE expires_at < ?;
+
+-- name: DeleteAllSessions :exec
+-- reset-auth revokes every session in one shot.
+DELETE
+FROM sessions;

@@ -4,6 +4,13 @@
 
 package generated
 
+type Enrollment struct {
+	ID         int64
+	TotpSecret string
+	EnrolledAt *string
+	UpdatedAt  string
+}
+
 type Event struct {
 	ID          string
 	Title       string

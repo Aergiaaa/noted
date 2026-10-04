@@ -31,23 +31,15 @@ func (q *Queries) CreateRecoveryCode(ctx context.Context, arg CreateRecoveryCode
 	return err
 }
 
-const getRecoveryCodeByHash = `-- name: GetRecoveryCodeByHash :one
-SELECT id, code_hash, used_at, created_at
+const deleteAllRecoveryCodes = `-- name: DeleteAllRecoveryCodes :exec
+DELETE
 FROM recovery_codes
-WHERE code_hash = ?
 `
 
-// Single-use recovery login: bcrypt hash is UNIQUE, lookup by hash.
-func (q *Queries) GetRecoveryCodeByHash(ctx context.Context, codeHash string) (RecoveryCode, error) {
-	row := q.db.QueryRowContext(ctx, getRecoveryCodeByHash, codeHash)
-	var i RecoveryCode
-	err := row.Scan(
-		&i.ID,
-		&i.CodeHash,
-		&i.UsedAt,
-		&i.CreatedAt,
-	)
-	return i, err
+// reset-auth clears the pool together with enrollment + sessions.
+func (q *Queries) DeleteAllRecoveryCodes(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllRecoveryCodes)
+	return err
 }
 
 const listUnusedRecoveryCodes = `-- name: ListUnusedRecoveryCodes :many
@@ -57,7 +49,7 @@ WHERE used_at IS NULL
 ORDER BY created_at, id
 `
 
-// Enroll shows N codes once; login marks them used one at a time.
+// Login scans the unused set (bcrypt hashes are salted, so no direct lookup).
 func (q *Queries) ListUnusedRecoveryCodes(ctx context.Context) ([]RecoveryCode, error) {
 	rows, err := q.db.QueryContext(ctx, listUnusedRecoveryCodes)
 	if err != nil {
@@ -86,10 +78,24 @@ func (q *Queries) ListUnusedRecoveryCodes(ctx context.Context) ([]RecoveryCode, 
 	return items, nil
 }
 
-const markRecoveryCodeUsed = `-- name: MarkRecoveryCodeUsed :exec
+const markAllRecoveryCodesUsed = `-- name: MarkAllRecoveryCodesUsed :exec
+UPDATE recovery_codes
+SET used_at = ?
+WHERE used_at IS NULL
+`
+
+// Rotation (POST /api/auth/recovery-codes) burns the whole unused pool
+// before fresh codes are minted, so a leaked code dies with its siblings.
+func (q *Queries) MarkAllRecoveryCodesUsed(ctx context.Context, usedAt *string) error {
+	_, err := q.db.ExecContext(ctx, markAllRecoveryCodesUsed, usedAt)
+	return err
+}
+
+const markRecoveryCodeUsed = `-- name: MarkRecoveryCodeUsed :execrows
 UPDATE recovery_codes
 SET used_at = ?
 WHERE id = ?
+  AND used_at IS NULL
 `
 
 type MarkRecoveryCodeUsedParams struct {
@@ -97,7 +103,12 @@ type MarkRecoveryCodeUsedParams struct {
 	ID     string
 }
 
-func (q *Queries) MarkRecoveryCodeUsed(ctx context.Context, arg MarkRecoveryCodeUsedParams) error {
-	_, err := q.db.ExecContext(ctx, markRecoveryCodeUsed, arg.UsedAt, arg.ID)
-	return err
+// Conditional burn: only a row still unused is marked, and the caller gets
+// the affected-row count so a racing double-use loses cleanly (0 rows).
+func (q *Queries) MarkRecoveryCodeUsed(ctx context.Context, arg MarkRecoveryCodeUsedParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markRecoveryCodeUsed, arg.UsedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
