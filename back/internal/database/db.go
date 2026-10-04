@@ -30,14 +30,19 @@ const (
 // dsn builds the SQLite data source name. Pragmas are per-connection DSN
 // params (not one-shot PRAGMA statements) so every pooled connection gets
 // them: WAL journal, 5s busy timeout for the single-writer setup, foreign
-// keys ON, NORMAL sync (DATABASE.md). The shorthand keys are validated by
-// the driver, so a typo fails loudly instead of being ignored.
+// keys ON, NORMAL sync (DATABASE.md). _txlock=immediate makes every BeginTx
+// issue BEGIN IMMEDIATE — the write lock is taken up front, so a
+// multi-statement write can never deadlock upgrading from a deferred read
+// transaction (the mode DATABASE.md documents for service-level writes).
+// The shorthand keys are validated by the driver, so a typo fails loudly
+// instead of being ignored.
 func dsn(path string) string {
 	q := url.Values{}
 	q.Set("_journal_mode", "WAL")
 	q.Set("_busy_timeout", "5000")
 	q.Set("_foreign_keys", "on")
 	q.Set("_synchronous", "normal")
+	q.Set("_txlock", "immediate")
 	return path + "?" + q.Encode()
 }
 

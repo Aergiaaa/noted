@@ -26,8 +26,8 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(ms) != 1 {
-		t.Fatalf("len = %d, want 1", len(ms))
+	if len(ms) != 2 {
+		t.Fatalf("len = %d, want 2", len(ms))
 	}
 	if ms[0].version != 1 || ms[0].name != "0001_init.sql" {
 		t.Fatalf("got %+v, want version 1 / 0001_init.sql", ms[0])
@@ -35,6 +35,25 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	if !strings.Contains(ms[0].body, "CREATE TABLE notes") {
 		t.Fatalf("body missing schema:\n%s", ms[0].body)
 	}
+	if ms[1].version != 2 || ms[1].name != "0002_auth.sql" {
+		t.Fatalf("got %+v, want version 2 / 0002_auth.sql", ms[1])
+	}
+	if !strings.Contains(ms[1].body, "CREATE TABLE enrollment") {
+		t.Fatalf("body missing schema:\n%s", ms[1].body)
+	}
+}
+
+// embeddedMigrationCount is what PRAGMA user_version must read on a fully
+// migrated DB — derived from the embedded set so adding a migration never
+// means editing every version assertion by hand.
+func embeddedMigrationCount(t *testing.T) int {
+	t.Helper()
+	ms, err := loadMigrations(migrationsFS, migrationsDir)
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+
+	return len(ms)
 }
 
 func TestLoadMigrations_missingDir_returned(t *testing.T) {
@@ -95,15 +114,15 @@ func TestMigrate_freshDb_appliesCleanAndIsIdempotent(t *testing.T) {
 	if err := Migrate(h); err != nil {
 		t.Fatalf("first Migrate: %v", err)
 	}
-	if v := userVersion(t, h); v != 1 {
-		t.Fatalf("user_version = %d, want 1", v)
+	if v, want := userVersion(t, h), embeddedMigrationCount(t); v != want {
+		t.Fatalf("user_version = %d, want %d", v, want)
 	}
 
 	if err := Migrate(h); err != nil {
 		t.Fatalf("second Migrate: %v", err)
 	}
-	if v := userVersion(t, h); v != 1 {
-		t.Fatalf("user_version after re-run = %d, want 1", v)
+	if v, want := userVersion(t, h), embeddedMigrationCount(t); v != want {
+		t.Fatalf("user_version after re-run = %d, want %d", v, want)
 	}
 }
 

@@ -1,4 +1,4 @@
-.PHONY: dev test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup
+.PHONY: dev test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
 
 # Local iteration: Go api :8080 + Vite :5173 (no containers needed).
 # DB_PATH is absolute: the server runs from back/, but the SQLite file
@@ -135,3 +135,17 @@ compose-down:
 # Nightly-style backup drill target (wired in F12).
 backup:
 	@echo "TODO(F12): VACUUM INTO + integrity_check"
+
+# F4 host-local enrollment: prints the ASCII QR + otpauth URI, verifies one
+# live 6-digit code, then persists the sealed secret + recovery pool once
+# (shown once, store offline). Extra flags via ARGS, e.g.
+# `make enroll ARGS='--qr /tmp/noted-qr.svg'`.
+enroll:
+	mkdir -p .db
+	cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server enroll $(ARGS)
+
+# Wipes enrollment, recovery codes and sessions so the host can re-arm.
+# --yes is passed deliberately: the CLI refuses a bare `reset-auth`.
+reset-auth:
+	mkdir -p .db
+	cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server reset-auth --yes

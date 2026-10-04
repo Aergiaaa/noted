@@ -33,6 +33,17 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 	return err
 }
 
+const deleteAllSessions = `-- name: DeleteAllSessions :exec
+DELETE
+FROM sessions
+`
+
+// reset-auth revokes every session in one shot.
+func (q *Queries) DeleteAllSessions(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllSessions)
+	return err
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
 DELETE
 FROM sessions
@@ -53,6 +64,18 @@ WHERE id = ?
 
 func (q *Queries) DeleteSession(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteSession, id)
+	return err
+}
+
+const deleteSessionByTokenHash = `-- name: DeleteSessionByTokenHash :exec
+DELETE
+FROM sessions
+WHERE token_hash = ?
+`
+
+// Logout: the cookie proves possession, so the hash alone addresses the row.
+func (q *Queries) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionByTokenHash, tokenHash)
 	return err
 }
 
