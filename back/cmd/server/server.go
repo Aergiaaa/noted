@@ -58,6 +58,7 @@ func listenCtxAndCh(server *http.Server, ctx context.Context, errCh chan error) 
 		if err := server.Shutdown(sctx); err != nil {
 			return err
 		}
+
 		log.Print("graceful shutdown complete")
 		return <-errCh
 	}
@@ -70,5 +71,6 @@ func listenAndServeWithErrCh(server *http.Server, errCh chan error) {
 		errCh <- err
 		return
 	}
+
 	errCh <- nil
 }

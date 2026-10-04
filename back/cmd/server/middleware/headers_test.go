@@ -18,7 +18,7 @@ var wantHeaders = map[string]string{
 	"X-Frame-Options":              "DENY",
 }
 
-const hstsValue = "max-age=63072000; includeSubDomains"
+const HSTS_VALUE = "max-age=63072000; includeSubDomains"
 
 func serveSecurity(next http.Handler, modify func(*http.Request)) *httptest.ResponseRecorder {
 	if next == nil {
@@ -58,8 +58,8 @@ func TestSecurityHeaders_noHSTSWithoutTrustedProxy(t *testing.T) {
 func TestSecurityHeaders_HSTSBehindTrustedHTTPProxy(t *testing.T) {
 	rec := serveSecurityTrusted("https")
 
-	if got := rec.Header().Get("Strict-Transport-Security"); got != hstsValue {
-		t.Fatalf("HSTS = %q, want %q", got, hstsValue)
+	if got := rec.Header().Get("Strict-Transport-Security"); got != HSTS_VALUE {
+		t.Fatalf("HSTS = %q, want %q", got, HSTS_VALUE)
 	}
 }
 
@@ -71,10 +71,10 @@ func TestSecurityHeaders_trustedPeerWithoutHTTPSEmitsNoHSTS(t *testing.T) {
 	}
 }
 
-// serveSecurityTrusted runs Forwarded(192.0.2.1 is trusted) + SecurityHeaders
+// serveSecurityTrusted runs Forwarded(TEST_PROXY_PEER is trusted) + SecurityHeaders
 // with the given X-Forwarded-Proto on a request from that proxy.
 func serveSecurityTrusted(xfp string) *httptest.ResponseRecorder {
-	chain := Forwarded("192.0.2.1")(SecurityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	chain := Forwarded(TEST_PROXY_PEER)(SecurityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set("X-Forwarded-Proto", xfp)
 	rec := httptest.NewRecorder()

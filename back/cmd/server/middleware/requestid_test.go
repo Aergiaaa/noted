@@ -18,12 +18,12 @@ func serveRequestID(t *testing.T, hdr string) (respHdr, ctxID string) {
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	if hdr != "" {
-		req.Header.Set(RequestIDHeader, hdr)
+		req.Header.Set(REQUEST_ID_HEADER, hdr)
 	}
 	rec := httptest.NewRecorder()
 	RequestID(next).ServeHTTP(rec, req)
 
-	return rec.Header().Get(RequestIDHeader), seen
+	return rec.Header().Get(REQUEST_ID_HEADER), seen
 }
 
 func TestRequestID_generatedWhenAbsentOrInvalid(t *testing.T) {

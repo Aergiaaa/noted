@@ -11,24 +11,37 @@ import (
 // query values beyond the URI — SECURITY.md bans logging secrets
 // (SECURITY.md "Abuse / session / logging").
 func AccessLog(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accessLog(w, r, next)
-	})
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			accessLog(w, r, next)
+		},
+	)
 }
 
 // accessLog is AccessLog's handler body: run the handler, then emit the
-// one line per request.
+// one line per request. The emit runs deferred so a re-panic (Recover's
+// truncated-response path) still logs the line for the request.
 func accessLog(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	start := time.Now()
-	sw := &statusWriter{ResponseWriter: w}
-	next.ServeHTTP(sw, r)
 
-	status := sw.status
-	if status == 0 {
-		status = http.StatusOK // handler returned without writing
+	sw := &statusWriter{
+		ResponseWriter: w,
 	}
+
+	defer logStatus(r, sw, start)
+
+	next.ServeHTTP(sw, r)
+}
+
+// i dont have any idea how to name it, can you name it better?
+func logStatus(r *http.Request, sw *statusWriter, start time.Time) {
+	stat := sw.status
+	if stat == 0 {
+		stat = http.StatusOK // handler returned without writing
+	}
+
 	log.Printf("request rid=%s method=%s uri=%s status=%d dur=%s",
-		RequestIDFrom(r), r.Method, r.URL.RequestURI(), status, time.Since(start))
+		RequestIDFrom(r), r.Method, r.URL.RequestURI(), stat, time.Since(start))
 }
 
 // statusWriter records the first status written so the log reports what
