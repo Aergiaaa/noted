@@ -48,13 +48,46 @@ test-cover-back:
 test-cover-front:
 	cd front && bunx --bun vitest run --coverage
 
-# Local equivalent of the promote workflow: merge the current work branch
-# (feat|fix|ci|chore|docs|refactor|test/*, see DEVELOPMENT.md) into staging,
-# but only after the 100% gates pass.
+# Local equivalent of the promote workflow: 100% gates, then push the
+# current work branch (feat|fix|ci|chore|docs|refactor|test/*, see
+# DEVELOPMENT.md) and wait for CI + the auto-promote PR to land on staging.
+# staging is ruleset-protected like main (PR required, strict back/front
+# checks, no bypass actors), so the old `checkout staging && merge` could
+# never be pushed — the branch push *is* the promote. Safe to re-run: a
+# branch already on staging exits early, an open staging PR is reused, and
+# a merge refused for staleness updates the branch and retries once.
 promote: test-cover
+	@command -v gh >/dev/null 2>&1 || { echo "promote: gh CLI is required"; exit 1; }
 	@branch=$$(git branch --show-current); \
 	case "$$branch" in feat/*|fix/*|ci/*|chore/*|docs/*|refactor/*|test/*) ;; *) echo "promote only runs on work branches (feat|fix|ci|chore|docs|refactor|test)/* (on $$branch)"; exit 1;; esac; \
-	git checkout staging && git merge --no-ff "$$branch" -m "Promote $$branch to staging (gates green, 100% coverage)"
+	git fetch origin staging || exit 1; \
+	if git merge-base --is-ancestor HEAD origin/staging; then echo "promote: $$branch is already on staging"; exit 0; fi; \
+	git push -u origin "$$branch" || exit 1; \
+	sha=$$(git rev-parse HEAD); \
+	echo "promote: waiting for CI on $$sha"; \
+	run=""; n=0; \
+	while [ -z "$$run" ] && [ $$n -lt 60 ]; do \
+		run=$$(gh run list --workflow ci --commit "$$sha" --limit 1 --json databaseId --jq '.[0].databaseId // empty'); \
+		n=$$((n + 1)); [ -n "$$run" ] || sleep 3; \
+	done; \
+	[ -n "$$run" ] || { echo "promote: no CI run appeared for $$sha"; exit 1; }; \
+	gh run watch "$$run" --exit-status --interval 10 || { echo "promote: CI failed on $$branch"; exit 1; }; \
+	pr=""; n=0; \
+	while [ -z "$$pr" ] && [ $$n -lt 60 ]; do \
+		pr=$$(gh pr list --head "$$branch" --base staging --state open --json number --jq '.[0].number // empty'); \
+		n=$$((n + 1)); [ -n "$$pr" ] || sleep 3; \
+	done; \
+	[ -n "$$pr" ] || { echo "promote: auto-promote opened no staging PR for $$branch"; exit 1; }; \
+	echo "promote: merging PR #$$pr"; \
+	gh pr checks "$$pr" --watch || exit 1; \
+	gh pr merge "$$pr" --merge || { \
+		echo "promote: merge refused — updating $$branch from staging"; \
+		gh pr update-branch "$$pr" || exit 1; \
+		gh pr checks "$$pr" --watch || exit 1; \
+		gh pr merge "$$pr" --merge || exit 1; \
+	}; \
+	git fetch origin staging:staging || exit 1; \
+	echo "promote: PR #$$pr merged; local staging synced"
 
 # Stable releases stay manual (DEVELOPMENT.md) and must go through a PR:
 # the repo ruleset on main declines direct pushes (GH013 "Changes must be
