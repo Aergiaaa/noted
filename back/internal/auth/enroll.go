@@ -34,6 +34,7 @@ func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string
 	if err != nil {
 		return nil, err
 	}
+
 	now := formatTime(s.now())
 	codes := generateRecoveryCodes(RECOVERY_CODE_COUNT)
 
@@ -41,6 +42,8 @@ func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string
 	if err != nil {
 		return nil, fmt.Errorf("begin: %w", err)
 	}
+	defer tx.Rollback()
+
 	q := s.q.WithTx(tx)
 	err = q.CreateEnrollment(ctx, generated.CreateEnrollmentParams{
 		TotpSecret: sealed,
@@ -48,16 +51,17 @@ func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string
 		UpdatedAt:  now,
 	})
 	if err != nil {
-		_ = tx.Rollback()
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return nil, ErrEnrolled
 		}
+
 		return nil, fmt.Errorf("insert enrollment: %w", err)
 	}
+
 	if err := insertRecoveryCodes(ctx, q, codes, now); err != nil {
-		_ = tx.Rollback()
 		return nil, err
 	}
+
 	return codes, tx.Commit()
 }
 
@@ -74,22 +78,25 @@ func (s *Service) RegenerateRecovery(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("begin: %w", err)
 	}
+	defer tx.Rollback()
+
 	q := s.q.WithTx(tx)
 	if _, err := q.GetEnrollment(ctx); err != nil {
-		_ = tx.Rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotEnrolled
 		}
+
 		return nil, fmt.Errorf("get enrollment: %w", err)
 	}
+
 	if err := q.MarkAllRecoveryCodesUsed(ctx, &now); err != nil {
-		_ = tx.Rollback()
 		return nil, fmt.Errorf("burn recovery codes: %w", err)
 	}
+
 	if err := insertRecoveryCodes(ctx, q, codes, now); err != nil {
-		_ = tx.Rollback()
 		return nil, err
 	}
+
 	return codes, tx.Commit()
 }
 
@@ -100,19 +107,21 @@ func (s *Service) ResetAuth(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
+	defer tx.Rollback()
+
 	q := s.q.WithTx(tx)
 	if err := q.ClearEnrollment(ctx); err != nil {
-		_ = tx.Rollback()
 		return fmt.Errorf("clear enrollment: %w", err)
 	}
+
 	if err := q.DeleteAllRecoveryCodes(ctx); err != nil {
-		_ = tx.Rollback()
 		return fmt.Errorf("clear recovery codes: %w", err)
 	}
+
 	if err := q.DeleteAllSessions(ctx); err != nil {
-		_ = tx.Rollback()
 		return fmt.Errorf("clear sessions: %w", err)
 	}
+
 	return tx.Commit()
 }
 
@@ -134,6 +143,7 @@ func insertRecoveryCodes(ctx context.Context, q *generated.Queries, codes []stri
 			return fmt.Errorf("insert recovery code: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -143,6 +153,7 @@ func generateRecoveryCodes(count int) []string {
 	for len(codes) < count {
 		codes = append(codes, newRecoveryCode())
 	}
+
 	return codes
 }
 
@@ -153,10 +164,12 @@ func newRecoveryCode() string {
 	for _, b := range randomBytes(RECOVERY_CODE_LEN * 5 / 8) {
 		v = v<<8 | uint64(b)
 	}
+
 	chars := make([]byte, RECOVERY_CODE_LEN)
 	for i := range chars {
 		chars[i] = CROCKFORD[(v>>uint(35-5*i))&31]
 	}
+
 	return string(chars[:4]) + "-" + string(chars[4:])
 }
 
@@ -164,23 +177,28 @@ func newRecoveryCode() string {
 // the separating hyphen — and returns the canonical 8-symbol form, or ""
 // when the input cannot be a recovery code at all.
 func normalizeRecoveryCode(code string) string {
-	clean := strings.Map(func(r rune) rune {
-		switch {
-		case r == '-' || r == ' ' || r == '\t':
-			return -1
-		case r >= 'a' && r <= 'z':
-			return r - 'a' + 'A'
-		default:
-			return r
-		}
-	}, code)
+	clean := strings.Map(recoveryRune, code)
+
 	if len(clean) != RECOVERY_CODE_LEN {
 		return ""
 	}
+
 	for _, r := range clean {
 		if !strings.ContainsRune(CROCKFORD, r) {
 			return ""
 		}
 	}
+
 	return clean
+}
+
+func recoveryRune(r rune) rune {
+	switch {
+	case r == '-' || r == ' ' || r == '\t':
+		return -1
+	case r >= 'a' && r <= 'z':
+		return r - 'a' + 'A'
+	default:
+		return r
+	}
 }

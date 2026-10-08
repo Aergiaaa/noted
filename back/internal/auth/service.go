@@ -74,7 +74,12 @@ type Service struct {
 // verbatim and parsed lazily: a server without TOTP_ENC_KEY still boots
 // (it just cannot enroll or decrypt), which keeps `make dev` working.
 func New(db *sql.DB, encKey string) *Service {
-	return &Service{db: db, q: generated.New(db), encKey: encKey, now: time.Now}
+	return &Service{
+		db:     db,
+		q:      generated.New(db),
+		encKey: encKey,
+		now:    time.Now,
+	}
 }
 
 // Enrolled reports whether `server enroll` has committed a secret.

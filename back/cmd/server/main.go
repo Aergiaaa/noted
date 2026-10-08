@@ -57,33 +57,6 @@ func (a *app) run(ctx context.Context) error {
 	return nil
 }
 
-// wire builds the auth service and the handler over an open database and
-// runs the auth housekeeping that belongs to boot: expired-session pruning
-// and the enrollment warning (SECURITY.md: first boot is `server enroll`).
-// Split from run() so tests can wire an existing handle directly.
-func (a *app) wire(db *sql.DB) {
-	a.auth = auth.New(db, a.conf.TOTPEncKey)
-	a.handler = handler.New(a.auth, a.conf.AppEnv == "prod")
-	a.bootAuth(context.Background())
-}
-
-// bootAuth prunes sessions whose expiry has passed and warns — loudly,
-// once — while the host has no TOTP enrollment: nobody can log in yet.
-// Failures log instead of blocking boot; a broken DB fails the first
-// request loudly anyway.
-func (a *app) bootAuth(ctx context.Context) {
-	if err := a.auth.PruneSessions(ctx); err != nil {
-		log.Printf("error pruning sessions: %v", err)
-	}
-	enrolled, err := a.auth.Enrolled(ctx)
-	switch {
-	case err != nil:
-		log.Printf("error checking enrollment: %v", err)
-	case !enrolled:
-		log.Printf("WARNING: not enrolled — run `server enroll` (make enroll) before anyone can log in")
-	}
-}
-
 // main is a thin entrypoint by design: config, then the host CLI (it
 // either handles the argv and exits, or falls through to serving), then
 // run() so tests can cover every branch. func main itself is excluded
@@ -117,6 +90,34 @@ func newConfigFromEnv() Config {
 		TOTPEncKey:      getEnv("TOTP_ENC_KEY", ""),
 		TrustedProxies:  getEnv("TRUSTED_PROXIES", ""),
 		Addr:            getEnv("ADDR", ":8080"),
+	}
+}
+
+// wire builds the auth service and the handler over an open database and
+// runs the auth housekeeping that belongs to boot: expired-session pruning
+// and the enrollment warning (SECURITY.md: first boot is `server enroll`).
+// Split from run() so tests can wire an existing handle directly.
+func (a *app) wire(db *sql.DB) {
+	a.auth = auth.New(db, a.conf.TOTPEncKey)
+
+	a.handler = handler.New(a.auth, a.conf.AppEnv == "prod")
+	a.bootAuth(context.Background())
+}
+
+// bootAuth prunes sessions whose expiry has passed and warns — loudly,
+// once — while the host has no TOTP enrollment: nobody can log in yet.
+// Failures log instead of blocking boot; a broken DB fails the first
+// request loudly anyway.
+func (a *app) bootAuth(ctx context.Context) {
+	if err := a.auth.PruneSessions(ctx); err != nil {
+		log.Printf("error pruning sessions: %v", err)
+	}
+	enrolled, err := a.auth.Enrolled(ctx)
+	switch {
+	case err != nil:
+		log.Printf("error checking enrollment: %v", err)
+	case !enrolled:
+		log.Printf("WARNING: not enrolled — run `server enroll` (make enroll) before anyone can log in")
 	}
 }
 

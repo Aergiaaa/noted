@@ -24,6 +24,7 @@ func (s *Service) Login(ctx context.Context, code string) (string, error) {
 	if isTOTPCode(code) {
 		return s.loginTOTP(ctx, code)
 	}
+
 	return s.loginRecovery(ctx, code)
 }
 
