@@ -15,7 +15,6 @@ FROM enrollment
 WHERE id = 1
 `
 
-// reset-auth wipes enrollment so `server enroll` can run again.
 func (q *Queries) ClearEnrollment(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, clearEnrollment)
 	return err
@@ -32,7 +31,6 @@ type CreateEnrollmentParams struct {
 	UpdatedAt  string
 }
 
-// Single-row upsert shape: id is always 1, PK rejects a second row.
 func (q *Queries) CreateEnrollment(ctx context.Context, arg CreateEnrollmentParams) error {
 	_, err := q.db.ExecContext(ctx, createEnrollment, arg.TotpSecret, arg.EnrolledAt, arg.UpdatedAt)
 	return err
@@ -44,7 +42,6 @@ FROM enrollment
 WHERE id = 1
 `
 
-// Row exists only between `server enroll` commit and `reset-auth`.
 func (q *Queries) GetEnrollment(ctx context.Context) (Enrollment, error) {
 	row := q.db.QueryRowContext(ctx, getEnrollment)
 	var i Enrollment

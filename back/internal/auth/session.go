@@ -17,8 +17,8 @@ import (
 	"noted/internal/database/generated"
 )
 
-// createSession mints a 32-byte opaque token, stores only its SHA-256, and
-// returns the token the handler puts in the cookie (SECURITY.md).
+// createSession stores only the token's SHA-256, so a DB leak never yields
+// a usable cookie.
 func (s *Service) createSession(ctx context.Context) (string, error) {
 	token := base64.RawURLEncoding.EncodeToString(randomBytes(32))
 	now := s.now()
@@ -35,18 +35,14 @@ func (s *Service) createSession(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// hashToken is the at-rest form of a session cookie: SHA-256 hex, so a DB
-// leak never yields a usable token.
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
 
-// Validate resolves a cookie token to its sliding expiry. Empty, unknown or
-// expired → ErrUnauthenticated. Otherwise last_seen is bumped and, when
-// less than SESSION_REFRESH_AT remains, expires_at is re-issued — clamped
-// to created_at + SESSION_ABSOLUTE_MAX so no request can extend forever
-// (SECURITY.md).
+// Validate slides expiry when less than SESSION_REFRESH_AT remains, clamped
+// to created_at + SESSION_ABSOLUTE_MAX so a session can never be extended
+// forever.
 func (s *Service) Validate(ctx context.Context, token string) (time.Time, error) {
 	if token == "" {
 		return time.Time{}, ErrUnauthenticated
@@ -90,7 +86,6 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 	return newExp, nil
 }
 
-// ValidateRequest is the guard's entry point: session cookie → Validate.
 func (s *Service) ValidateRequest(r *http.Request) (time.Time, error) {
 	c, err := r.Cookie(SESSION_COOKIE)
 	if err != nil {
@@ -99,9 +94,6 @@ func (s *Service) ValidateRequest(r *http.Request) (time.Time, error) {
 	return s.Validate(r.Context(), c.Value)
 }
 
-// Logout deletes the row behind token. A missing token or row is not an
-// error — the handler clears the cookie either way — but a failed delete is,
-// because the session would otherwise survive server-side.
 func (s *Service) Logout(ctx context.Context, token string) error {
 	if err := s.q.DeleteSessionByTokenHash(ctx, hashToken(token)); err != nil {
 		return fmt.Errorf("delete session: %w", err)
@@ -109,8 +101,8 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return nil
 }
 
-// PruneSessions removes rows whose expiry has passed. Called once at boot
-// so a long-down instance does not keep dead sessions around.
+// PruneSessions runs once at boot so a long-down instance does not keep
+// dead sessions around.
 func (s *Service) PruneSessions(ctx context.Context) error {
 	return s.q.DeleteExpiredSessions(ctx, formatTime(s.now()))
 }

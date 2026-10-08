@@ -14,21 +14,19 @@ import (
 )
 
 // CROCKFORD is Crockford base32 without I/L/O/U (unambiguous by eye):
-// 32 symbols = exactly 5 bits, so RECOVERY_CODE_LEN chars are drawn from
-// whole bytes (40 bits of 5 random bytes) with zero modulo bias.
+// 32 symbols = exactly 5 bits each, so codes are drawn from whole bytes
+// with zero modulo bias.
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
-// bcryptCost is a var — same trick as cmd/server's shutdownTimeout — so
-// tests can drop to bcrypt.MinCost: ten cost-10 hashes per enrollment would
-// otherwise add half a second to every test that enrolls, for no security
-// gain against a 40-bit code in a temp database. Tests that swap it must
-// not run in parallel with the rest of the package.
+// bcryptCost is a var so tests can drop to bcrypt.MinCost — ten cost-10
+// hashes per enrollment would otherwise slow every enrolling test for no
+// gain against a 40-bit code in a temp DB. Tests that swap it must not run
+// in parallel with the rest of the package.
 var bcryptCost = bcrypt.DefaultCost
 
-// CommitEnrollment persists a sealed secret plus a fresh recovery pool in
-// one BEGIN IMMEDIATE transaction and returns the plaintext codes — printed
-// once by the CLI, never stored plaintext. The secret must come from Prep.
-// A second enrollment loses on the id=1 primary key (ErrEnrolled).
+// CommitEnrollment persists the sealed secret plus a fresh recovery pool in
+// one transaction and returns the plaintext codes — printed once by the
+// CLI, never stored.
 func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string, error) {
 	sealed, err := s.seal(secret)
 	if err != nil {
@@ -65,11 +63,9 @@ func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string
 	return codes, tx.Commit()
 }
 
-// RegenerateRecovery rotates the pool (POST /api/auth/recovery-codes):
-// every unused code is burned first so a leak dies with its siblings, then
-// fresh ones are minted — same transaction, so the pool can never be empty
-// nor doubled. Returns the new plaintext codes once. No enrollment means
-// ErrNotEnrolled (the handler's guard makes that unreachable over HTTP).
+// RegenerateRecovery burns every unused code first, so a leak dies with its
+// siblings, then mints fresh ones in the same transaction — the pool can
+// never be empty nor doubled.
 func (s *Service) RegenerateRecovery(ctx context.Context) ([]string, error) {
 	now := formatTime(s.now())
 	codes := generateRecoveryCodes(RECOVERY_CODE_COUNT)
@@ -100,8 +96,6 @@ func (s *Service) RegenerateRecovery(ctx context.Context) ([]string, error) {
 	return codes, tx.Commit()
 }
 
-// ResetAuth is `server reset-auth --yes`: enrollment, recovery pool and
-// every session are wiped so the host can re-enroll from scratch.
 func (s *Service) ResetAuth(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -125,12 +119,8 @@ func (s *Service) ResetAuth(ctx context.Context) error {
 	return tx.Commit()
 }
 
-// insertRecoveryCodes persists plaintext codes as bcrypt hashes of their
-// normalized form (that is what Login compares against — typing aid: hyphen
-// or not, case or not, same code). bcrypt's error is dropped: cost is a
-// package constant and codes are 8 bytes, far under the 72-byte limit, so
-// GenerateFromPassword cannot fail here. Hashes are salted, so the UNIQUE
-// index never trips on a repeat.
+// bcrypt's error is dropped: cost is a package constant and codes are 8
+// bytes, far under the 72-byte limit, so GenerateFromPassword cannot fail.
 func insertRecoveryCodes(ctx context.Context, q *generated.Queries, codes []string, at string) error {
 	for _, c := range codes {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(normalizeRecoveryCode(c)), bcryptCost)
@@ -147,7 +137,6 @@ func insertRecoveryCodes(ctx context.Context, q *generated.Queries, codes []stri
 	return nil
 }
 
-// generateRecoveryCodes builds count fresh XXXX-XXXX codes.
 func generateRecoveryCodes(count int) []string {
 	codes := make([]string, 0, count)
 	for len(codes) < count {
@@ -157,8 +146,6 @@ func generateRecoveryCodes(count int) []string {
 	return codes
 }
 
-// newRecoveryCode draws 40 random bits and splits them into 8 5-bit
-// symbols, grouped XXXX-XXXX for readability (SECURITY.md).
 func newRecoveryCode() string {
 	var v uint64
 	for _, b := range randomBytes(RECOVERY_CODE_LEN * 5 / 8) {
@@ -173,9 +160,6 @@ func newRecoveryCode() string {
 	return string(chars[:4]) + "-" + string(chars[4:])
 }
 
-// normalizeRecoveryCode accepts what a human may type — lowercase, spaces,
-// the separating hyphen — and returns the canonical 8-symbol form, or ""
-// when the input cannot be a recovery code at all.
 func normalizeRecoveryCode(code string) string {
 	clean := strings.Map(recoveryRune, code)
 

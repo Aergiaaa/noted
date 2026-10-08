@@ -10,12 +10,9 @@ import (
 	"noted/internal/database/generated"
 )
 
-// Login authenticates a 6-digit TOTP (±1 step) or an unused recovery code
-// and mints a session token. Every credential failure is ErrInvalidCode —
-// one generic answer whether the host has enrolled, the code is wrong, or
-// it was already spent (SECURITY.md: no probing, no enumeration). Internal
-// failures (DB, decryption) are logged and reported the same way, except a
-// session write failure, which propagates as a real error.
+// Login maps every credential failure — wrong, spent, unenrolled, or an
+// internal one — to ErrInvalidCode so one generic 401 answers all. Only a
+// session-write failure propagates: there is no session to hide behind.
 func (s *Service) Login(ctx context.Context, code string) (string, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
@@ -28,8 +25,6 @@ func (s *Service) Login(ctx context.Context, code string) (string, error) {
 	return s.loginRecovery(ctx, code)
 }
 
-// loginTOTP verifies the code against the enrolled secret, then runs the
-// replay guard before minting the session.
 func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 	ok, counter, err := s.ValidateCode(ctx, code)
 	if err != nil {
@@ -59,10 +54,9 @@ func (s *Service) acceptCounter(counter uint64) bool {
 	return true
 }
 
-// loginRecovery scans the unused pool (bcrypt hashes are salted, so a
-// direct lookup is impossible) and consumes the match before minting the
-// session. Consumption is a conditional UPDATE: losing a race still yields
-// the generic invalid-code answer, never a second use of one code.
+// loginRecovery scans the unused pool — salted bcrypt hashes cannot be
+// looked up directly — and consumes the match with a conditional UPDATE:
+// losing a race still yields the generic answer, never a second use.
 func (s *Service) loginRecovery(ctx context.Context, code string) (string, error) {
 	want := normalizeRecoveryCode(code)
 	if want == "" {

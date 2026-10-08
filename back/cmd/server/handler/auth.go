@@ -8,11 +8,8 @@ import (
 	"noted/internal/auth"
 )
 
-// Login — POST /api/auth/login {code}: a 6-digit TOTP or a recovery code
-// mints the session cookie. 400 when code is missing (API.md required
-// field), 401 "invalid code" for every credential failure (generic by
-// design — SECURITY.md), 500 only when the session could not be written.
-// 429 + Retry-After comes from middleware.RateLimit in front of this.
+// Login: 401 for every credential failure — generic by design
+// (SECURITY.md). 429 comes from middleware.RateLimit in front of this.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Code string `json:"code"`
@@ -37,9 +34,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Session — GET /api/session: the router guard's probe. Valid cookie →
-// 200 {authenticated, expires_at} with the sliding expiry re-issued in the
-// cookie too; anything else → the plain 401 envelope (API.md).
 func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(auth.SESSION_COOKIE)
 	if err != nil {
@@ -58,10 +52,8 @@ func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout — POST /api/auth/logout: public and idempotent (no session
-// required — an absent or stale cookie still clears). The row delete must
-// succeed, otherwise the session would survive server-side: 500, cookie
-// kept. 204 + cleared cookie otherwise (API.md).
+// Logout is public and idempotent: a failed delete must 500 with the
+// cookie kept, otherwise the session would survive server-side.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	var token string
 	if c, err := r.Cookie(auth.SESSION_COOKIE); err == nil {
@@ -76,10 +68,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// RecoveryCodes — POST /api/auth/recovery-codes (session required): burns
-// the whole unused pool and returns 10 fresh codes once. The route's
-// RequireSession guard runs first, so a non-401 here is an internal
-// failure (500); the codes are shown exactly once, never logged.
+// RecoveryCodes: RequireSession already ran, so any failure here is
+// internal — 500, codes shown once, never logged.
 func (h *Handler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
 	codes, err := h.auth.RegenerateRecovery(r.Context())
 	if err != nil {
@@ -90,9 +80,7 @@ func (h *Handler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string][]string{"recovery_codes": codes})
 }
 
-// setSessionCookie issues the noted_session cookie: a token sets the
-// 30d Max-Age attributes from SECURITY.md; an empty token clears it
-// (Max-Age < 0 tells the browser to drop the cookie).
+// An empty token clears the cookie: Max-Age < 0 tells the browser to drop it.
 func (h *Handler) setSessionCookie(w http.ResponseWriter, token string) {
 	maxAge := auth.COOKIE_MAX_AGE_SEC
 	if token == "" {
