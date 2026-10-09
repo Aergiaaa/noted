@@ -18,6 +18,7 @@ func (s *Service) Login(ctx context.Context, code string) (string, error) {
 	if code == "" {
 		return "", ErrInvalidCode
 	}
+
 	if isTOTPCode(code) {
 		return s.loginTOTP(ctx, code)
 	}
@@ -31,12 +32,15 @@ func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 		log.Printf("auth: totp verify: %v", err)
 		return "", ErrInvalidCode
 	}
+
 	if !ok {
 		return "", ErrInvalidCode
 	}
+
 	if !s.acceptCounter(counter) {
 		return "", ErrInvalidCode
 	}
+
 	return s.createSession(ctx)
 }
 
@@ -46,10 +50,12 @@ func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 func (s *Service) acceptCounter(counter uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	now := s.now()
 	if counter == s.lastCounter && now.Sub(s.lastCodeAt) < REPLAY_WINDOW {
 		return false
 	}
+
 	s.lastCounter, s.lastCodeAt = counter, now
 	return true
 }
@@ -62,15 +68,18 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 	if want == "" {
 		return "", ErrInvalidCode
 	}
+
 	rows, err := s.q.ListUnusedRecoveryCodes(ctx)
 	if err != nil {
 		log.Printf("auth: recovery list: %v", err)
 		return "", ErrInvalidCode
 	}
+
 	for _, r := range rows {
 		if bcrypt.CompareHashAndPassword([]byte(r.CodeHash), []byte(want)) != nil {
 			continue
 		}
+
 		now := formatTime(s.now())
 		n, err := s.q.MarkRecoveryCodeUsed(ctx, generated.MarkRecoveryCodeUsedParams{
 			UsedAt: &now,
@@ -80,10 +89,13 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 			log.Printf("auth: recovery consume: %v", err)
 			return "", ErrInvalidCode
 		}
+
 		if n == 0 {
 			return "", ErrInvalidCode // burned by a racing attempt
 		}
+
 		return s.createSession(ctx)
 	}
+
 	return "", ErrInvalidCode
 }

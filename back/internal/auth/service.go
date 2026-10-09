@@ -87,5 +87,6 @@ func formatTime(t time.Time) string {
 func randomBytes(n int) []byte {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
+
 	return b
 }

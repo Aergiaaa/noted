@@ -17,8 +17,8 @@ import (
 // process-wide knobs (bcryptCost, driver-level state) the same way
 // cmd/server's shutdownTimeout tests do (TESTING.md exception).
 
-// testEncKey builds a distinct valid 32-byte base64 TOTP_ENC_KEY per byte,
-// so "wrong key" tests can pair two valid keys without tripping parseKey.
+// testEncKey: so "wrong key" tests can pair two valid keys without
+// tripping parseKey.
 func testEncKey(b byte) string {
 	k := make([]byte, 32)
 	for i := range k {
@@ -27,15 +27,13 @@ func testEncKey(b byte) string {
 	return base64.StdEncoding.EncodeToString(k)
 }
 
-// newTestService opens a migrated temp-file database and a Service over it.
-// bcryptCost drops to MinCost for the duration (see bcryptCost comment).
 func newTestService(t *testing.T, encKey string) (*Service, *sql.DB) {
 	t.Helper()
 	return newTestServiceDir(t, t.TempDir(), encKey)
 }
 
-// newTestServiceDir is newTestService with an explicit directory, so tests
-// that inspect the raw database bytes can find the file afterwards.
+// newTestServiceDir: so tests that inspect the raw database bytes can
+// find the file afterwards.
 func newTestServiceDir(t *testing.T, dir, encKey string) (*Service, *sql.DB) {
 	t.Helper()
 	db, err := database.Open(filepath.Join(dir, "auth.db"))
@@ -49,8 +47,6 @@ func newTestServiceDir(t *testing.T, dir, encKey string) (*Service, *sql.DB) {
 	return New(db, encKey), db
 }
 
-// enroll fully enrolls a fresh service and returns its secret + plaintext
-// recovery codes, exactly as `server enroll` would.
 func enroll(t *testing.T, s *Service) (secret string, codes []string) {
 	t.Helper()
 	key, err := s.Prep()

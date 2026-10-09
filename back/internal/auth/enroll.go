@@ -124,6 +124,7 @@ func (s *Service) ResetAuth(ctx context.Context) error {
 func insertRecoveryCodes(ctx context.Context, q *generated.Queries, codes []string, at string) error {
 	for _, c := range codes {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(normalizeRecoveryCode(c)), bcryptCost)
+
 		err := q.CreateRecoveryCode(ctx, generated.CreateRecoveryCodeParams{
 			ID:        uuid.NewString(),
 			CodeHash:  string(hash),

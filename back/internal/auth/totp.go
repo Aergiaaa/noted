@@ -27,6 +27,7 @@ func (s *Service) Prep() (*otp.Key, error) {
 	if err := s.CheckEncKey(); err != nil {
 		return nil, err
 	}
+
 	return totp.Generate(totp.GenerateOpts{Issuer: ISSUER, AccountName: ACCOUNT})
 }
 
@@ -41,27 +42,31 @@ func (s *Service) parseKey() ([]byte, error) {
 	if s.encKey == "" {
 		return nil, fmt.Errorf("TOTP_ENC_KEY is not set")
 	}
+
 	raw, err := base64.StdEncoding.DecodeString(s.encKey)
 	if err != nil {
 		return nil, fmt.Errorf("TOTP_ENC_KEY: decode: %w", err)
 	}
+
 	if len(raw) != 32 {
 		return nil, fmt.Errorf("TOTP_ENC_KEY: got %d bytes, want 32", len(raw))
 	}
+
 	return raw, nil
 }
 
-// gcm: parseKey already guarantees a 32-byte key, which is a valid AES-256
-// key with a fixed 16-byte block, so both constructors cannot fail — their
-// errors are dropped rather than branched on (an unreachable branch would
-// fail the coverage gate for no safety gain).
+// gcm: parseKey guarantees a valid AES-256 key, so both constructors
+// cannot fail — their errors are dropped, not branched on (an unreachable
+// branch would fail the coverage gate for no safety gain).
 func (s *Service) gcm() (cipher.AEAD, error) {
 	key, err := s.parseKey()
 	if err != nil {
 		return nil, err
 	}
+
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
+
 	return gcm, nil
 }
 
@@ -70,7 +75,9 @@ func (s *Service) seal(plain string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	nonce := randomBytes(g.NonceSize())
+
 	return base64.StdEncoding.EncodeToString(g.Seal(nonce, nonce, []byte(plain), nil)), nil
 }
 
@@ -79,17 +86,21 @@ func (s *Service) open(sealed string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	raw, err := base64.StdEncoding.DecodeString(sealed)
 	if err != nil {
 		return "", fmt.Errorf("secret decode: %w", err)
 	}
+
 	if len(raw) < g.NonceSize() {
 		return "", fmt.Errorf("secret truncated")
 	}
+
 	plain, err := g.Open(nil, raw[:g.NonceSize()], raw[g.NonceSize():], nil)
 	if err != nil {
 		return "", fmt.Errorf("secret decrypt: %w", err)
 	}
+
 	return string(plain), nil
 }
 
@@ -100,13 +111,16 @@ func (s *Service) ValidateCode(ctx context.Context, code string) (ok bool, count
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, 0, nil
 	}
+
 	if err != nil {
 		return false, 0, fmt.Errorf("get enrollment: %w", err)
 	}
+
 	secret, err := s.open(row.TotpSecret)
 	if err != nil {
 		return false, 0, fmt.Errorf("open secret: %w", err)
 	}
+
 	ok, counter = s.validateWithSecret(code, secret)
 	return ok, counter, nil
 }
@@ -119,11 +133,13 @@ func (s *Service) ValidateCandidate(code, secret string) (ok bool, counter uint6
 // clock. base-1 underflows modulo 2^64, so the wrap is deliberate arithmetic.
 func (s *Service) validateWithSecret(code, secret string) (ok bool, counter uint64) {
 	base := uint64(s.now().Unix() / TOTP_STEP)
+
 	for _, d := range []int64{-1, 0, 1} {
 		if hotp.Validate(code, base+uint64(d), secret) {
 			return true, base + uint64(d)
 		}
 	}
+
 	return false, 0
 }
 
@@ -133,10 +149,12 @@ func isTOTPCode(code string) bool {
 	if len(code) != 6 {
 		return false
 	}
+
 	for _, r := range code {
 		if r < '0' || r > '9' {
 			return false
 		}
 	}
+
 	return true
 }

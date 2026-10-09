@@ -201,7 +201,6 @@ func TestLogin_sessionWriteFailure_propagates(t *testing.T) {
 	}
 }
 
-// toLower lowercases a recovery code the way a human may type it.
 func toLower(c string) string {
 	b := []byte(c)
 	for i, ch := range b {
