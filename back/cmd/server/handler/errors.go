@@ -53,9 +53,14 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // DecodeJSON has already written the envelope when it reports failure:
-// 413 when middleware.BodyLimit tripped (MaxBytesError), 400 otherwise.
+// 413 when middleware.BodyLimit tripped (MaxBytesError), 400 otherwise —
+// including unknown request fields (DisallowUnknownFields), so a typo'd
+// key in the frontend request fails loudly instead of being dropped.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			WriteError(w, http.StatusRequestEntityTooLarge, "", nil)

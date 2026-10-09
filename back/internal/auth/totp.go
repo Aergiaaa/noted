@@ -28,7 +28,10 @@ func (s *Service) Prep() (*otp.Key, error) {
 		return nil, err
 	}
 
-	return totp.Generate(totp.GenerateOpts{Issuer: ISSUER, AccountName: ACCOUNT})
+	return totp.Generate(totp.GenerateOpts{
+		Issuer:      ISSUER,
+		AccountName: ACCOUNT,
+	})
 }
 
 // CheckEncKey parses TOTP_ENC_KEY up front so the CLI can fail before it

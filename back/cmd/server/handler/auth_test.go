@@ -113,6 +113,16 @@ func TestLogin_malformedBody_400(t *testing.T) {
 	}
 }
 
+func TestLogin_unknownField_400(t *testing.T) {
+	h, _, _ := newTestAuthHandler(t, false)
+	rec := postJSON(h.Login, "/api/auth/login", `{"code":"123456","pin":"0000"}`)
+
+	status, code, _ := decodeErr(t, rec)
+	if status != http.StatusBadRequest || code != "validation_error" {
+		t.Fatalf("status=%d code=%q, want 400 validation_error", status, code)
+	}
+}
+
 func TestLogin_wrongCode_401Generic(t *testing.T) {
 	// No enrollment at all: every credential outcome must look identical.
 	h, _, _ := newTestAuthHandler(t, false)

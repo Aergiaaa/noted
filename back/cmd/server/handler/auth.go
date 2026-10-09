@@ -8,12 +8,22 @@ import (
 	"noted/internal/auth"
 )
 
+// loginRequest is the request body of POST /api/auth/login (API.md):
+//
+//	{"code": "123456"}          — live 6-digit TOTP
+//	{"code": "ABCD-EFGH"}       — one unused recovery code
+//
+// It is the whole contract the frontend sends; DecodeJSON rejects any
+// unknown key, so a drifted shape fails with 400 instead of silently
+// ignoring fields.
+type loginRequest struct {
+	Code string `json:"code"`
+}
+
 // Login: 401 for every credential failure — generic by design
 // (SECURITY.md). 429 comes from middleware.RateLimit in front of this.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Code string `json:"code"`
-	}
+	var in loginRequest
 	if !DecodeJSON(w, r, &in) {
 		return
 	}
