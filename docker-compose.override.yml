@@ -1,6 +1,7 @@
 # Dev overrides: live reload, local SQLite bind, plain HTTP.
-# Applied automatically by `docker compose up` (without --profile prod).
-# NOTE: for local iteration prefer `make dev` (no containers needed).
+# Applied automatically by `make compose-up` / `docker compose up`.
+# This is the whole local loop: api :8080 + Vite :5173, both in containers,
+# so the runtime posture stays close to prod.
 services:
   api:
     build:
@@ -17,7 +18,8 @@ services:
     tmpfs: !reset []
     # Run as the host user: root inside the container would create
     # root-owned files in the bind mounts (.db, front/node_modules/.vite)
-    # and break the host-side `make dev` loop.
+    # that the host user can then neither read (sqlite3 on the DB) nor
+    # write (host-side vitest reusing node_modules).
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./back:/src
