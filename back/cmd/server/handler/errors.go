@@ -6,26 +6,19 @@ import (
 	"net/http"
 )
 
-// Error is the inner object of the frozen error envelope (API.md): every
-// non-2xx response body is exactly {"error": {code, message, fields?}} so
-// front/lib/api.ts (F5) can parse one shape for all statuses.
+// Error is the frozen error envelope inner object (API.md).
 type Error struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
 	Fields  map[string]string `json:"fields,omitempty"`
 }
 
-// apiError wraps Error under the envelope's "error" key — the wire shape
-// is a single object with one nested member, so the struct stays two
-// lines and callers build one literal.
 type apiError struct {
 	Error `json:"error"`
 }
 
-// errorCodes maps every status the API may return to its frozen code and
-// the default (generic, detail-free) message. Callers override the message
-// only when it is safe to show; 500 always uses the default so internals
-// never leak to the client (API.md).
+// errorCodes: 500 always keeps the generic default, so internals never
+// leak to the client.
 var errorCodes = map[int]struct{ code, message string }{
 	http.StatusBadRequest:            {"validation_error", "validation failed"},
 	http.StatusUnauthorized:          {"unauthenticated", "unauthenticated"},
@@ -37,9 +30,6 @@ var errorCodes = map[int]struct{ code, message string }{
 	http.StatusInternalServerError:   {"internal_error", "internal server error"},
 }
 
-// WriteError writes the error envelope for status. An empty message picks
-// the generic default from errorCodes; fields is optional per-field
-// validation detail (API.md "Validation errors").
 func WriteError(w http.ResponseWriter, status int, message string, fields map[string]string) {
 	e, ok := errorCodes[status]
 	if !ok {
@@ -49,19 +39,35 @@ func WriteError(w http.ResponseWriter, status int, message string, fields map[st
 		message = e.message
 	}
 
-	body := apiError{Error: Error{Code: e.code, Message: message, Fields: fields}}
+	WriteErrorCode(w, status, e.code, message, fields)
+}
+
+// WriteErrorCode writes the envelope with an explicit code, for the one
+// status whose default code does not fit: 403 maps to origin_forbidden,
+// so the recovery-rotation step-up answers 403 step_up_required (API.md).
+func WriteErrorCode(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	body := apiError{Error: Error{Code: code, Message: message, Fields: fields}}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// DecodeJSON reads one JSON object from the request body into dst and
-// reports whether it succeeded. On failure it has already written the
-// envelope: 413 when middleware.BodyLimit tripped (MaxBytesReader), 400
-// otherwise. Handlers use it as a guard: if !DecodeJSON(w, r, &in) { return }.
+func WriteJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// DecodeJSON has already written the envelope when it reports failure:
+// 413 when middleware.BodyLimit tripped (MaxBytesError), 400 otherwise —
+// including unknown request fields (DisallowUnknownFields), so a typo'd
+// key in the frontend request fails loudly instead of being dropped.
 func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			WriteError(w, http.StatusRequestEntityTooLarge, "", nil)

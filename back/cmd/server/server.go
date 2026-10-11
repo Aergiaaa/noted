@@ -9,17 +9,16 @@ import (
 	"time"
 )
 
-// shutdownTimeout bounds graceful shutdown. Package var (not const) so tests
-// can force the timeout-error branch without waiting the full 25s. Kept just
-// under compose's stop_grace_period (30s) so db close + logs finish before
-// Docker would SIGKILL.
+// shutdownTimeout is a var so tests can force the timeout-error branch
+// without waiting the full 25s. Kept just under compose's
+// stop_grace_period (30s) so db close + logs finish before Docker would
+// SIGKILL.
 var shutdownTimeout = 25 * time.Second
 
-// newServer wires the handler + timeouts in one place so serve() and tests
-// share the same constructor. ReadTimeout/WriteTimeout cap the whole
-// request/response, not just the headers: a future import (large upload)
-// or export (long stream) endpoint must lift them or the transfer gets
-// cut off mid-flight — healthz and the F2 routes stay well inside 10s/30s.
+// ReadTimeout/WriteTimeout cap the whole request/response, not just the
+// headers: a future import (large upload) or export (long stream)
+// endpoint must lift them or the transfer gets cut off mid-flight —
+// healthz and the F2 routes stay well inside 10s/30s.
 func (a *app) newServer() *http.Server {
 	return &http.Server{
 		Addr:              a.conf.Addr,
@@ -31,9 +30,6 @@ func (a *app) newServer() *http.Server {
 	}
 }
 
-// serve listens until ctx is cancelled or SIGINT/SIGTERM arrives, then
-// shuts down gracefully within shutdownTimeout. The listener reports its
-// result through errCh so the select can race it against cancellation.
 func (a *app) serve(ctx context.Context) error {
 	s := a.newServer()
 
@@ -64,8 +60,8 @@ func listenCtxAndCh(server *http.Server, ctx context.Context, errCh chan error) 
 	}
 }
 
-// listenAndServeWithErrCh sends exactly one result to errCh: the listen error,
-// or nil after a clean ErrServerClosed (produced by Shutdown).
+// listenAndServeWithErrCh sends exactly one result: the listen error, or
+// nil after a clean ErrServerClosed (produced by Shutdown).
 func listenAndServeWithErrCh(server *http.Server, errCh chan error) {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		errCh <- err

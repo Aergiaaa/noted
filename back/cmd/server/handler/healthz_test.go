@@ -11,7 +11,7 @@ func TestHealthz_returns200OkTrue(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
 
-	New().Healthz(rec, req)
+	New(nil, false).Healthz(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -29,7 +29,7 @@ func TestHealthz_contentTypeAndExactBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
 
-	New().Healthz(rec, req)
+	New(nil, false).Healthz(rec, req)
 
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("Content-Type = %q, want %q", ct, "application/json")

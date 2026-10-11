@@ -1,25 +1,4 @@
-.PHONY: dev test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup
-
-# Local iteration: Go api :8080 + Vite :5173 (no containers needed).
-# DB_PATH is absolute: the server runs from back/, but the SQLite file
-# belongs in the repo-root .db/ this target creates (and .gitignore hides).
-# Teardown walks each background job's whole process tree before killing
-# the job: `go run` and `bun run dev` are wrappers, and killing only them
-# orphans the server/vite children (which keep :8080/:5173 bound until
-# killed by hand). Never `kill 0`: bash 5.3 (this system's /bin/sh)
-# segfaults on a self group-kill inside a trap. The first job to end takes
-# the whole target down with its status (`wait -n`, bash >= 4.3): a
-# crashed server must not leave vite running in a hanging recipe.
-dev:
-	mkdir -p .db
-	killtree() { for c in $$(pgrep -P $$1 2>/dev/null); do killtree $$c; done; kill -TERM $$1 2>/dev/null || true; }; \
-	cleanup() { for j in $$(jobs -p); do killtree $$j; done; wait; }; \
-	trap 'cleanup; exit 0' INT TERM; \
-	trap cleanup EXIT; \
-	(cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server) & \
-	(cd front && bun run dev) & \
-	if [ -n "$${BASH_VERSION:-}" ]; then wait -n; else wait; fi; status=$$?; \
-	cleanup; exit $$status
+.PHONY: test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
 
 # Full test suite: backend (go test) + frontend (vitest).
 test: test-back test-front
@@ -48,17 +27,68 @@ test-cover-back:
 test-cover-front:
 	cd front && bunx --bun vitest run --coverage
 
-# Local equivalent of the promote workflow: merge the current work branch
-# (feat|fix|ci|chore|docs|refactor|test/*, see DEVELOPMENT.md) into staging,
-# but only after the 100% gates pass.
+# Local equivalent of the promote workflow: 100% gates, then push the
+# current work branch (feat|fix|ci|chore|docs|refactor|test/*, see
+# DEVELOPMENT.md) and wait for CI + the auto-promote PR to land on staging.
+# staging is ruleset-protected like main (PR required, strict back/front
+# checks, no bypass actors), so the old `checkout staging && merge` could
+# never be pushed — the branch push *is* the promote. Safe to re-run: a
+# branch already on staging exits early, an open staging PR is reused, and
+# a merge refused for staleness updates the branch and retries once.
 promote: test-cover
+	@command -v gh >/dev/null 2>&1 || { echo "promote: gh CLI is required"; exit 1; }
 	@branch=$$(git branch --show-current); \
 	case "$$branch" in feat/*|fix/*|ci/*|chore/*|docs/*|refactor/*|test/*) ;; *) echo "promote only runs on work branches (feat|fix|ci|chore|docs|refactor|test)/* (on $$branch)"; exit 1;; esac; \
-	git checkout staging && git merge --no-ff "$$branch" -m "Promote $$branch to staging (gates green, 100% coverage)"
+	git fetch origin staging || exit 1; \
+	if git merge-base --is-ancestor HEAD origin/staging; then echo "promote: $$branch is already on staging"; exit 0; fi; \
+	git push -u origin "$$branch" || exit 1; \
+	sha=$$(git rev-parse HEAD); \
+	echo "promote: waiting for CI on $$sha"; \
+	run=""; n=0; \
+	while [ -z "$$run" ] && [ $$n -lt 60 ]; do \
+		run=$$(gh run list --workflow ci --commit "$$sha" --limit 1 --json databaseId --jq '.[0].databaseId // empty'); \
+		n=$$((n + 1)); [ -n "$$run" ] || sleep 3; \
+	done; \
+	[ -n "$$run" ] || { echo "promote: no CI run appeared for $$sha"; exit 1; }; \
+	gh run watch "$$run" --exit-status --interval 10 || { echo "promote: CI failed on $$branch"; exit 1; }; \
+	pr=""; n=0; \
+	while [ -z "$$pr" ] && [ $$n -lt 60 ]; do \
+		pr=$$(gh pr list --head "$$branch" --base staging --state open --json number --jq '.[0].number // empty'); \
+		n=$$((n + 1)); [ -n "$$pr" ] || sleep 3; \
+	done; \
+	[ -n "$$pr" ] || { echo "promote: auto-promote opened no staging PR for $$branch"; exit 1; }; \
+	echo "promote: merging PR #$$pr"; \
+	gh pr checks "$$pr" --watch || exit 1; \
+	gh pr merge "$$pr" --merge || { \
+		echo "promote: merge refused — updating $$branch from staging"; \
+		gh pr update-branch "$$pr" || exit 1; \
+		gh pr checks "$$pr" --watch || exit 1; \
+		gh pr merge "$$pr" --merge || exit 1; \
+	}; \
+	git fetch origin staging:staging || exit 1; \
+	echo "promote: PR #$$pr merged; local staging synced"
 
-# Stable releases stay manual: merge soaked staging into main.
+# Stable releases stay manual (DEVELOPMENT.md) and must go through a PR:
+# the repo ruleset on main declines direct pushes (GH013 "Changes must be
+# made through a pull request", no bypass actors). Staging gets main merged
+# in first because the required status checks (back, front) run with strict
+# up-to-date, so the PR head has to contain main. Reuses an open staging →
+# main PR if one exists; idempotent to re-run if a step was interrupted.
 release:
-	git checkout main && git merge --no-ff staging -m "Release staging to main (stable)"
+	@command -v gh >/dev/null 2>&1 || { echo "release: gh CLI is required"; exit 1; }
+	git fetch origin main staging
+	@dirty=$$(git status --porcelain); if [ -n "$$dirty" ]; then echo "release: working tree not clean:"; echo "$$dirty"; exit 1; fi
+	@if [ "$$(git rev-list --count origin/main..origin/staging)" -eq 0 ]; then echo "release: staging has nothing that main lacks"; exit 1; fi
+	git checkout staging && git pull --ff-only origin staging
+	git merge origin/main -m "Sync main into staging before release" && git push origin staging
+	git checkout main && git pull --ff-only origin main
+	@pr=$$(gh pr list --base main --head staging --state open --json url --jq '.[0].url'); \
+	[ -n "$$pr" ] || pr=$$(gh pr create --base main --head staging --title "Release staging to main (stable)" --body "Manual release of soaked staging (make release)."); \
+	echo "release: waiting for checks on $$pr"; \
+	gh pr checks "$$pr" --watch || exit 1; \
+	gh pr merge "$$pr" --merge
+	git pull --ff-only origin main
+	@echo "release: main is at $$(git rev-parse --short main)"
 
 # Regenerate sqlc queries (wired in F2).
 sqlc:
@@ -76,7 +106,7 @@ migrate-check:
 compose-up: export UID := $(shell id -u)
 compose-up: export GID := $(shell id -g)
 compose-up:
-	docker compose up --build
+	docker compose up --build -d
 
 compose-down:
 	docker compose down
@@ -84,3 +114,26 @@ compose-down:
 # Nightly-style backup drill target (wired in F12).
 backup:
 	@echo "TODO(F12): VACUUM INTO + integrity_check"
+
+# F4 enrollment, run inside the dev api container (entrypoint `go`, source
+# bind-mounted at /src, DB_PATH=/data/noted.db hits the same ./.db file the
+# running server uses). Prints the ASCII QR + otpauth URI, verifies one live
+# 6-digit code, then persists the sealed secret + recovery pool once (shown
+# once, store offline). Extra flags via ARGS, e.g.
+# `make enroll ARGS='--qr /tmp/noted-qr.svg'`.
+# UID/GID export: same reasoning as compose-up above — without it the
+# container falls back to 1000:1000 and may write .db files the host
+# user can't read or write.
+enroll: export UID := $(shell id -u)
+enroll: export GID := $(shell id -g)
+enroll:
+	mkdir -p .db
+	docker compose run --rm -it api run ./cmd/server enroll $(ARGS)
+
+# Wipes enrollment, recovery codes and sessions so the host can re-arm.
+# --yes is passed deliberately: the CLI refuses a bare `reset-auth`.
+reset-auth: export UID := $(shell id -u)
+reset-auth: export GID := $(shell id -g)
+reset-auth:
+	mkdir -p .db
+	docker compose run --rm -it api run ./cmd/server reset-auth --yes

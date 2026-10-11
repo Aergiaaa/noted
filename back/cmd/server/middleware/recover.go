@@ -9,11 +9,10 @@ import (
 	"noted/cmd/server/handler"
 )
 
-// Recover turns a handler panic into the frozen 500 envelope instead of
-// a dropped connection: without it net/http aborts the request with no
-// response body and no access-log line. The panic value and stack go to
-// the server log with the request id (SECURITY.md: details with
-// request_id in server logs; internals never reach the client).
+// Recover turns a handler panic into the frozen 500 envelope: without it,
+// net/http aborts the request with no body and no access-log line. The
+// panic value and stack go to the server log with the request id — never
+// to the client (SECURITY.md).
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tw := &trackingWriter{
@@ -26,9 +25,6 @@ func Recover(next http.Handler) http.Handler {
 	})
 }
 
-// recoverHandler is Recover's handler body: run the handler under a
-// recover, then either re-panic control-flow signals untouched or turn
-// the panic into a logged 500.
 func recoverHandler(r *http.Request, tw *trackingWriter) {
 	rec := recover()
 	if rec == nil {
@@ -43,8 +39,8 @@ func recoverHandler(r *http.Request, tw *trackingWriter) {
 		RequestIDFrom(r), r.Method, r.URL.RequestURI(), rec, debug.Stack())
 
 	if tw.written {
-		// Status already went out; the body is truncated, so abort the
-		// response rather than let the client mistake it for complete.
+		// Status already went out; the body is truncated, so abort rather
+		// than let the client mistake it for complete.
 		panic(http.ErrAbortHandler)
 	}
 
@@ -58,13 +54,11 @@ type trackingWriter struct {
 	written bool
 }
 
-// implementation for response writer
 func (tw *trackingWriter) WriteHeader(code int) {
 	tw.written = true
 	tw.ResponseWriter.WriteHeader(code)
 }
 
-// implementation for response writer
 func (tw *trackingWriter) Write(b []byte) (int, error) {
 	tw.written = true
 	return tw.ResponseWriter.Write(b)

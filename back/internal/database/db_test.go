@@ -44,6 +44,7 @@ func TestDsn_carriesAllPragmas(t *testing.T) {
 		"_busy_timeout=5000",
 		"_foreign_keys=on",
 		"_synchronous=normal",
+		"_txlock=immediate",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("dsn %q missing %q", got, want)
@@ -85,18 +86,18 @@ func TestOpen_freshDb_migratesWithPragmasAndPerms(t *testing.T) {
 	if fk != 1 {
 		t.Fatalf("foreign_keys = %d, want 1", fk)
 	}
-	if v := userVersion(t, h); v != 1 {
-		t.Fatalf("user_version = %d, want 1", v)
+	if v, want := userVersion(t, h), embeddedMigrationCount(t); v != want {
+		t.Fatalf("user_version = %d, want %d", v, want)
 	}
 	var tables int
 	if err := h.QueryRow(
 		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN
-		 ('notes','events','tasks','transactions','sessions','recovery_codes')`,
+		 ('notes','events','tasks','transactions','sessions','recovery_codes','enrollment')`,
 	).Scan(&tables); err != nil {
 		t.Fatalf("count tables: %v", err)
 	}
-	if tables != 6 {
-		t.Fatalf("tables created = %d, want 6", tables)
+	if tables != 7 {
+		t.Fatalf("tables created = %d, want 7", tables)
 	}
 }
 
@@ -116,8 +117,8 @@ func TestOpen_existingFile_tightenedTo0600(t *testing.T) {
 	t.Cleanup(func() { _ = h.Close() })
 
 	wantPerm(t, path, 0o600)
-	if v := userVersion(t, h); v != 1 {
-		t.Fatalf("user_version = %d, want 1 (migrations still applied)", v)
+	if v, want := userVersion(t, h), embeddedMigrationCount(t); v != want {
+		t.Fatalf("user_version = %d, want %d (migrations still applied)", v, want)
 	}
 }
 
@@ -213,8 +214,8 @@ func TestOpen_symlinkToDb_tightensTarget(t *testing.T) {
 	t.Cleanup(func() { _ = h.Close() })
 
 	wantPerm(t, target, 0o600)
-	if v := userVersion(t, h); v != 1 {
-		t.Fatalf("user_version = %d, want 1", v)
+	if v, want := userVersion(t, h), embeddedMigrationCount(t); v != want {
+		t.Fatalf("user_version = %d, want %d", v, want)
 	}
 }
 

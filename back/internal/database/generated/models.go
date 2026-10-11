@@ -4,6 +4,13 @@
 
 package generated
 
+type Enrollment struct {
+	ID         int64
+	TotpSecret string
+	EnrolledAt *string
+	UpdatedAt  string
+}
+
 type Event struct {
 	ID          string
 	Title       string
@@ -32,11 +39,12 @@ type RecoveryCode struct {
 }
 
 type Session struct {
-	ID        string
-	TokenHash string
-	CreatedAt string
-	ExpiresAt string
-	LastSeen  string
+	ID         string
+	TokenHash  string
+	CreatedAt  string
+	ExpiresAt  string
+	LastSeen   string
+	AuthMethod string
 }
 
 type Task struct {

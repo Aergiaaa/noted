@@ -5,14 +5,12 @@ import (
 	"net/http"
 )
 
-// HSTS_MAX_AGE is the Strict-Transport-Security max-age in seconds
-// (2 years), named so the number doesn't hide inside the header string.
+// HSTS max-age in seconds (2 years).
 const HSTS_MAX_AGE = 63072000
 
-// Security headers from SECURITY.md's table, set once for every response
-// (including 404/405 — they run in the router-level chain before route
-// matching). HSTS is the exception: it is only emitted when Forwarded
-// saw a trusted proxy say the request arrived over HTTPS, never on
+// SecurityHeaders sets SECURITY.md's table on every response, including
+// 404/405 — the chain runs before route matching. HSTS is the exception:
+// only when a trusted proxy said the request arrived over HTTPS, never on
 // plain-HTTP dev connections.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(
@@ -22,8 +20,6 @@ func SecurityHeaders(next http.Handler) http.Handler {
 	)
 }
 
-// securityHeaders is SecurityHeaders' handler body: set the table, then
-// pass the request on.
 func securityHeaders(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	h := w.Header()
 
@@ -44,9 +40,8 @@ func securityHeaders(w http.ResponseWriter, r *http.Request, next http.Handler) 
 	next.ServeHTTP(w, r)
 }
 
-// IsSecure reports whether a trusted proxy forwarded the request over
-// HTTPS. Direct connections are never secure here: the app itself speaks
-// plain HTTP (SECURITY.md).
+// IsSecure: direct connections are never secure here — the app itself
+// speaks plain HTTP and only a trusted proxy terminates TLS (SECURITY.md).
 func IsSecure(r *http.Request) bool {
 	secure, _ := r.Context().Value(SECURE_KEY).(bool)
 

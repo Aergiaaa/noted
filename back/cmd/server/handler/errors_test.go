@@ -146,6 +146,23 @@ func TestDecodeJSON_oversizedBody_413Envelope(t *testing.T) {
 	assertErrorCode(t, rec, "payload_too_large")
 }
 
+func TestDecodeJSON_unknownField_400Envelope(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/notes",
+		strings.NewReader(`{"title":"hi","bogus":1}`))
+	rec := httptest.NewRecorder()
+	var dst struct {
+		Title string `json:"title"`
+	}
+
+	if DecodeJSON(rec, req, &dst) {
+		t.Fatal("DecodeJSON = true, want false")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	assertErrorCode(t, rec, "validation_error")
+}
+
 // assertErrorCode decodes the envelope and checks its error code.
 func assertErrorCode(t *testing.T, rec *httptest.ResponseRecorder, want string) {
 	t.Helper()

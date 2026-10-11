@@ -10,17 +10,15 @@ import (
 	"strings"
 )
 
-// IPV4_BITS/IPV6_BITS: host bits in each address family; a full-length
-// mask (CIDRMask(bits, bits)) matches that one address and nothing else.
+// A full-length mask (CIDRMask(bits, bits)) matches that one address and
+// nothing else.
 const (
 	IPV4_BITS = 32
 	IPV6_BITS = 128
 )
 
 // Forwarded resolves the client IP and HTTPS status from X-Forwarded-*
-// headers, but only when the direct peer is listed in trustedProxies
-// (comma-separated IPs and CIDRs, e.g. "127.0.0.1,10.0.0.0/8"). The
-// result lands in the request context for ClientIP/IsSecure; without a
+// headers only when the direct peer is in trustedProxies; without a
 // trusted peer the headers are ignored entirely (SECURITY.md).
 func Forwarded(trustedProxies string) Middleware {
 	trusted := parseTrustedProxies(trustedProxies)
@@ -32,11 +30,6 @@ func Forwarded(trustedProxies string) Middleware {
 	}
 }
 
-// resolveForwarded is Forwarded's handler body: resolve the client IP
-// and scheme, stash both in the context, then pass the request on. A
-// malformed remote address or forwarded hop is handled here, where the
-// request id is available; the returned values stay fail-closed either
-// way, so the request continues.
 func resolveForwarded(w http.ResponseWriter, r *http.Request, next http.Handler, trusted []*net.IPNet) {
 	ip, secure, err := clientIPAndProto(
 		r.RemoteAddr,
@@ -54,9 +47,9 @@ func resolveForwarded(w http.ResponseWriter, r *http.Request, next http.Handler,
 	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
-// parseTrustedProxies turns the env list into matchers. Unparsable
-// entries are skipped: silently trusting nothing is safe, silently
-// trusting something is not, and a typo must not go unnoticed.
+// parseTrustedProxies skips unparsable entries: silently trusting nothing
+// is safe, silently trusting something is not — and a typo must not go
+// unnoticed.
 func parseTrustedProxies(csv string) []*net.IPNet {
 	var nets []*net.IPNet
 
@@ -75,9 +68,6 @@ func parseTrustedProxies(csv string) []*net.IPNet {
 	return nets
 }
 
-// parseTrustedProxy parses one TRUSTED_PROXIES entry — IP or CIDR —
-// and returns nil, with a warning naming the entry and its cause, when
-// it is malformed.
 func parseTrustedProxy(entry string) *net.IPNet {
 	if strings.Contains(entry, "/") {
 		_, n, err := net.ParseCIDR(entry)
@@ -102,14 +92,11 @@ func parseTrustedProxy(entry string) *net.IPNet {
 	return &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)}
 }
 
-// clientIPAndProto picks the client IP: the remote address unless the
-// remote is a trusted proxy, in which case the rightmost X-Forwarded-For
-// hop wins (the one the nearest proxy observed; anything to its left is
-// client-supplied). X-Forwarded-Proto only counts from a trusted peer,
-// and an "https" first element marks the hop secure. A malformed remote
-// address or an unparsable forwarded hop is reported as an error for the
-// caller to log; the returned values stay fail-closed regardless (peer
-// address, no HTTPS).
+// clientIPAndProto takes the rightmost X-Forwarded-For hop — the one the
+// nearest proxy observed; anything to its left is client-supplied — and
+// counts X-Forwarded-Proto only from a trusted peer. Malformed input is
+// reported for the caller to log; the values stay fail-closed regardless
+// (peer address, no HTTPS).
 func clientIPAndProto(remoteAddr, xff, xfp string, trusted []*net.IPNet) (string, bool, error) {
 	ip, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -127,10 +114,9 @@ func clientIPAndProto(remoteAddr, xff, xfp string, trusted []*net.IPNet) (string
 	return ip, strings.EqualFold(proto, "https"), err
 }
 
-// applyForwardedFor adopts the rightmost X-Forwarded-For hop when it
-// parses as an IP; an unparsable hop is reported (unless an earlier
-// error already names a cause) and the peer address kept. Client bytes
-// stay out of the log.
+// applyForwardedFor reports a malformed rightmost hop only when no earlier
+// cause exists, so client bytes stay out of the log; the peer address is
+// kept either way.
 func applyForwardedFor(ip, xff string, err error) (string, error) {
 	if xff == "" {
 		return ip, err
@@ -147,8 +133,7 @@ func applyForwardedFor(ip, xff string, err error) (string, error) {
 	return cand, err
 }
 
-// isTrusted reports whether ip matches any trusted network (nil-safe:
-// unparsable input matches nothing).
+// isTrusted is nil-safe: unparsable input matches nothing.
 func isTrusted(ip net.IP, trusted []*net.IPNet) bool {
 	for _, n := range trusted {
 		if n.Contains(ip) {

@@ -14,27 +14,23 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// migrationsDir is the embed path loadMigrations reads. A var (not const)
-// only so tests can point Migrate at a missing directory; the embed pattern
-// above stays the literal "migrations/*.sql".
+// migrationsDir is a var (not const) only so tests can point Migrate at a
+// missing directory; the embed pattern above stays "migrations/*.sql".
 var migrationsDir = "migrations"
 
-// migrationNameRE matches the append-only migration files: NNNN_snake_case.sql
-// (DEVELOPMENT.md conventions).
+// migrationNameRE matches the append-only NNNN_snake_case.sql naming.
 var migrationNameRE = regexp.MustCompile(`^(\d{4})_[a-z0-9_]+\.sql$`)
 
-// migration is one parsed migration file: version taken from the filename,
-// body verbatim from the embedded file.
 type migration struct {
 	version int
 	name    string
 	body    string
 }
 
-// Migrate applies every embedded migration with a version newer than the
-// database's PRAGMA user_version, oldest first. Each migration and its
-// version bump share one transaction, so a failure leaves the database
-// exactly as it was. Running Migrate twice is a no-op.
+// Migrate applies every embedded migration newer than the database's
+// PRAGMA user_version, oldest first. Each migration and its version bump
+// share one transaction, so a failure leaves the database exactly as it
+// was; running Migrate twice is a no-op.
 func Migrate(h *sql.DB) error {
 	ms, err := loadMigrations(migrationsFS, migrationsDir)
 	if err != nil {
@@ -55,9 +51,8 @@ func Migrate(h *sql.DB) error {
 	return nil
 }
 
-// apply runs one migration body plus its version bump inside a single
-// transaction. The pragma rides in the same statement so SQLite cannot
-// record the version without the schema change (and vice versa).
+// The pragma rides in the same statement so SQLite cannot record the
+// version without the schema change (and vice versa).
 func apply(h *sql.DB, m migration) error {
 	tx, err := h.Begin()
 	if err != nil {
@@ -71,9 +66,9 @@ func apply(h *sql.DB, m migration) error {
 	return tx.Commit()
 }
 
-// loadMigrations parses dir inside fsys, ordered by version. A malformed
-// filename, unreadable file, or duplicate version is a hard error: a typo
-// must never silently skip a migration.
+// loadMigrations rejects a malformed filename, unreadable file or
+// duplicate version outright: a typo must never silently skip a
+// migration.
 func loadMigrations(fsys fs.FS, dir string) ([]migration, error) {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
@@ -87,7 +82,7 @@ func loadMigrations(fsys fs.FS, dir string) ([]migration, error) {
 		}
 		// Atoi cannot fail here: the regexp guarantees four ASCII digits.
 		v, _ := strconv.Atoi(g[1])
-		// path.Join (not filepath.Join): io/fs paths are always
+		// path.Join, not filepath.Join: io/fs paths are always
 		// slash-separated, including on Windows.
 		body, err := fs.ReadFile(fsys, path.Join(dir, e.Name()))
 		if err != nil {

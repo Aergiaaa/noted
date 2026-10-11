@@ -9,7 +9,7 @@ import (
 
 func TestNewServer_wiresHandlerAndTimeouts(t *testing.T) {
 	cfg := Config{Addr: "127.0.0.1:8080"}
-	srv := newTestApp(cfg).newServer()
+	srv := newTestApp(t, cfg).newServer()
 
 	if srv.Addr != cfg.Addr {
 		t.Fatalf("Addr = %q, want %q", srv.Addr, cfg.Addr)
