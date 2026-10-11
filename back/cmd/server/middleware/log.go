@@ -6,10 +6,8 @@ import (
 	"time"
 )
 
-// AccessLog emits one line per request after the handler returns: the
-// request id, method, URI, status, and duration. No bodies, cookies, or
-// query values beyond the URI — SECURITY.md bans logging secrets
-// (SECURITY.md "Abuse / session / logging").
+// No bodies, cookies, or query values beyond the URI — SECURITY.md bans
+// logging secrets.
 func AccessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -18,9 +16,8 @@ func AccessLog(next http.Handler) http.Handler {
 	)
 }
 
-// accessLog is AccessLog's handler body: run the handler, then emit the
-// one line per request. The emit runs deferred so a re-panic (Recover's
-// truncated-response path) still logs the line for the request.
+// The emit is deferred so a re-panic (Recover's truncated-response path)
+// still logs the line for the request.
 func accessLog(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	start := time.Now()
 
@@ -33,7 +30,6 @@ func accessLog(w http.ResponseWriter, r *http.Request, next http.Handler) {
 	next.ServeHTTP(sw, r)
 }
 
-// i dont have any idea how to name it, can you name it better?
 func logStatus(r *http.Request, sw *statusWriter, start time.Time) {
 	stat := sw.status
 	if stat == 0 {
@@ -44,8 +40,8 @@ func logStatus(r *http.Request, sw *statusWriter, start time.Time) {
 		RequestIDFrom(r), r.Method, r.URL.RequestURI(), stat, time.Since(start))
 }
 
-// statusWriter records the first status written so the log reports what
-// the client actually received; later WriteHeader calls are the
+// statusWriter records the first status written, so the log reports what
+// the client actually received; later WriteHeader calls belong to the
 // underlying writer's superfluous-call problem, not this one's.
 type statusWriter struct {
 	http.ResponseWriter

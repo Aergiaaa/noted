@@ -10,16 +10,17 @@ import (
 )
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen, auth_method)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateSessionParams struct {
-	ID        string
-	TokenHash string
-	CreatedAt string
-	ExpiresAt string
-	LastSeen  string
+	ID         string
+	TokenHash  string
+	CreatedAt  string
+	ExpiresAt  string
+	LastSeen   string
+	AuthMethod string
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
@@ -29,6 +30,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.CreatedAt,
 		arg.ExpiresAt,
 		arg.LastSeen,
+		arg.AuthMethod,
 	)
 	return err
 }
@@ -38,7 +40,6 @@ DELETE
 FROM sessions
 `
 
-// reset-auth revokes every session in one shot.
 func (q *Queries) DeleteAllSessions(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteAllSessions)
 	return err
@@ -50,7 +51,7 @@ FROM sessions
 WHERE expires_at < ?
 `
 
-// Purge on login/periodically: absolute cap already passed.
+// Purge at boot and on login (PruneSessions, createSession).
 func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt string) error {
 	_, err := q.db.ExecContext(ctx, deleteExpiredSessions, expiresAt)
 	return err
@@ -73,19 +74,17 @@ FROM sessions
 WHERE token_hash = ?
 `
 
-// Logout: the cookie proves possession, so the hash alone addresses the row.
 func (q *Queries) DeleteSessionByTokenHash(ctx context.Context, tokenHash string) error {
 	_, err := q.db.ExecContext(ctx, deleteSessionByTokenHash, tokenHash)
 	return err
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, token_hash, created_at, expires_at, last_seen
+SELECT id, token_hash, created_at, expires_at, last_seen, auth_method
 FROM sessions
 WHERE token_hash = ?
 `
 
-// Lookup by SHA-256 of the opaque cookie token; token_hash is UNIQUE.
 func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (Session, error) {
 	row := q.db.QueryRowContext(ctx, getSessionByTokenHash, tokenHash)
 	var i Session
@@ -95,6 +94,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.LastSeen,
+		&i.AuthMethod,
 	)
 	return i, err
 }
@@ -112,7 +112,6 @@ type TouchSessionParams struct {
 	ID        string
 }
 
-// Sliding expiry: bump last_seen and extends expires_at (F4 computes both).
 func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
 	_, err := q.db.ExecContext(ctx, touchSession, arg.LastSeen, arg.ExpiresAt, arg.ID)
 	return err

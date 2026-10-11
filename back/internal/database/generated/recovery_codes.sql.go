@@ -36,7 +36,6 @@ DELETE
 FROM recovery_codes
 `
 
-// reset-auth clears the pool together with enrollment + sessions.
 func (q *Queries) DeleteAllRecoveryCodes(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteAllRecoveryCodes)
 	return err
@@ -49,7 +48,7 @@ WHERE used_at IS NULL
 ORDER BY created_at, id
 `
 
-// Login scans the unused set (bcrypt hashes are salted, so no direct lookup).
+// Salted bcrypt hashes cannot be looked up directly, so login scans.
 func (q *Queries) ListUnusedRecoveryCodes(ctx context.Context) ([]RecoveryCode, error) {
 	rows, err := q.db.QueryContext(ctx, listUnusedRecoveryCodes)
 	if err != nil {
@@ -84,8 +83,8 @@ SET used_at = ?
 WHERE used_at IS NULL
 `
 
-// Rotation (POST /api/auth/recovery-codes) burns the whole unused pool
-// before fresh codes are minted, so a leaked code dies with its siblings.
+// Burns the whole unused pool before fresh codes are minted, so a leaked
+// code dies with its siblings.
 func (q *Queries) MarkAllRecoveryCodesUsed(ctx context.Context, usedAt *string) error {
 	_, err := q.db.ExecContext(ctx, markAllRecoveryCodesUsed, usedAt)
 	return err
@@ -103,8 +102,8 @@ type MarkRecoveryCodeUsedParams struct {
 	ID     string
 }
 
-// Conditional burn: only a row still unused is marked, and the caller gets
-// the affected-row count so a racing double-use loses cleanly (0 rows).
+// Conditional burn: the affected-row count lets a racing double-use lose
+// cleanly (0 rows).
 func (q *Queries) MarkRecoveryCodeUsed(ctx context.Context, arg MarkRecoveryCodeUsedParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, markRecoveryCodeUsed, arg.UsedAt, arg.ID)
 	if err != nil {

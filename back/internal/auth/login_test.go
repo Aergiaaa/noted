@@ -100,6 +100,24 @@ func TestAcceptCounter_windowRules(t *testing.T) {
 	}
 }
 
+func TestAcceptCounter_interleavedReplay_staysRefused(t *testing.T) {
+	// The hole a single-slot guard leaves: accept c, let the victim's
+	// c+1 overwrite the slot, then replay c — the set keeps refusing it.
+	s, _ := newTestService(t, testEncKey(1))
+	t0 := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	s.now = func() time.Time { return t0 }
+
+	if !s.acceptCounter(7) || !s.acceptCounter(8) {
+		t.Fatal("both counters must be accepted on first sight")
+	}
+	if s.acceptCounter(7) {
+		t.Fatal("replay of 7 after 8 was accepted must still be refused")
+	}
+	if s.acceptCounter(8) {
+		t.Fatal("replayed 8 must be refused while its window stands")
+	}
+}
+
 func TestLogin_recoveryCode_acceptsHumanTyping(t *testing.T) {
 	s, _ := newTestService(t, testEncKey(1))
 	_, codes := enroll(t, s)
@@ -201,7 +219,6 @@ func TestLogin_sessionWriteFailure_propagates(t *testing.T) {
 	}
 }
 
-// toLower lowercases a recovery code the way a human may type it.
 func toLower(c string) string {
 	b := []byte(c)
 	for i, ch := range b {

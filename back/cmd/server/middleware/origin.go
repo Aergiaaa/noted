@@ -8,13 +8,9 @@ import (
 	"noted/cmd/server/handler"
 )
 
-// OriginCheck is the CSRF defense for state-changing verbs: a browser
-// always attaches Origin (or, older, Referer) to cross-site POSTs, so
-// the header must match the configured APP_ORIGIN or the request's own
-// host. Absent both headers means a non-browser client — SameSite=Lax
-// plus the browser's own Origin requirement cover the CSRF surface
-// (SECURITY.md "Cookies / CSRF / CORS"). API.md freezes which verbs are
-// mutations: POST/PATCH/DELETE.
+// OriginCheck is the CSRF defense for state-changing verbs (POST/PATCH/
+// DELETE per API.md): Origin — or, older, Referer — must match the
+// configured APP_ORIGIN or the request's own host.
 func OriginCheck(appOrigin string) Middleware {
 	allow := strings.TrimSuffix(appOrigin, "/")
 
@@ -25,8 +21,6 @@ func OriginCheck(appOrigin string) Middleware {
 	}
 }
 
-// originCheck is OriginCheck's handler body: reject a cross-site
-// mutation, otherwise pass the request on.
 func originCheck(w http.ResponseWriter, r *http.Request, next http.Handler, allow string) {
 	if isMutation(r.Method) && !requestOriginOK(r, allow) {
 		handler.WriteError(w, http.StatusForbidden, "forbidden origin", nil)
@@ -45,8 +39,8 @@ func isMutation(method string) bool {
 	}
 }
 
-// requestOriginOK trusts the Origin header when present, else Referer;
-// with neither, the request did not come from a browser form/fetch.
+// Neither header means a non-browser client: SameSite=Lax plus the
+// browser's own Origin requirement cover that surface (SECURITY.md).
 func requestOriginOK(r *http.Request, allow string) bool {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		return originAllowed(origin, r.Host, allow)
@@ -64,11 +58,8 @@ func requestOriginOK(r *http.Request, allow string) bool {
 	return true
 }
 
-// originAllowed accepts the exact APP_ORIGIN or any origin on the
-// request's own host (scheme-agnostic: the browser's Origin carries
-// http/https, the Host header does not, and both identify the site).
-// A malformed origin is rejected here, at the point of failure; the
-// caller answers with the frozen 403 envelope either way.
+// originAllowed compares scheme-agnostic: the browser's Origin carries
+// http/https, the Host header does not, and both identify the site.
 func originAllowed(origin, host, allow string) bool {
 	if origin == allow {
 		return true

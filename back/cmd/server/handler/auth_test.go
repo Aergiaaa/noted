@@ -113,6 +113,16 @@ func TestLogin_malformedBody_400(t *testing.T) {
 	}
 }
 
+func TestLogin_unknownField_400(t *testing.T) {
+	h, _, _ := newTestAuthHandler(t, false)
+	rec := postJSON(h.Login, "/api/auth/login", `{"code":"123456","pin":"0000"}`)
+
+	status, code, _ := decodeErr(t, rec)
+	if status != http.StatusBadRequest || code != "validation_error" {
+		t.Fatalf("status=%d code=%q, want 400 validation_error", status, code)
+	}
+}
+
 func TestLogin_wrongCode_401Generic(t *testing.T) {
 	// No enrollment at all: every credential outcome must look identical.
 	h, _, _ := newTestAuthHandler(t, false)
@@ -306,10 +316,12 @@ func TestLogout_deleteFailure_500(t *testing.T) {
 }
 
 func TestRecoveryCodes_200RotatesOnce(t *testing.T) {
-	h, svc, _ := newTestAuthHandler(t, false)
+	h, svc, db := newTestAuthHandler(t, false)
 	enrollTestHost(t, svc)
+	seedSession(t, db, "totp-token", time.Now().Add(time.Hour), time.Now())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/recovery-codes", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SESSION_COOKIE, Value: "totp-token"})
 	rec := httptest.NewRecorder()
 	h.RecoveryCodes(rec, req)
 
@@ -332,19 +344,66 @@ func TestRecoveryCodes_200RotatesOnce(t *testing.T) {
 	}
 }
 
+func TestRecoveryCodes_sessionGates(t *testing.T) {
+	t.Run("no cookie is 401", func(t *testing.T) {
+		h, _, _ := newTestAuthHandler(t, false)
+		rec := httptest.NewRecorder()
+		h.RecoveryCodes(rec, httptest.NewRequest(http.MethodPost, "/api/auth/recovery-codes", nil))
+
+		status, code, _ := decodeErr(t, rec)
+		if status != http.StatusUnauthorized || code != "unauthenticated" {
+			t.Fatalf("status=%d code=%q, want 401 unauthenticated", status, code)
+		}
+	})
+	t.Run("unknown session is 401", func(t *testing.T) {
+		h, _, _ := newTestAuthHandler(t, false)
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/recovery-codes", nil)
+		req.AddCookie(&http.Cookie{Name: auth.SESSION_COOKIE, Value: "no-row"})
+		rec := httptest.NewRecorder()
+		h.RecoveryCodes(rec, req)
+
+		status, code, _ := decodeErr(t, rec)
+		if status != http.StatusUnauthorized || code != "unauthenticated" {
+			t.Fatalf("status=%d code=%q, want 401 unauthenticated", status, code)
+		}
+	})
+	t.Run("recovery-minted session is 403 step_up_required", func(t *testing.T) {
+		h, svc, db := newTestAuthHandler(t, false)
+		enrollTestHost(t, svc)
+		seedSession(t, db, "rec-token", time.Now().Add(time.Hour), time.Now())
+		sum := sha256.Sum256([]byte("rec-token"))
+		if _, err := db.Exec(`UPDATE sessions SET auth_method = ? WHERE token_hash = ?`,
+			auth.AUTH_METHOD_RECOVERY, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/recovery-codes", nil)
+		req.AddCookie(&http.Cookie{Name: auth.SESSION_COOKIE, Value: "rec-token"})
+		rec := httptest.NewRecorder()
+		h.RecoveryCodes(rec, req)
+
+		status, code, _ := decodeErr(t, rec)
+		if status != http.StatusForbidden || code != "step_up_required" {
+			t.Fatalf("status=%d code=%q, want 403 step_up_required", status, code)
+		}
+	})
+}
+
 func TestRecoveryCodes_internalFailure_500(t *testing.T) {
 	h, svc, db := newTestAuthHandler(t, false)
 	enrollTestHost(t, svc)
+	seedSession(t, db, "totp-token", time.Now().Add(time.Hour), time.Now())
 	if _, err := db.Exec(`DROP TABLE recovery_codes`); err != nil {
 		t.Fatal(err)
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/recovery-codes", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SESSION_COOKIE, Value: "totp-token"})
 	rec := httptest.NewRecorder()
 	h.RecoveryCodes(rec, req)
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusInternalServerError || code != "internal_error" {
-		t.Fatalf("status=%d code=%q, want 500", status, code)
+		t.Fatalf("status=%d code=%q, want 500 internal_error", status, code)
 	}
 }

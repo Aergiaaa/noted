@@ -1,25 +1,4 @@
-.PHONY: dev test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
-
-# Local iteration: Go api :8080 + Vite :5173 (no containers needed).
-# DB_PATH is absolute: the server runs from back/, but the SQLite file
-# belongs in the repo-root .db/ this target creates (and .gitignore hides).
-# Teardown walks each background job's whole process tree before killing
-# the job: `go run` and `bun run dev` are wrappers, and killing only them
-# orphans the server/vite children (which keep :8080/:5173 bound until
-# killed by hand). Never `kill 0`: bash 5.3 (this system's /bin/sh)
-# segfaults on a self group-kill inside a trap. The first job to end takes
-# the whole target down with its status (`wait -n`, bash >= 4.3): a
-# crashed server must not leave vite running in a hanging recipe.
-dev:
-	mkdir -p .db
-	killtree() { for c in $$(pgrep -P $$1 2>/dev/null); do killtree $$c; done; kill -TERM $$1 2>/dev/null || true; }; \
-	cleanup() { for j in $$(jobs -p); do killtree $$j; done; wait; }; \
-	trap 'cleanup; exit 0' INT TERM; \
-	trap cleanup EXIT; \
-	(cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server) & \
-	(cd front && bun run dev) & \
-	if [ -n "$${BASH_VERSION:-}" ]; then wait -n; else wait; fi; status=$$?; \
-	cleanup; exit $$status
+.PHONY: test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
 
 # Full test suite: backend (go test) + frontend (vitest).
 test: test-back test-front
@@ -127,7 +106,7 @@ migrate-check:
 compose-up: export UID := $(shell id -u)
 compose-up: export GID := $(shell id -g)
 compose-up:
-	docker compose up --build
+	docker compose up --build -d
 
 compose-down:
 	docker compose down
@@ -136,16 +115,25 @@ compose-down:
 backup:
 	@echo "TODO(F12): VACUUM INTO + integrity_check"
 
-# F4 host-local enrollment: prints the ASCII QR + otpauth URI, verifies one
-# live 6-digit code, then persists the sealed secret + recovery pool once
-# (shown once, store offline). Extra flags via ARGS, e.g.
+# F4 enrollment, run inside the dev api container (entrypoint `go`, source
+# bind-mounted at /src, DB_PATH=/data/noted.db hits the same ./.db file the
+# running server uses). Prints the ASCII QR + otpauth URI, verifies one live
+# 6-digit code, then persists the sealed secret + recovery pool once (shown
+# once, store offline). Extra flags via ARGS, e.g.
 # `make enroll ARGS='--qr /tmp/noted-qr.svg'`.
+# UID/GID export: same reasoning as compose-up above — without it the
+# container falls back to 1000:1000 and may write .db files the host
+# user can't read or write.
+enroll: export UID := $(shell id -u)
+enroll: export GID := $(shell id -g)
 enroll:
 	mkdir -p .db
-	cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server enroll $(ARGS)
+	docker compose run --rm -it api run ./cmd/server enroll $(ARGS)
 
 # Wipes enrollment, recovery codes and sessions so the host can re-arm.
 # --yes is passed deliberately: the CLI refuses a bare `reset-auth`.
+reset-auth: export UID := $(shell id -u)
+reset-auth: export GID := $(shell id -g)
 reset-auth:
 	mkdir -p .db
-	cd back && CGO_ENABLED=0 DB_PATH=$(CURDIR)/.db/noted.db go run ./cmd/server reset-auth --yes
+	docker compose run --rm -it api run ./cmd/server reset-auth --yes

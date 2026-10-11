@@ -55,13 +55,29 @@ func TestRequireSession_validCookie_reachesHandler(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: auth.SESSION_COOKIE, Value: "good-token"})
 	rec := httptest.NewRecorder()
 
-	RequireSession(svc)(next).ServeHTTP(rec, req)
+	RequireSession(svc, false)(next).ServeHTTP(rec, req)
 
 	if !reached {
 		t.Fatal("handler not reached with valid cookie")
 	}
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("status = %d, want teapot passthrough", rec.Code)
+	}
+
+	// The guard re-issues the cookie so the browser Max-Age keeps pace
+	// with the server-side slide (SECURITY.md, cookie freshness).
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != auth.SESSION_COOKIE {
+		t.Fatalf("re-issue cookie missing/wrong: %+v", cookies)
+	}
+	if cookies[0].Value != "good-token" {
+		t.Fatalf("re-issued value = %q, want same token", cookies[0].Value)
+	}
+	if cookies[0].MaxAge != auth.COOKIE_MAX_AGE_SEC || !cookies[0].HttpOnly {
+		t.Fatalf("cookie attrs = MaxAge:%d HttpOnly:%v", cookies[0].MaxAge, cookies[0].HttpOnly)
+	}
+	if cookies[0].Secure {
+		t.Fatal("Secure set with secure=false")
 	}
 }
 
@@ -88,7 +104,7 @@ func TestRequireSession_badCookie_401Envelope(t *testing.T) {
 			}
 			rec := httptest.NewRecorder()
 
-			RequireSession(svc)(next).ServeHTTP(rec, req)
+			RequireSession(svc, false)(next).ServeHTTP(rec, req)
 
 			if reached {
 				t.Fatal("handler reached without a valid session")

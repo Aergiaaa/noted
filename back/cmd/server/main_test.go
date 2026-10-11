@@ -274,8 +274,8 @@ func TestRun_boot_migratesDataFile(t *testing.T) {
 	if err := h.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 2 {
-		t.Fatalf("user_version = %d, want 2 (0001_init + 0002_auth migrated)", version)
+	if version != 3 {
+		t.Fatalf("user_version = %d, want 3 (0001_init + 0002_auth + 0003_session_auth_method migrated)", version)
 	}
 }
 

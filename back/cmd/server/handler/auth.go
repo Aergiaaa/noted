@@ -8,23 +8,30 @@ import (
 	"noted/internal/auth"
 )
 
-// Login — POST /api/auth/login {code}: a 6-digit TOTP or a recovery code
-// mints the session cookie. 400 when code is missing (API.md required
-// field), 401 "invalid code" for every credential failure (generic by
-// design — SECURITY.md), 500 only when the session could not be written.
-// 429 + Retry-After comes from middleware.RateLimit in front of this.
+// loginRequest is the request body of POST /api/auth/login (API.md):
+//
+//	{"code": "123456"}          — live 6-digit TOTP
+//	{"code": "ABCD-EFGH"}       — one unused recovery code
+//
+// It is the whole contract the frontend sends; DecodeJSON rejects any
+// unknown key, so a drifted shape fails with 400 instead of silently
+// ignoring fields.
+type loginRequest struct {
+	Code string `json:"code"`
+}
+
+// Login: 401 for every credential failure — generic by design
+// (SECURITY.md). 429 comes from middleware.RateLimit in front of this.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Code string `json:"code"`
-	}
-	if !DecodeJSON(w, r, &in) {
+	var loginReq loginRequest
+	if !DecodeJSON(w, r, &loginReq) {
 		return
 	}
-	if in.Code == "" {
+	if loginReq.Code == "" {
 		WriteError(w, http.StatusBadRequest, "code is required", map[string]string{"code": "required"})
 		return
 	}
-	token, err := h.auth.Login(r.Context(), in.Code)
+	token, err := h.auth.Login(r.Context(), loginReq.Code)
 	switch {
 	case errors.Is(err, auth.ErrInvalidCode):
 		WriteError(w, http.StatusUnauthorized, "invalid code", nil)
@@ -32,36 +39,28 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		log.Printf("handler: login: %v", err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 	default:
-		h.setSessionCookie(w, token)
+		auth.WriteSessionCookie(w, token, h.secure)
 		WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
-// Session — GET /api/session: the router guard's probe. Valid cookie →
-// 200 {authenticated, expires_at} with the sliding expiry re-issued in the
-// cookie too; anything else → the plain 401 envelope (API.md).
+// Session validates the cookie and re-issues it so the browser-side
+// Max-Age keeps pace with the server-side slide.
 func (h *Handler) Session(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie(auth.SESSION_COOKIE)
+	token, expires, err := h.auth.ValidateRequest(r)
 	if err != nil {
 		WriteError(w, http.StatusUnauthorized, "", nil)
 		return
 	}
-	expires, err := h.auth.Validate(r.Context(), c.Value)
-	if err != nil {
-		WriteError(w, http.StatusUnauthorized, "", nil)
-		return
-	}
-	h.setSessionCookie(w, c.Value)
+	auth.WriteSessionCookie(w, token, h.secure)
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"expires_at":    expires.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 
-// Logout — POST /api/auth/logout: public and idempotent (no session
-// required — an absent or stale cookie still clears). The row delete must
-// succeed, otherwise the session would survive server-side: 500, cookie
-// kept. 204 + cleared cookie otherwise (API.md).
+// Logout is public and idempotent: a failed delete must 500 with the
+// cookie kept, otherwise the session would survive server-side.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	var token string
 	if c, err := r.Cookie(auth.SESSION_COOKIE); err == nil {
@@ -72,39 +71,31 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "", nil)
 		return
 	}
-	h.setSessionCookie(w, "")
+	auth.WriteSessionCookie(w, "", h.secure)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// RecoveryCodes — POST /api/auth/recovery-codes (session required): burns
-// the whole unused pool and returns 10 fresh codes once. The route's
-// RequireSession guard runs first, so a non-401 here is an internal
-// failure (500); the codes are shown exactly once, never logged.
+// RecoveryCodes: RequireSession already proved the session exists, so the
+// failures left here are the step-up refusal (403: the session itself was
+// minted from a recovery code), a session that died between guard and
+// handler (401), and internal ones (500). Codes are shown once, never
+// logged.
 func (h *Handler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
-	codes, err := h.auth.RegenerateRecovery(r.Context())
+	c, err := r.Cookie(auth.SESSION_COOKIE)
 	if err != nil {
-		log.Printf("handler: recovery codes: %v", err)
-		WriteError(w, http.StatusInternalServerError, "", nil)
+		WriteError(w, http.StatusUnauthorized, "", nil)
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string][]string{"recovery_codes": codes})
-}
-
-// setSessionCookie issues the noted_session cookie: a token sets the
-// 30d Max-Age attributes from SECURITY.md; an empty token clears it
-// (Max-Age < 0 tells the browser to drop the cookie).
-func (h *Handler) setSessionCookie(w http.ResponseWriter, token string) {
-	maxAge := auth.COOKIE_MAX_AGE_SEC
-	if token == "" {
-		maxAge = -1
+	codes, err := h.auth.RotateRecovery(r.Context(), c.Value)
+	switch {
+	case errors.Is(err, auth.ErrStepUpRequired):
+		WriteErrorCode(w, http.StatusForbidden, "step_up_required", "TOTP login required", nil)
+	case errors.Is(err, auth.ErrUnauthenticated):
+		WriteError(w, http.StatusUnauthorized, "", nil)
+	case err != nil:
+		log.Printf("handler: recovery codes: %v", err)
+		WriteError(w, http.StatusInternalServerError, "", nil)
+	default:
+		WriteJSON(w, http.StatusOK, map[string][]string{"recovery_codes": codes})
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.SESSION_COOKIE,
-		Value:    token,
-		Path:     "/",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-		Secure:   h.secure,
-		SameSite: http.SameSiteLaxMode,
-	})
 }

@@ -39,11 +39,12 @@ type RecoveryCode struct {
 }
 
 type Session struct {
-	ID        string
-	TokenHash string
-	CreatedAt string
-	ExpiresAt string
-	LastSeen  string
+	ID         string
+	TokenHash  string
+	CreatedAt  string
+	ExpiresAt  string
+	LastSeen   string
+	AuthMethod string
 }
 
 type Task struct {
