@@ -4,8 +4,8 @@ FROM sessions
 WHERE token_hash = ?;
 
 -- name: CreateSession :exec
-INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen, auth_method)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: TouchSession :exec
 UPDATE sessions
@@ -24,6 +24,7 @@ FROM sessions
 WHERE token_hash = ?;
 
 -- name: DeleteExpiredSessions :exec
+-- Purge at boot and on login (PruneSessions, createSession).
 DELETE
 FROM sessions
 WHERE expires_at < ?;

@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/pquerna/otp/totp"
 
 	"noted/internal/database"
 )
@@ -207,6 +210,53 @@ func TestRegenerateRecovery_failureBranches(t *testing.T) {
 	})
 }
 
+func TestRotateRecovery_gatesOnAuthMethod(t *testing.T) {
+	s, _ := newTestService(t, testEncKey(1))
+	secret, codes := enroll(t, s)
+
+	// A session minted from a recovery code must not mint more codes.
+	recToken, err := s.Login(context.Background(), codes[0])
+	if err != nil {
+		t.Fatalf("Login(recovery): %v", err)
+	}
+	if _, err := s.RotateRecovery(context.Background(), recToken); !errors.Is(err, ErrStepUpRequired) {
+		t.Fatalf("recovery-minted session = %v, want ErrStepUpRequired", err)
+	}
+
+	// A TOTP-minted session rotates the pool normally.
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	totpToken, err := s.Login(context.Background(), code)
+	if err != nil {
+		t.Fatalf("Login(totp): %v", err)
+	}
+	fresh, err := s.RotateRecovery(context.Background(), totpToken)
+	if err != nil {
+		t.Fatalf("RotateRecovery via TOTP session: %v", err)
+	}
+	if len(fresh) != RECOVERY_CODE_COUNT {
+		t.Fatalf("rotated %d codes, want %d", len(fresh), RECOVERY_CODE_COUNT)
+	}
+}
+
+func TestRotateRecovery_unknownToken_unauthenticated(t *testing.T) {
+	s, _ := newTestService(t, testEncKey(1))
+	if _, err := s.RotateRecovery(context.Background(), "no-such-token"); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("RotateRecovery = %v, want ErrUnauthenticated", err)
+	}
+}
+
+func TestRotateRecovery_lookupFailure_wraps(t *testing.T) {
+	s, db := newTestService(t, testEncKey(1))
+	_ = db.Close()
+	if _, err := s.RotateRecovery(context.Background(), "token"); err == nil ||
+		errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrStepUpRequired) {
+		t.Fatalf("closed db = %v, want a wrapped lookup error", err)
+	}
+}
+
 func TestResetAuth_wipesEverything(t *testing.T) {
 	s, _ := newTestService(t, testEncKey(1))
 	secret, codes := enroll(t, s)
@@ -275,14 +325,32 @@ func TestNormalizeRecoveryCode_acceptsHumanTyping(t *testing.T) {
 		{"ABCD 2345\t", "ABCD2345"},
 		{"abcd-2345", "ABCD2345"},
 		{"", ""},
-		{"ABCD234", ""},    // too short
-		{"ABCD-23456", ""}, // too long
-		{"IIII-IIII", ""},  // I is not in the alphabet
-		{"ABCD-234!", ""},  // symbol not in the alphabet
+		{"ABCD234", ""},           // too short
+		{"ABCD-23456", ""},        // too long
+		{"ABCO-2345", "ABC02345"}, // Crockford O -> 0
+		{"ABCI-2345", "ABC12345"}, // Crockford I -> 1
+		{"ABCD-234l", "ABCD2341"}, // l -> L -> 1
+		{"UUUU-UUUU", ""},         // U is not in the alphabet and never folds
+		{"ABCD-234!", ""},         // symbol not in the alphabet
 	} {
 		if got := normalizeRecoveryCode(tc.in); got != tc.want {
 			t.Fatalf("normalizeRecoveryCode(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestInsertRecoveryCodes_rejectsUnnormalizable(t *testing.T) {
+	// The guard that keeps bcrypt's dropped error unreachable: anything
+	// that does not normalize to exactly RECOVERY_CODE_LEN symbols must
+	// fail loudly instead of being hashed into an unusable row.
+	s, _ := newTestService(t, testEncKey(1))
+	err := insertRecoveryCodes(context.Background(), s.q,
+		[]string{"nope"}, formatTime(time.Now()))
+	if err == nil {
+		t.Fatal("want error for a code that fails normalization")
+	}
+	if strings.Contains(err.Error(), "nope") {
+		t.Fatalf("error leaks the code: %v", err)
 	}
 }
 

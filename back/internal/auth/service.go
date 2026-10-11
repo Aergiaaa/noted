@@ -21,6 +21,10 @@ const (
 	SESSION_REFRESH_AT   = 7 * 24 * time.Hour
 	SESSION_ABSOLUTE_MAX = 90 * 24 * time.Hour
 
+	// SESSION_TOUCH_INTERVAL: last_seen only costs a write when it is
+	// older than this; steady-state requests leave the row alone.
+	SESSION_TOUCH_INTERVAL = 5 * time.Minute
+
 	RECOVERY_CODE_COUNT = 10
 	RECOVERY_CODE_LEN   = 8
 
@@ -28,16 +32,24 @@ const (
 
 	LOGIN_RATE_LIMIT  = 5
 	LOGIN_RATE_WINDOW = time.Minute
+
+	// auth_method values (sessions.auth_method, migration 0003): only a
+	// TOTP-minted session may mint more credentials.
+	AUTH_METHOD_TOTP     = "totp"
+	AUTH_METHOD_RECOVERY = "recovery"
 )
 
 // ErrInvalidCode is the only failure a login attempt may reveal: one
 // generic 401 whether the code is wrong, spent, or unenrolled — no
-// probing, no enumeration (SECURITY.md).
+// probing, no enumeration (SECURITY.md). ErrStepUpRequired is the one
+// 403 the API may return: an authenticated session minted from a
+// recovery code may not rotate the recovery pool.
 var (
 	ErrInvalidCode     = errors.New("invalid code")
 	ErrUnauthenticated = errors.New("unauthenticated")
 	ErrEnrolled        = errors.New("already enrolled")
 	ErrNotEnrolled     = errors.New("not enrolled")
+	ErrStepUpRequired  = errors.New("re-authentication required")
 )
 
 // Service keeps db alongside the queries because multi-statement writes
@@ -49,19 +61,19 @@ type Service struct {
 	encKey string
 	now    func() time.Time
 
-	mu          sync.Mutex
-	lastCounter uint64
-	lastCodeAt  time.Time
+	mu       sync.Mutex
+	accepted map[uint64]time.Time // TOTP counter -> replay window expiry
 }
 
 // New stores encKey verbatim and parses it lazily, so a server without
 // TOTP_ENC_KEY still boots — it just cannot enroll or decrypt.
 func New(db *sql.DB, encKey string) *Service {
 	return &Service{
-		db:     db,
-		q:      generated.New(db),
-		encKey: encKey,
-		now:    time.Now,
+		db:       db,
+		q:        generated.New(db),
+		encKey:   encKey,
+		now:      time.Now,
+		accepted: make(map[uint64]time.Time),
 	}
 }
 

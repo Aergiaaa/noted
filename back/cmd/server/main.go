@@ -30,6 +30,11 @@ type app struct {
 	conf    Config
 	handler *handler.Handler
 	auth    *auth.Service
+
+	// secure pins the cookie Secure attribute to APP_ENV=prod; derived
+	// once in wire so the login cookie and the guard's re-issue can never
+	// disagree.
+	secure bool
 }
 
 func (a *app) run(ctx context.Context) error {
@@ -85,8 +90,9 @@ func newConfigFromEnv() Config {
 // wire is split from run() so tests can wire an existing handle directly.
 func (a *app) wire(db *sql.DB) {
 	a.auth = auth.New(db, a.conf.TOTPEncKey)
+	a.secure = a.conf.AppEnv == "prod"
 
-	a.handler = handler.New(a.auth, a.conf.AppEnv == "prod")
+	a.handler = handler.New(a.auth, a.secure)
 	a.bootAuth(context.Background())
 }
 

@@ -29,7 +29,7 @@ func (s *Service) Login(ctx context.Context, code string) (string, error) {
 func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 	ok, counter, err := s.ValidateCode(ctx, code)
 	if err != nil {
-		log.Printf("auth: totp verify: %v", err)
+		log.Printf("auth: internal: totp verify: %v", err)
 		return "", ErrInvalidCode
 	}
 
@@ -41,22 +41,29 @@ func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 		return "", ErrInvalidCode
 	}
 
-	return s.createSession(ctx)
+	return s.createSession(ctx, AUTH_METHOD_TOTP)
 }
 
-// acceptCounter is the replay guard: the same counter is accepted once per
-// REPLAY_WINDOW. In-memory on purpose — a restart forgets it, a trade-off
-// documented in SECURITY.md.
+// acceptCounter is the replay guard: every counter accepted within
+// REPLAY_WINDOW stays refused, even after another counter was accepted
+// in between — an interleaved replay must not reset the guard. In-memory
+// on purpose: a restart forgets it, a trade-off documented in SECURITY.md.
 func (s *Service) acceptCounter(counter uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := s.now()
-	if counter == s.lastCounter && now.Sub(s.lastCodeAt) < REPLAY_WINDOW {
-		return false
+	for c, exp := range s.accepted {
+		if !now.Before(exp) {
+			delete(s.accepted, c)
+		}
 	}
 
-	s.lastCounter, s.lastCodeAt = counter, now
+	if _, seen := s.accepted[counter]; seen {
+		return false
+	}
+	s.accepted[counter] = now.Add(REPLAY_WINDOW)
+
 	return true
 }
 
@@ -71,7 +78,7 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 
 	rows, err := s.q.ListUnusedRecoveryCodes(ctx)
 	if err != nil {
-		log.Printf("auth: recovery list: %v", err)
+		log.Printf("auth: internal: recovery list: %v", err)
 		return "", ErrInvalidCode
 	}
 
@@ -86,7 +93,7 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 			ID:     r.ID,
 		})
 		if err != nil {
-			log.Printf("auth: recovery consume: %v", err)
+			log.Printf("auth: internal: recovery consume: %v", err)
 			return "", ErrInvalidCode
 		}
 
@@ -94,7 +101,7 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 			return "", ErrInvalidCode // burned by a racing attempt
 		}
 
-		return s.createSession(ctx)
+		return s.createSession(ctx, AUTH_METHOD_RECOVERY)
 	}
 
 	return "", ErrInvalidCode

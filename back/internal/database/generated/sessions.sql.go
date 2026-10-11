@@ -10,16 +10,17 @@ import (
 )
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO sessions (id, token_hash, created_at, expires_at, last_seen, auth_method)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateSessionParams struct {
-	ID        string
-	TokenHash string
-	CreatedAt string
-	ExpiresAt string
-	LastSeen  string
+	ID         string
+	TokenHash  string
+	CreatedAt  string
+	ExpiresAt  string
+	LastSeen   string
+	AuthMethod string
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
@@ -29,6 +30,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.CreatedAt,
 		arg.ExpiresAt,
 		arg.LastSeen,
+		arg.AuthMethod,
 	)
 	return err
 }
@@ -49,6 +51,7 @@ FROM sessions
 WHERE expires_at < ?
 `
 
+// Purge at boot and on login (PruneSessions, createSession).
 func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt string) error {
 	_, err := q.db.ExecContext(ctx, deleteExpiredSessions, expiresAt)
 	return err
@@ -77,7 +80,7 @@ func (q *Queries) DeleteSessionByTokenHash(ctx context.Context, tokenHash string
 }
 
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
-SELECT id, token_hash, created_at, expires_at, last_seen
+SELECT id, token_hash, created_at, expires_at, last_seen, auth_method
 FROM sessions
 WHERE token_hash = ?
 `
@@ -91,6 +94,7 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.LastSeen,
+		&i.AuthMethod,
 	)
 	return i, err
 }

@@ -43,17 +43,17 @@ func (s *Service) CommitEnrollment(ctx context.Context, secret string) ([]string
 	defer tx.Rollback()
 
 	q := s.q.WithTx(tx)
-	err = q.CreateEnrollment(ctx, generated.CreateEnrollmentParams{
+	n, err := q.CreateEnrollment(ctx, generated.CreateEnrollmentParams{
 		TotpSecret: sealed,
 		EnrolledAt: &now,
 		UpdatedAt:  now,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-			return nil, ErrEnrolled
-		}
-
 		return nil, fmt.Errorf("insert enrollment: %w", err)
+	}
+
+	if n == 0 {
+		return nil, ErrEnrolled // ON CONFLICT (id) DO NOTHING: row exists
 	}
 
 	if err := insertRecoveryCodes(ctx, q, codes, now); err != nil {
@@ -96,6 +96,27 @@ func (s *Service) RegenerateRecovery(ctx context.Context) ([]string, error) {
 	return codes, tx.Commit()
 }
 
+// RotateRecovery gates the pool rotation on a TOTP-minted session: a
+// stolen session must not be able to mint fresh recovery codes, which
+// would outlive any logout (SECURITY.md). Expiry itself was already
+// checked by RequireSession in front of the handler.
+func (s *Service) RotateRecovery(ctx context.Context, token string) ([]string, error) {
+	row, err := s.q.GetSessionByTokenHash(ctx, hashToken(token))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUnauthenticated
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get session: %w", err)
+	}
+
+	if row.AuthMethod != AUTH_METHOD_TOTP {
+		return nil, ErrStepUpRequired
+	}
+
+	return s.RegenerateRecovery(ctx)
+}
+
 func (s *Service) ResetAuth(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -119,11 +140,18 @@ func (s *Service) ResetAuth(ctx context.Context) error {
 	return tx.Commit()
 }
 
-// bcrypt's error is dropped: cost is a package constant and codes are 8
-// bytes, far under the 72-byte limit, so GenerateFromPassword cannot fail.
+// insertRecoveryCodes hashes one code per row. bcrypt's error is dropped
+// deliberately: its only failure is an input past 72 bytes, and the
+// normalization guard below proves the input is exactly RECOVERY_CODE_LEN
+// symbols first. Codes never appear in errors or logs.
 func insertRecoveryCodes(ctx context.Context, q *generated.Queries, codes []string, at string) error {
 	for _, c := range codes {
-		hash, _ := bcrypt.GenerateFromPassword([]byte(normalizeRecoveryCode(c)), bcryptCost)
+		normalized := normalizeRecoveryCode(c)
+		if normalized == "" {
+			return errors.New("recovery code failed normalization")
+		}
+
+		hash, _ := bcrypt.GenerateFromPassword([]byte(normalized), bcryptCost)
 
 		err := q.CreateRecoveryCode(ctx, generated.CreateRecoveryCodeParams{
 			ID:        uuid.NewString(),
@@ -182,7 +210,17 @@ func recoveryRune(r rune) rune {
 	case r == '-' || r == ' ' || r == '\t':
 		return -1
 	case r >= 'a' && r <= 'z':
-		return r - 'a' + 'A'
+		r = r - 'a' + 'A'
+	}
+
+	// Crockford folds I/L to 1 and O to 0 so a transcription typo is
+	// corrected, not rejected; generated codes never contain them, so a
+	// fold can only ever rescue a human.
+	switch r {
+	case 'I', 'L':
+		return '1'
+	case 'O':
+		return '0'
 	default:
 		return r
 	}

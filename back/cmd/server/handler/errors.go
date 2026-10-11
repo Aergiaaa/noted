@@ -39,7 +39,14 @@ func WriteError(w http.ResponseWriter, status int, message string, fields map[st
 		message = e.message
 	}
 
-	body := apiError{Error: Error{Code: e.code, Message: message, Fields: fields}}
+	WriteErrorCode(w, status, e.code, message, fields)
+}
+
+// WriteErrorCode writes the envelope with an explicit code, for the one
+// status whose default code does not fit: 403 maps to origin_forbidden,
+// so the recovery-rotation step-up answers 403 step_up_required (API.md).
+func WriteErrorCode(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	body := apiError{Error: Error{Code: code, Message: message, Fields: fields}}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

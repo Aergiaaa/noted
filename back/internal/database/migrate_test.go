@@ -26,8 +26,8 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(ms) != 2 {
-		t.Fatalf("len = %d, want 2", len(ms))
+	if len(ms) != 3 {
+		t.Fatalf("len = %d, want 3", len(ms))
 	}
 	if ms[0].version != 1 || ms[0].name != "0001_init.sql" {
 		t.Fatalf("got %+v, want version 1 / 0001_init.sql", ms[0])
@@ -40,6 +40,12 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	}
 	if !strings.Contains(ms[1].body, "CREATE TABLE enrollment") {
 		t.Fatalf("body missing schema:\n%s", ms[1].body)
+	}
+	if ms[2].version != 3 || ms[2].name != "0003_session_auth_method.sql" {
+		t.Fatalf("got %+v, want version 3 / 0003_session_auth_method.sql", ms[2])
+	}
+	if !strings.Contains(ms[2].body, "auth_method") {
+		t.Fatalf("body missing schema:\n%s", ms[2].body)
 	}
 }
 

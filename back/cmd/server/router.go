@@ -36,8 +36,13 @@ func (a *app) newRouter() http.Handler {
 	r.Get("/healthz", a.handler.Healthz)
 
 	r.Route("/api", func(r chi.Router) {
-		limiter := middleware.NewTokenBucket(auth.LOGIN_RATE_LIMIT, auth.LOGIN_RATE_WINDOW, time.Now)
-		r.With(middleware.RateLimit(limiter)).Post("/auth/login", a.handler.Login)
+		limiter := middleware.NewTokenBucket(
+			auth.LOGIN_RATE_LIMIT,
+			auth.LOGIN_RATE_WINDOW,
+			time.Now,
+		)
+		r.With(middleware.RateLimit(limiter)).
+			Post("/auth/login", a.handler.Login)
 
 		// Logout and the session probe stay public: both answer correctly
 		// with or without a cookie.
@@ -47,7 +52,8 @@ func (a *app) newRouter() http.Handler {
 		// Domain routes (events/notes/tasks/finance/dashboard, F6+) join
 		// this group.
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireSession(a.auth))
+			r.Use(middleware.RequireSession(a.auth, a.secure))
+
 			r.Post("/auth/recovery-codes", a.handler.RecoveryCodes)
 		})
 	})

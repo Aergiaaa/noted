@@ -19,19 +19,26 @@ import (
 
 // createSession stores only the token's SHA-256, so a DB leak never yields
 // a usable cookie.
-func (s *Service) createSession(ctx context.Context) (string, error) {
+func (s *Service) createSession(ctx context.Context, method string) (string, error) {
 	token := base64.RawURLEncoding.EncodeToString(randomBytes(32))
 	now := s.now()
 
 	err := s.q.CreateSession(ctx, generated.CreateSessionParams{
-		ID:        uuid.NewString(),
-		TokenHash: hashToken(token),
-		CreatedAt: formatTime(now),
-		ExpiresAt: formatTime(now.Add(SESSION_TTL)),
-		LastSeen:  formatTime(now),
+		ID:         uuid.NewString(),
+		TokenHash:  hashToken(token),
+		CreatedAt:  formatTime(now),
+		ExpiresAt:  formatTime(now.Add(SESSION_TTL)),
+		LastSeen:   formatTime(now),
+		AuthMethod: method,
 	})
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
+	}
+
+	// A login is the natural moment to sweep dead rows; a failure only
+	// leaves inert (already expired) rows behind, so it never fails login.
+	if err := s.q.DeleteExpiredSessions(ctx, formatTime(now)); err != nil {
+		log.Printf("auth: prune sessions: %v", err)
 	}
 
 	return token, nil
@@ -55,7 +62,7 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 	}
 
 	if err != nil {
-		log.Printf("auth: session lookup: %v", err)
+		log.Printf("auth: internal: session lookup: %v", err)
 		return time.Time{}, ErrUnauthenticated
 	}
 
@@ -63,7 +70,7 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 
 	expires, err := time.Parse(time.RFC3339, row.ExpiresAt)
 	if err != nil {
-		log.Printf("auth: session expiry parse: %v", err)
+		log.Printf("auth: internal: session expiry parse: %v", err)
 		return time.Time{}, ErrUnauthenticated
 	}
 
@@ -73,14 +80,20 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 
 	newExp := slideExpiry(row, expires, now)
 
-	err = s.q.TouchSession(ctx, generated.TouchSessionParams{
-		LastSeen:  formatTime(now),
-		ExpiresAt: formatTime(newExp),
-		ID:        row.ID,
-	})
-	if err != nil {
-		// The row stays valid; the slide is retried on the next request.
-		log.Printf("auth: session touch: %v", err)
+	// The row is written only when the slide moved expiry or last_seen is
+	// stale: an unparsable last_seen parses to the zero time, counts as
+	// stale, and keeps the old always-touch behavior.
+	lastSeen, _ := time.Parse(time.RFC3339, row.LastSeen)
+	if !newExp.Equal(expires) || now.Sub(lastSeen) >= SESSION_TOUCH_INTERVAL {
+		err = s.q.TouchSession(ctx, generated.TouchSessionParams{
+			LastSeen:  formatTime(now),
+			ExpiresAt: formatTime(newExp),
+			ID:        row.ID,
+		})
+		if err != nil {
+			// The row stays valid; the slide is retried on the next request.
+			log.Printf("auth: session touch: %v", err)
+		}
 	}
 
 	return newExp, nil
@@ -109,13 +122,39 @@ func slideExpiry(row generated.Session, expires, now time.Time) time.Time {
 	return newExp
 }
 
-func (s *Service) ValidateRequest(r *http.Request) (time.Time, error) {
+// ValidateRequest resolves the session cookie and validates it, returning
+// the raw token too so callers can re-issue it (SECURITY.md: the cookie's
+// Max-Age only refreshes where a Set-Cookie goes out).
+func (s *Service) ValidateRequest(r *http.Request) (string, time.Time, error) {
 	c, err := r.Cookie(SESSION_COOKIE)
 	if err != nil {
-		return time.Time{}, ErrUnauthenticated
+		return "", time.Time{}, ErrUnauthenticated
 	}
 
-	return s.Validate(r.Context(), c.Value)
+	expires, err := s.Validate(r.Context(), c.Value)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	return c.Value, expires, nil
+}
+
+// WriteSessionCookie sets the session cookie; an empty token clears it
+// (Max-Age < 0 tells the browser to drop it).
+func WriteSessionCookie(w http.ResponseWriter, token string, secure bool) {
+	maxAge := COOKIE_MAX_AGE_SEC
+	if token == "" {
+		maxAge = -1
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     SESSION_COOKIE,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (s *Service) Logout(ctx context.Context, token string) error {
@@ -126,8 +165,8 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return nil
 }
 
-// PruneSessions runs once at boot so a long-down instance does not keep
-// dead sessions around.
+// PruneSessions runs once at boot; createSession prunes again on every
+// login (queries/sessions.sql "at boot and on login").
 func (s *Service) PruneSessions(ctx context.Context) error {
 	return s.q.DeleteExpiredSessions(ctx, formatTime(s.now()))
 }
