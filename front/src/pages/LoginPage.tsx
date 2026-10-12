@@ -36,8 +36,8 @@ export default function LoginPage() {
   }
 
   return (
-    <section className="mx-auto mt-16 max-w-sm">
-      <form className="card bg-base-200 border border-base-300 p-4" onSubmit={onSubmit}>
+    <section className="flex min-h-screen items-center justify-center p-4">
+      <form className="card w-full max-w-sm bg-base-200 border border-base-300 p-4" onSubmit={onSubmit}>
         <h1 className="text-xl font-semibold">Login</h1>
         <p className="mt-1 text-sm text-base-content/70">
           Enter the 6-digit code from your authenticator app, or a recovery code.
