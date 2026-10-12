@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { api, ApiError } from './api'
+import { api, isApiError } from './api'
 
 export type SessionStatus = 'loading' | 'authed' | 'guest' | 'error'
 
@@ -41,7 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setStatus(err instanceof ApiError && err.status === 401 ? 'guest' : 'error')
+        setStatus(isApiError(err) && err.status === 401 ? 'guest' : 'error')
       })
     return () => {
       cancelled = true

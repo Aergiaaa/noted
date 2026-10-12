@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError } from './api'
+import { api, isApiError, type ApiError } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -59,13 +59,12 @@ describe('api', () => {
       ),
     )
 
-    const err = await api('/notes', { method: 'POST', body: {} }).catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(ApiError)
-    const apiErr = err as ApiError
-    expect(apiErr.status).toBe(400)
-    expect(apiErr.code).toBe('validation_error')
-    expect(apiErr.message).toBe('bad')
-    expect(apiErr.fields).toEqual({ title: 'required' })
+    await expect(api('/notes', { method: 'POST', body: {} })).rejects.toMatchObject({
+      status: 400,
+      code: 'validation_error',
+      message: 'bad',
+      fields: { title: 'required' },
+    })
   })
 
   it('throws ApiError on 401 without redirecting', async () => {
@@ -77,10 +76,8 @@ describe('api', () => {
     )
     const before = window.location.pathname
 
-    const err = await api('/session').catch((e: unknown) => e)
+    await expect(api('/session')).rejects.toMatchObject({ status: 401 })
 
-    expect(err).toBeInstanceOf(ApiError)
-    expect((err as ApiError).status).toBe(401)
     // Redirect policy belongs to the session guard, not lib/api (FRONTEND.md: lib stays router-free).
     expect(window.location.pathname).toBe(before)
   })
@@ -92,12 +89,8 @@ describe('api', () => {
     )
 
     const err = await api('/session').catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(ApiError)
-    const apiErr = err as ApiError
-    expect(apiErr.status).toBe(502)
-    expect(apiErr.code).toBe('error')
-    expect(apiErr.message).toBe('request failed')
-    expect(apiErr.fields).toBeUndefined()
+    expect(err).toMatchObject({ status: 502, code: 'error', message: 'request failed' })
+    expect((err as ApiError).fields).toBeUndefined()
   })
 
   it('falls back to generic code/message when the envelope has no error fields', async () => {
@@ -112,31 +105,21 @@ describe('api', () => {
     )
 
     const err = await api('/session').catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(ApiError)
-    const apiErr = err as ApiError
-    expect(apiErr.status).toBe(500)
-    expect(apiErr.code).toBe('error')
-    expect(apiErr.message).toBe('request failed')
-    expect(apiErr.fields).toBeUndefined()
+    expect(err).toMatchObject({ status: 500, code: 'error', message: 'request failed' })
+    expect((err as ApiError).fields).toBeUndefined()
   })
 
   it('falls back to generic code/message when the JSON body has no error key', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ message: 'oops' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      ),
+      vi.fn().mockResolvedValue(jsonResponse(503, { message: 'oops' })),
     )
 
-    const err = await api('/session').catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(ApiError)
-    const apiErr = err as ApiError
-    expect(apiErr.status).toBe(503)
-    expect(apiErr.code).toBe('error')
-    expect(apiErr.message).toBe('request failed')
+    await expect(api('/session')).rejects.toMatchObject({
+      status: 503,
+      code: 'error',
+      message: 'request failed',
+    })
   })
 
   it('captures Retry-After as seconds on 429', async () => {
@@ -145,17 +128,14 @@ describe('api', () => {
       vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } }), {
           status: 429,
-          headers: { 'Retry-After': '42' },
+          headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
         }),
       ),
     )
 
-    const err = await api('/auth/login', { method: 'POST', body: { code: '1' } }).catch(
-      (e: unknown) => e,
-    )
-    expect(err).toBeInstanceOf(ApiError)
-    expect((err as ApiError).retryAfter).toBe(42)
-    expect((err as ApiError).code).toBe('rate_limited')
+    await expect(
+      api('/auth/login', { method: 'POST', body: { code: '1' } }),
+    ).rejects.toMatchObject({ retryAfter: 42, code: 'rate_limited' })
   })
 
   it('leaves retryAfter unset when the 429 carries no Retry-After', async () => {
@@ -169,26 +149,25 @@ describe('api', () => {
     const err = await api('/auth/login', { method: 'POST', body: { code: '1' } }).catch(
       (e: unknown) => e,
     )
+    expect(err).toMatchObject({ code: 'rate_limited' })
     expect((err as ApiError).retryAfter).toBeUndefined()
   })
 
   it('rethrows network failures as ApiError with status 0', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')))
 
-    const err = await api('/session').catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(ApiError)
-    const apiErr = err as ApiError
-    expect(apiErr.status).toBe(0)
-    expect(apiErr.code).toBe('network_error')
+    await expect(api('/session')).rejects.toMatchObject({
+      status: 0,
+      code: 'network_error',
+    })
   })
+})
 
-  it('exposes error-shaped accessors on ApiError', () => {
-    const err = new ApiError(409, 'conflict', 'taken', { id: 'dup' }, 7)
-    expect(err.name).toBe('ApiError')
-    expect(err.status).toBe(409)
-    expect(err.code).toBe('conflict')
-    expect(err.message).toBe('taken')
-    expect(err.fields).toEqual({ id: 'dup' })
-    expect(err.retryAfter).toBe(7)
+describe('isApiError', () => {
+  it('accepts thrown API data and rejects anything else', () => {
+    expect(isApiError({ status: 401, code: 'unauthenticated', message: 'nope' })).toBe(true)
+    expect(isApiError(new TypeError('network down'))).toBe(false)
+    expect(isApiError(null)).toBe(false)
+    expect(isApiError('boom')).toBe(false)
   })
 })

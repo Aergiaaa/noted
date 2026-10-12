@@ -157,6 +157,22 @@ describe('LoginPage', () => {
     expect(screen.getByRole('alert').textContent).toBe('Login failed. Try again.')
   })
 
+  it('shows a generic message when the failure is not an ApiError', async () => {
+    // 200 with a non-JSON body: api() rethrows the raw parse error, which
+    // loginErrorMessage must not mistake for API data.
+    const fetchMock = stubProbe().mockResolvedValueOnce(new Response('not json', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderLogin()
+    await waitFor(() => expect(screen.getByLabelText('Code')).toBeDefined())
+
+    await act(async () => {
+      submitCode('123456')
+    })
+
+    expect(screen.getByRole('alert').textContent).toBe('Login failed. Try again.')
+  })
+
   it('disables the button while the login call is in flight', async () => {
     let resolveLogin!: (r: Response) => void
     const fetchMock = stubProbe().mockImplementationOnce(

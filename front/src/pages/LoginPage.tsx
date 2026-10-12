@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { ApiError } from '../lib/api'
+import { isApiError } from '../lib/api'
 import { useSession } from '../lib/session'
 
-// api() rejects only with ApiError, so no instanceof fallback is needed.
-function loginErrorMessage(err: ApiError): string {
+// api() throws ApiError data for every HTTP/network failure; anything else
+// (a leaked body-parse error) falls through to the generic message.
+function loginErrorMessage(err: unknown): string {
+  if (!isApiError(err)) return 'Login failed. Try again.'
   if (err.status === 401) return 'Invalid code. Try again.'
   if (err.status === 429) {
     return err.retryAfter === undefined
@@ -31,7 +33,7 @@ export default function LoginPage() {
     setChecking(true)
     setError(null)
     login(code.trim())
-      .catch((err: ApiError) => setError(loginErrorMessage(err)))
+      .catch((err: unknown) => setError(loginErrorMessage(err)))
       .finally(() => setChecking(false))
   }
 

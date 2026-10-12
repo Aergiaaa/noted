@@ -3,26 +3,18 @@ export interface ApiOptions {
   body?: unknown
 }
 
-export class ApiError extends Error {
+// Plain data, not a class: thrown as-is and narrowed with isApiError
+// (FRONTEND.md: no classes — Go struct + free functions).
+export interface ApiError {
   readonly status: number
   readonly code: string
+  readonly message: string
   readonly fields?: Record<string, string>
   readonly retryAfter?: number
+}
 
-  constructor(
-    status: number,
-    code: string,
-    message: string,
-    fields?: Record<string, string>,
-    retryAfter?: number,
-  ) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.code = code
-    this.fields = fields
-    this.retryAfter = retryAfter
-  }
+export function isApiError(err: unknown): err is ApiError {
+  return typeof err === 'object' && err !== null && 'status' in err
 }
 
 interface ErrorEnvelope {
@@ -46,7 +38,7 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
   try {
     res = await fetch(`/api${path}`, init)
   } catch {
-    throw new ApiError(0, 'network_error', 'network request failed')
+    throw { status: 0, code: 'network_error', message: 'network request failed' } satisfies ApiError
   }
 
   if (res.ok) {
@@ -70,5 +62,5 @@ export async function api<T = unknown>(path: string, options: ApiOptions = {}): 
 
   const retryAfterHeader = res.headers.get('Retry-After')
   const retryAfter = retryAfterHeader === null ? undefined : Number(retryAfterHeader)
-  throw new ApiError(res.status, code, message, fields, retryAfter)
+  throw { status: res.status, code, message, fields, retryAfter } satisfies ApiError
 }
