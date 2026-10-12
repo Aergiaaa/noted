@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import AppShell from './AppShell'
 import { SessionProvider } from '../../lib/session'
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  window.history.replaceState(null, '', '/')
 })
 
 function jsonResponse(status: number, body: unknown) {
@@ -32,13 +32,15 @@ function stubAuthed(extra: Array<[string, Response]> = []) {
   return fetchMock
 }
 
-async function renderShell() {
+async function renderShell(path = '/') {
   const view = render(
-    <SessionProvider>
-      <AppShell>
-        <p>content</p>
-      </AppShell>
-    </SessionProvider>,
+    <MemoryRouter initialEntries={[path]}>
+      <SessionProvider>
+        <AppShell>
+          <p>content</p>
+        </AppShell>
+      </SessionProvider>
+    </MemoryRouter>,
   )
   // Wait for the probe so status is authed before asserting.
   await screen.findByText('Noted')
@@ -59,11 +61,10 @@ describe('AppShell', () => {
 
   it('marks only the current route active (both className branches)', async () => {
     stubAuthed()
-    window.history.replaceState(null, '', '/')
-    await renderShell()
+    await renderShell('/calendar')
 
-    expect(screen.getByRole('link', { name: 'Dashboard' }).className).toContain('btn-active')
-    for (const label of ['Calendar', 'Tasks', 'Notes', 'Finance']) {
+    expect(screen.getByRole('link', { name: 'Calendar' }).className).toContain('btn-active')
+    for (const label of ['Dashboard', 'Tasks', 'Notes', 'Finance']) {
       expect(screen.getByRole('link', { name: label }).className).not.toContain('btn-active')
     }
   })

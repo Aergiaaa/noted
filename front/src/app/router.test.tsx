@@ -86,6 +86,16 @@ describe('App guard', () => {
     expect(window.location.pathname).toBe('/login')
   })
 
+  it('sends guests from unknown paths to /login', async () => {
+    window.history.replaceState(null, '', '/missing-page')
+    stubGuest()
+
+    renderApp()
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Login' })).toBeDefined())
+    expect(window.location.pathname).toBe('/login')
+  })
+
   it('lets guests sit on /login', async () => {
     window.history.replaceState(null, '', '/login')
     stubGuest()

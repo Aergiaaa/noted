@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { A, isActivePath, usePath } from '../../app/navigation'
+import { NavLink } from 'react-router'
 import { useSession } from '../../lib/session'
 
 const links = [
@@ -11,7 +11,6 @@ const links = [
 ]
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const path = usePath()
   const { logout } = useSession()
   const [logoutFailed, setLogoutFailed] = useState(false)
 
@@ -28,13 +27,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="navbar-center gap-1">
           {links.map((l) => (
-            <A
+            <NavLink
               key={l.to}
               to={l.to}
-              className={`btn btn-ghost btn-sm ${isActivePath(path, l.to, l.end === true) ? 'btn-active' : ''}`}
+              end={l.end === true}
+              className={({ isActive }) => `btn btn-ghost btn-sm ${isActive ? 'btn-active' : ''}`}
             >
               {l.label}
-            </A>
+            </NavLink>
           ))}
         </div>
         <div className="navbar-end gap-2">
