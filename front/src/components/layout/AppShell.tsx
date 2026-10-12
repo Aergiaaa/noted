@@ -1,23 +1,23 @@
-import { useState, type ReactNode } from 'react'
-import { NavLink } from 'react-router'
-import { useSession } from '../../lib/session'
+import { useState, type ReactNode } from "react";
+import { NavLink } from "react-router";
+import { useSession } from "../../lib/session";
 
 const links = [
-  { to: '/', label: 'Dashboard', end: true },
-  { to: '/calendar', label: 'Calendar' },
-  { to: '/tasks', label: 'Tasks' },
-  { to: '/notes', label: 'Notes' },
-  { to: '/finance', label: 'Finance' },
-]
+  { to: "/", label: "Dashboard", end: true },
+  { to: "/calendar", label: "Calendar" },
+  { to: "/tasks", label: "Tasks" },
+  { to: "/notes", label: "Notes" },
+  { to: "/finance", label: "Finance" },
+];
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { logout } = useSession()
-  const [logoutFailed, setLogoutFailed] = useState(false)
+  const { logout } = useSession();
+  const [logoutFailed, setLogoutFailed] = useState(false);
 
   const onLogout = () => {
-    setLogoutFailed(false)
-    logout().catch(() => setLogoutFailed(true))
-  }
+    setLogoutFailed(false);
+    logout().catch(() => setLogoutFailed(true));
+  };
 
   return (
     <div className="min-h-screen bg-base-100 text-base-content">
@@ -31,7 +31,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               key={l.to}
               to={l.to}
               end={l.end === true}
-              className={({ isActive }) => `btn btn-ghost btn-sm ${isActive ? 'btn-active' : ''}`}
+              className={({ isActive }) =>
+                `btn btn-ghost btn-sm ${isActive ? "btn-active" : ""}`
+              }
             >
               {l.label}
             </NavLink>
@@ -50,5 +52,5 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </nav>
       <main className="mx-auto max-w-5xl p-4">{children}</main>
     </div>
-  )
+  );
 }

@@ -38,7 +38,11 @@
 
 body {
   font-family:
-    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   line-height: 1.5;
 }
 

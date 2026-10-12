@@ -1,6 +1,6 @@
 interface EmptyStateProps {
-  message: string
-  action?: { label: string; onClick: () => void }
+  message: string;
+  action?: { label: string; onClick: () => void };
 }
 
 export default function EmptyState({ message, action }: EmptyStateProps) {
@@ -13,5 +13,5 @@ export default function EmptyState({ message, action }: EmptyStateProps) {
         </button>
       )}
     </div>
-  )
+  );
 }
