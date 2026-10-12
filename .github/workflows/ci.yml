@@ -42,6 +42,9 @@ jobs:
       - name: install (frozen lockfile)
         working-directory: front
         run: bun install --frozen-lockfile
+      - name: format check (prettier defaults)
+        working-directory: front
+        run: bun run format:check
       - name: typecheck + prod build
         working-directory: front
         run: bun run build
