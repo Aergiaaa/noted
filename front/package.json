@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "preview": "vite preview"
   },
@@ -14,6 +16,7 @@
     "daisyui": "^5.7.38",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-router": "^8.4.0",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
@@ -26,6 +29,7 @@
     "@vitest/coverage-istanbul": "^5.0.1",
     "jsdom": "^30.0.1",
     "oxlint": "^1.81.0",
+    "prettier": "^3.9.10",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.1"

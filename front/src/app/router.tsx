@@ -1,55 +1,77 @@
-import { useEffect } from 'react'
-import AppShell from '../components/layout/AppShell'
-import ErrorState from '../components/ui/ErrorState'
-import { useSession } from '../lib/session'
-import { navigate, usePath } from './navigation'
-import { findRoute } from './routes'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
+import AppShell from "../components/layout/AppShell";
+import ErrorState from "../components/ui/ErrorState";
+import { useSession } from "../lib/session";
+import CalendarPage from "../pages/CalendarPage";
+import DashboardPage from "../pages/DashboardPage";
+import FinancePage from "../pages/FinancePage";
+import LoginPage from "../pages/LoginPage";
+import NotesPage from "../pages/NotesPage";
+import TasksPage from "../pages/TasksPage";
 
-// The guard and the switch, hand-rolled on the History API
-// (FRONTEND.md Routing). Redirects replace so a guest's Back button
-// does not bounce them into authed pages that no longer render.
+// The guard as structure: module routes hang off this layout route, so a
+// guest never even matches them. Redirects replace so a guest's Back
+// button does not bounce them into authed pages that no longer render.
+function RequireSession() {
+  const { status } = useSession();
+  if (status !== "authed") return <Navigate to="/login" replace />;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
+}
+
+// Declarative react-router (BrowserRouter + Routes; FRONTEND.md Routing).
+// The session gate stays outside the router: no navigation may happen
+// until we know who we are, so the URL is left untouched while loading
+// or when the probe fails.
 export function App() {
-  const path = usePath()
-  const { status, retry } = useSession()
-  const pathname = path.split('?')[0]
-  const route = findRoute(pathname)
+  const { status, retry } = useSession();
 
-  useEffect(() => {
-    if (status === 'loading' || status === 'error') return
-    if (status === 'guest' && pathname !== '/login') {
-      navigate('/login', { replace: true })
-    }
-    if (status === 'authed' && (pathname === '/login' || route === undefined)) {
-      navigate('/', { replace: true })
-    }
-  }, [status, pathname, route])
-
-  if (status === 'loading') {
+  if (status === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <span className="loading loading-spinner loading-lg" role="status" aria-label="Loading" />
+        <span
+          className="loading loading-spinner loading-lg"
+          role="status"
+          aria-label="Loading"
+        />
       </div>
-    )
+    );
   }
 
-  if (status === 'error') {
+  if (status === "error") {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <ErrorState message="Could not reach the server" onRetry={retry} />
       </div>
-    )
+    );
   }
 
-  // Redirects run in the effect above; render nothing until then so a
-  // guest never sees the authed page that is about to unmount.
-  if (status === 'guest') {
-    // Only /login survives the guard for guests.
-    if (pathname === '/login' && route !== undefined) return <div>{route.element}</div>
-    return null
-  }
-
-  // authed: /login or unknown is mid-redirect; everything else is a
-  // module page inside the shell.
-  if (pathname === '/login' || route === undefined) return null
-  return <AppShell>{route.element}</AppShell>
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            status === "guest" ? <LoginPage /> : <Navigate to="/" replace />
+          }
+        />
+        <Route element={<RequireSession />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/notes" element={<NotesPage />} />
+          <Route path="/finance" element={<FinancePage />} />
+        </Route>
+        <Route
+          path="*"
+          element={
+            <Navigate to={status === "authed" ? "/" : "/login"} replace />
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
 }

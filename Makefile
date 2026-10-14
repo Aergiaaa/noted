@@ -1,4 +1,4 @@
-.PHONY: test test-back test-front test-cover test-cover-back test-cover-front promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
+.PHONY: test test-back test-front test-cover test-cover-back test-cover-front format promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
 
 # Full test suite: backend (go test) + frontend (vitest).
 test: test-back test-front
@@ -26,6 +26,11 @@ test-cover-back:
 
 test-cover-front:
 	cd front && bunx --bun vitest run --coverage
+
+# Format the frontend with Prettier defaults (FRONTEND.md: format before
+# commit). CI runs the same check, so an unformatted tree fails the gate.
+format:
+	cd front && bun run format
 
 # Local equivalent of the promote workflow: 100% gates, then push the
 # current work branch (feat|fix|ci|chore|docs|refactor|test/*, see
