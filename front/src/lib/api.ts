@@ -21,6 +21,20 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; fields?: Record<string, string> };
 }
 
+// Events are UTC instants; list endpoints answer {data} (API.md).
+export interface Event {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  description?: string | null;
+  note_id?: string | null;
+}
+
+export interface EventsResponse {
+  data: Event[];
+}
+
 // HTTP status codes we branch on (API.md envelope contract).
 export const STATUS_UNAUTHENTICATED = 401;
 export const STATUS_TOO_MANY_REQUESTS = 429;
