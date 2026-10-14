@@ -21,6 +21,13 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; fields?: Record<string, string> };
 }
 
+// HTTP status codes we branch on (API.md envelope contract).
+export const STATUS_UNAUTHENTICATED = 401;
+export const STATUS_TOO_MANY_REQUESTS = 429;
+
+// HTTP 204 No Content: success with no body to parse (delete/logout per API.md).
+const STATUS_NO_CONTENT = 204;
+
 // Single transport for every server call: JSON in/out, cookie included,
 // errors thrown as ApiError so callers switch on status/code. No redirect
 // here — lib/ stays router-free (FRONTEND.md mobile seam), the session
@@ -49,7 +56,7 @@ export async function api<T = unknown>(
   }
 
   if (res.ok) {
-    if (res.status === 204) return undefined as T;
+    if (res.status === STATUS_NO_CONTENT) return undefined as T;
     return (await res.json()) as T;
   }
 
