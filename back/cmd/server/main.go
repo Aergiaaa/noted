@@ -10,6 +10,8 @@ import (
 	"noted/cmd/server/handler"
 	"noted/internal/auth"
 	"noted/internal/database"
+	"noted/internal/database/generated"
+	"noted/internal/service"
 )
 
 // Config holds env-driven settings (.env.example, DEPLOYMENT.md).
@@ -92,7 +94,7 @@ func (a *app) wire(db *sql.DB) {
 	a.auth = auth.New(db, a.conf.TOTPEncKey)
 	a.secure = a.conf.AppEnv == "prod"
 
-	a.handler = handler.New(a.auth, a.secure)
+	a.handler = handler.New(a.auth, service.NewEventService(generated.New(db)), a.secure)
 	a.bootAuth(context.Background())
 }
 
