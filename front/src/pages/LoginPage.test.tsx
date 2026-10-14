@@ -13,6 +13,7 @@ import { SessionProvider } from "../lib/session";
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function jsonResponse(
@@ -54,6 +55,8 @@ describe("LoginPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderLogin();
+    // The alert slot always exists (empty) so the card never resizes.
+    expect(screen.getByRole("alert").textContent).toBe("");
     await waitFor(() => expect(screen.getByLabelText("Code")).toBeDefined());
 
     await act(async () => {
@@ -85,7 +88,7 @@ describe("LoginPage", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: "123456" }),
     });
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("");
   });
 
   it("shows the invalid-code message on 401", async () => {
@@ -148,6 +151,121 @@ describe("LoginPage", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "Too many attempts. Try again later.",
     );
+    expect(screen.getByRole("button", { name: "Log in" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  });
+
+  it("clears the code input when submitted", async () => {
+    const fetchMock = stubProbe().mockResolvedValueOnce(
+      jsonResponse(200, { ok: true }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogin();
+    await waitFor(() => expect(screen.getByLabelText("Code")).toBeDefined());
+
+    await act(async () => {
+      submitCode("123456");
+    });
+
+    expect(screen.getByLabelText("Code")).toHaveProperty("value", "");
+  });
+
+  it("locks the form on 429 and counts down the retry window live", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubProbe().mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        { error: { code: "rate_limited", message: "slow down" } },
+        { "Retry-After": "2" },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogin();
+    await act(async () => {});
+
+    await act(async () => {
+      submitCode("123456");
+    });
+
+    const alert = () => screen.getByRole("alert").textContent;
+    expect(alert()).toBe("Too many attempts. Try again in 2s.");
+    expect(screen.getByLabelText("Code")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Log in" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    // Enter-key resubmits are ignored for the whole lock window.
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Log in" }).closest("form")!,
+    );
+    expect(alert()).toBe("Too many attempts. Try again in 2s.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(alert()).toBe("Too many attempts. Try again in 1s.");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole("alert").textContent).toBe("");
+    expect(screen.getByLabelText("Code")).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: "Log in" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  });
+
+  it("does not lock the form when Retry-After is not a usable duration", async () => {
+    const fetchMock = stubProbe().mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        { error: { code: "rate_limited", message: "slow down" } },
+        { "Retry-After": "0" },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLogin();
+    await waitFor(() => expect(screen.getByLabelText("Code")).toBeDefined());
+
+    await act(async () => {
+      submitCode("123456");
+    });
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Too many attempts. Try again later.",
+    );
+    expect(screen.getByLabelText("Code")).toHaveProperty("disabled", false);
+  });
+
+  it("stops the countdown timer when unmounted", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubProbe().mockResolvedValueOnce(
+      jsonResponse(
+        429,
+        { error: { code: "rate_limited", message: "slow down" } },
+        { "Retry-After": "42" },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const view = renderLogin();
+    await act(async () => {});
+
+    await act(async () => {
+      submitCode("123456");
+    });
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("shows a network message when the login call fails", async () => {
@@ -225,6 +343,10 @@ describe("LoginPage", () => {
 
     const button = screen.getByRole("button", { name: "Checking…" });
     expect(button).toHaveProperty("disabled", true);
+
+    // A second submit while one is in flight is a no-op.
+    fireEvent.submit(button.closest("form")!);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       resolveLogin(jsonResponse(200, { ok: true }));
