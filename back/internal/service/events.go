@@ -170,16 +170,33 @@ func (s *EventService) validate(ctx context.Context, in EventInput) error {
 		fields["ends_at"] = "must be after starts_at"
 	}
 
-	if noteID := normalizeID(in.NoteID); noteID != nil {
-		if _, err := s.q.GetNote(ctx, *noteID); errors.Is(err, sql.ErrNoRows) {
-			fields["note_id"] = "unknown note"
-		} else if err != nil {
-			return err
-		}
+	if err := s.validateNoteLink(ctx, fields, in.NoteID); err != nil {
+		return err
 	}
 
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}
+	}
+
+	return nil
+}
+
+// validateNoteLink records "unknown note" for a non-empty link id; a
+// storage failure aborts validation with the raw error (writeEventError
+// maps it to the generic 500).
+func (s *EventService) validateNoteLink(ctx context.Context, fields map[string]string, noteID *string) error {
+	id := normalizeID(noteID)
+	if id == nil {
+		return nil
+	}
+
+	_, err := s.q.GetNote(ctx, *id)
+	if errors.Is(err, sql.ErrNoRows) {
+		fields["note_id"] = "unknown note"
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	return nil

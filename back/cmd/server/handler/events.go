@@ -42,6 +42,12 @@ type eventJSON struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
+// eventsListResponse pins the list envelope (API.md: {data: []}) instead
+// of a naked map whose key could drift silently.
+type eventsListResponse struct {
+	Data []eventJSON `json:"data"`
+}
+
 // ListEvents: from/to are required RFC3339 instants; the grid always
 // sends both (CalendarPage's gridBounds).
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
@@ -49,17 +55,17 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 
 	from, ok := parseTimeParam(q.Get("from"))
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "", map[string]string{"from": "required RFC3339 datetime"})
+		writeFieldError(w, "from", "required RFC3339 datetime")
 		return
 	}
 	to, ok := parseTimeParam(q.Get("to"))
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "", map[string]string{"to": "required RFC3339 datetime"})
+		writeFieldError(w, "to", "required RFC3339 datetime")
 		return
 	}
 
 	if !from.Before(to) {
-		WriteError(w, http.StatusBadRequest, "", map[string]string{"from": "must be before to"})
+		writeFieldError(w, "from", "must be before to")
 		return
 	}
 
@@ -74,7 +80,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		data[i] = toEventJSON(event)
 	}
 
-	WriteJSON(w, http.StatusOK, map[string]any{"data": data})
+	WriteJSON(w, http.StatusOK, eventsListResponse{Data: data})
 }
 
 func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
@@ -85,12 +91,12 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	starts, ok := parseTimeParam(req.StartsAt)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "", map[string]string{"starts_at": "invalid RFC3339 datetime"})
+		writeFieldError(w, "starts_at", "invalid RFC3339 datetime")
 		return
 	}
 	ends, ok := parseTimeParam(req.EndsAt)
 	if !ok {
-		WriteError(w, http.StatusBadRequest, "", map[string]string{"ends_at": "invalid RFC3339 datetime"})
+		writeFieldError(w, "ends_at", "invalid RFC3339 datetime")
 		return
 	}
 
@@ -124,7 +130,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if req.StartsAt != nil {
 		starts, ok := parseTimeParam(*req.StartsAt)
 		if !ok {
-			WriteError(w, http.StatusBadRequest, "", map[string]string{"starts_at": "invalid RFC3339 datetime"})
+			writeFieldError(w, "starts_at", "invalid RFC3339 datetime")
 			return
 		}
 		patch.StartsAt = &starts
@@ -132,7 +138,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if req.EndsAt != nil {
 		ends, ok := parseTimeParam(*req.EndsAt)
 		if !ok {
-			WriteError(w, http.StatusBadRequest, "", map[string]string{"ends_at": "invalid RFC3339 datetime"})
+			writeFieldError(w, "ends_at", "invalid RFC3339 datetime")
 			return
 		}
 		patch.EndsAt = &ends
@@ -173,6 +179,11 @@ func writeEventError(w http.ResponseWriter, err error, op string) bool {
 	}
 
 	return true
+}
+
+// writeFieldError is the single-field validation_error case (API.md).
+func writeFieldError(w http.ResponseWriter, field, message string) {
+	WriteError(w, http.StatusBadRequest, "", map[string]string{field: message})
 }
 
 // parseTimeParam accepts RFC3339 with or without fractional seconds (the
