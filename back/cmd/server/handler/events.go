@@ -49,9 +49,15 @@ type eventsListResponse struct {
 }
 
 // ListEvents: from/to are required RFC3339 instants; the grid always
-// sends both (CalendarPage's gridBounds).
+// sends both (CalendarPage's weekBounds). ?trash=1 swaps the range for
+// the soft-deleted list (TrashPanel).
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+
+	if q.Get("trash") == "1" {
+		h.listDeletedEvents(w, r)
+		return
+	}
 
 	from, ok := parseTimeParam(q.Get("from"))
 	if !ok {
@@ -72,6 +78,22 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := h.events.List(r.Context(), from, to)
 	if err != nil {
 		writeEventError(w, err, "list events")
+		return
+	}
+
+	data := make([]eventJSON, len(events))
+	for i, event := range events {
+		data[i] = toEventJSON(event)
+	}
+
+	WriteJSON(w, http.StatusOK, eventsListResponse{Data: data})
+}
+
+// listDeletedEvents: the ?trash=1 half of ListEvents.
+func (h *Handler) listDeletedEvents(w http.ResponseWriter, r *http.Request) {
+	events, err := h.events.ListDeleted(r.Context())
+	if err != nil {
+		writeEventError(w, err, "list deleted events")
 		return
 	}
 
@@ -154,6 +176,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteEvent: idempotent 204 — the service treats a missing id as done.
+// Soft-delete: the row keeps its links until purge, so Undo can restore.
 func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	if err := h.events.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
 		writeEventError(w, err, "delete event")
@@ -161,6 +184,17 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestoreEvent: clears deleted_at for the Undo toast and TrashPanel.
+func (h *Handler) RestoreEvent(w http.ResponseWriter, r *http.Request) {
+	event, err := h.events.Restore(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeEventError(w, err, "restore event")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, toEventJSON(event))
 }
 
 // writeEventError maps service failures onto the frozen envelope and

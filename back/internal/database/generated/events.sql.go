@@ -12,7 +12,7 @@ import (
 const createEvent = `-- name: CreateEvent :one
 INSERT INTO events (id, title, starts_at, ends_at, description, note_id, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, title, starts_at, ends_at, description, note_id, created_at, updated_at
+RETURNING id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
 `
 
 type CreateEventParams struct {
@@ -47,26 +47,16 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		&i.NoteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const deleteEvent = `-- name: DeleteEvent :exec
-DELETE
-FROM events
-WHERE id = ?
-`
-
-// Linked tasks.event_id / transactions.event_id null out (ON DELETE SET NULL).
-func (q *Queries) DeleteEvent(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteEvent, id)
-	return err
-}
-
 const getEvent = `-- name: GetEvent :one
-SELECT id, title, starts_at, ends_at, description, note_id, created_at, updated_at
+SELECT id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
 FROM events
 WHERE id = ?
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) GetEvent(ctx context.Context, id string) (Event, error) {
@@ -81,14 +71,58 @@ func (q *Queries) GetEvent(ctx context.Context, id string) (Event, error) {
 		&i.NoteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const listEventsBetween = `-- name: ListEventsBetween :many
-SELECT id, title, starts_at, ends_at, description, note_id, created_at, updated_at
+const listDeletedEvents = `-- name: ListDeletedEvents :many
+SELECT id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
 FROM events
-WHERE starts_at < ?1 AND ends_at > ?2
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id
+`
+
+// GET /api/events?trash=1, newest first.
+func (q *Queries) ListDeletedEvents(ctx context.Context) ([]Event, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedEvents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Event{}
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.Description,
+			&i.NoteID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEventsBetween = `-- name: ListEventsBetween :many
+SELECT id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
+FROM events
+WHERE starts_at < ?1
+  AND ends_at > ?2
+  AND deleted_at IS NULL
 ORDER BY starts_at
 `
 
@@ -99,6 +133,7 @@ type ListEventsBetweenParams struct {
 
 // Overlap semantics: an event is in range if it starts before the range
 // ends and ends after the range starts (month/week/day grids).
+// Soft-deleted events are invisible (0004).
 func (q *Queries) ListEventsBetween(ctx context.Context, arg ListEventsBetweenParams) ([]Event, error) {
 	rows, err := q.db.QueryContext(ctx, listEventsBetween, arg.ToTime, arg.FromTime)
 	if err != nil {
@@ -117,6 +152,7 @@ func (q *Queries) ListEventsBetween(ctx context.Context, arg ListEventsBetweenPa
 			&i.NoteID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -131,6 +167,67 @@ func (q *Queries) ListEventsBetween(ctx context.Context, arg ListEventsBetweenPa
 	return items, nil
 }
 
+const purgeEventsDeletedBefore = `-- name: PurgeEventsDeletedBefore :execrows
+DELETE
+FROM events
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < ?1
+`
+
+// The only real DELETE: rows past the retention window (30d, DOMAIN.md).
+func (q *Queries) PurgeEventsDeletedBefore(ctx context.Context, cutoff *string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeEventsDeletedBefore, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const restoreEvent = `-- name: RestoreEvent :one
+UPDATE events
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
+`
+
+// Clears deleted_at; a live row is a successful no-op, a missing id is
+// no rows at all (ErrNotFound).
+func (q *Queries) RestoreEvent(ctx context.Context, id string) (Event, error) {
+	row := q.db.QueryRowContext(ctx, restoreEvent, id)
+	var i Event
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.StartsAt,
+		&i.EndsAt,
+		&i.Description,
+		&i.NoteID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const softDeleteEvent = `-- name: SoftDeleteEvent :exec
+UPDATE events
+SET deleted_at = ?1
+WHERE id = ?2
+  AND deleted_at IS NULL
+`
+
+type SoftDeleteEventParams struct {
+	DeletedAt *string
+	ID        string
+}
+
+// DELETE /api/events stamps deleted_at; links stay intact so Undo and a
+// later purge keep ON DELETE SET NULL semantics (DATABASE.md).
+func (q *Queries) SoftDeleteEvent(ctx context.Context, arg SoftDeleteEventParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteEvent, arg.DeletedAt, arg.ID)
+	return err
+}
+
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
 SET title       = ?,
@@ -140,7 +237,7 @@ SET title       = ?,
     note_id     = ?,
     updated_at  = ?
 WHERE id = ?
-RETURNING id, title, starts_at, ends_at, description, note_id, created_at, updated_at
+RETURNING id, title, starts_at, ends_at, description, note_id, created_at, updated_at, deleted_at
 `
 
 type UpdateEventParams struct {
@@ -174,6 +271,7 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event
 		&i.NoteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

@@ -17,6 +17,11 @@ import (
 
 const TITLE_MAX_CHAR = 200
 
+// SOFT_DELETE_RETENTION: how long a soft-deleted row waits before purge
+// removes it for real (DOMAIN.md). Boot runs the purge; Delete triggers it
+// opportunistically for its own table.
+const SOFT_DELETE_RETENTION = 30 * 24 * time.Hour
+
 // ValidationError carries per-field messages straight into the frozen
 // 400 envelope (API.md); the handler maps Fields without re-deriving them.
 type ValidationError struct {
@@ -149,11 +154,59 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 	return fromRow(updated), nil
 }
 
-// Delete is idempotent: a missing id is still 204 (the :exec query sees
-// no rows, not an error). ON DELETE SET NULL nulls inbound task and
-// transaction links (DATABASE.md) — no cascade, peers survive.
+// Delete is idempotent: it stamps deleted_at (204 backs the Undo toast)
+// and opportunistically purges rows past retention. Links stay intact
+// until purge, when ON DELETE SET NULL nulls inbound task and transaction
+// links (DATABASE.md) — no cascade, peers survive. A purge failure never
+// fails the delete; boot retries.
 func (s *EventService) Delete(ctx context.Context, id string) error {
-	return s.q.DeleteEvent(ctx, id)
+	now := formatStored(time.Now())
+	if err := s.q.SoftDeleteEvent(ctx, generated.SoftDeleteEventParams{
+		DeletedAt: &now,
+		ID:        id,
+	}); err != nil {
+		return err
+	}
+
+	s.Purge(ctx, time.Now())
+
+	return nil
+}
+
+// Restore clears deleted_at; a missing id is ErrNotFound, a live row is a
+// successful no-op (the UPDATE still returns it).
+func (s *EventService) Restore(ctx context.Context, id string) (Event, error) {
+	row, err := s.q.RestoreEvent(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Event{}, ErrNotFound
+	}
+	if err != nil {
+		return Event{}, err
+	}
+
+	return fromRow(row), nil
+}
+
+// ListDeleted feeds GET /api/events?trash=1.
+func (s *EventService) ListDeleted(ctx context.Context) ([]Event, error) {
+	rows, err := s.q.ListDeletedEvents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]Event, len(rows))
+	for i, row := range rows {
+		events[i] = fromRow(row)
+	}
+
+	return events, nil
+}
+
+// Purge hard-deletes rows soft-deleted before the retention cutoff and
+// reports how many went. Boot calls it for every domain table.
+func (s *EventService) Purge(ctx context.Context, now time.Time) (int64, error) {
+	cutoff := formatStored(now.Add(-SOFT_DELETE_RETENTION))
+	return s.q.PurgeEventsDeletedBefore(ctx, &cutoff)
 }
 
 func (s *EventService) validate(ctx context.Context, in EventInput) error {

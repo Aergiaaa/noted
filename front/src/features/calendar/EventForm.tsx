@@ -11,6 +11,7 @@ interface EventFormProps {
   defaultDay: Date;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted?: (id: string) => void;
 }
 
 export default function EventForm({
@@ -18,6 +19,7 @@ export default function EventForm({
   defaultDay,
   onClose,
   onSaved,
+  onDeleted,
 }: EventFormProps) {
   const [title, setTitle] = useState(event?.title ?? "");
   const [starts, setStarts] = useState(
@@ -81,6 +83,7 @@ export default function EventForm({
     setSaving(true);
     try {
       await api(`/events/${id}`, { method: "DELETE" });
+      onDeleted?.(id);
       onSaved();
       onClose();
     } catch (err: unknown) {

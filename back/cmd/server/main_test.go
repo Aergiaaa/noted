@@ -274,8 +274,8 @@ func TestRun_boot_migratesDataFile(t *testing.T) {
 	if err := h.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 {
-		t.Fatalf("user_version = %d, want 3 (0001_init + 0002_auth + 0003_session_auth_method migrated)", version)
+	if version != 4 {
+		t.Fatalf("user_version = %d, want 4 (0001_init + 0002_auth + 0003_session_auth_method + 0004_soft_delete migrated)", version)
 	}
 }
 
@@ -382,5 +382,8 @@ func TestWire_closedDB_logsBothBootFailures(t *testing.T) {
 	}
 	if !strings.Contains(out, "error checking enrollment") {
 		t.Fatalf("log = %q, want enrollment check failure line", out)
+	}
+	if !strings.Contains(out, "error purging soft-deleted events") {
+		t.Fatalf("log = %q, want purge failure line", out)
 	}
 }

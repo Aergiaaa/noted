@@ -301,7 +301,7 @@ func TestEventService_update_corruptStoredTime_internalError(t *testing.T) {
 	}
 }
 
-func TestEventService_delete_nullsInboundTaskLink(t *testing.T) {
+func TestEventService_delete_keepsLinkUntilPurge_nullsInboundTaskLink(t *testing.T) {
 	svc, db := newTestEventService(t)
 	created, err := svc.Create(context.Background(), validInput(t))
 	if err != nil {
@@ -323,8 +323,22 @@ func TestEventService_delete_nullsInboundTaskLink(t *testing.T) {
 	if err := db.QueryRow(`SELECT event_id FROM tasks WHERE id = 't1'`).Scan(&eventID); err != nil {
 		t.Fatalf("read task: %v", err)
 	}
+	if !eventID.Valid {
+		t.Fatal("task.event_id nulled by soft-delete, want intact until purge")
+	}
+
+	// A now past the retention window crosses the purge cutoff.
+	purgeNow := time.Now().Add(SOFT_DELETE_RETENTION + time.Hour)
+	if n, err := svc.Purge(context.Background(), purgeNow); err != nil {
+		t.Fatalf("Purge: %v", err)
+	} else if n != 1 {
+		t.Fatalf("Purge rows = %d, want 1", n)
+	}
+	if err := db.QueryRow(`SELECT event_id FROM tasks WHERE id = 't1'`).Scan(&eventID); err != nil {
+		t.Fatalf("re-read task: %v", err)
+	}
 	if eventID.Valid {
-		t.Fatalf("task.event_id = %q, want NULL", eventID.String)
+		t.Fatalf("task.event_id = %q, want NULL after purge", eventID.String)
 	}
 }
 
@@ -342,6 +356,151 @@ func TestEventService_delete_eventsTableGone_internalError(t *testing.T) {
 	}
 	if err := svc.Delete(context.Background(), "any"); err == nil {
 		t.Fatal("Delete succeeded, want internal error")
+	}
+}
+
+func TestEventService_restore_softDeleted_returnsRow(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	created, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := svc.Delete(context.Background(), created.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	restored, err := svc.Restore(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if restored.ID != created.ID {
+		t.Fatalf("restored id = %q, want %q", restored.ID, created.ID)
+	}
+
+	events, err := svc.List(context.Background(),
+		mustTime(t, "2026-10-01T00:00:00Z"), mustTime(t, "2026-10-15T00:00:00Z"))
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("List after restore = %d events, want 1", len(events))
+	}
+}
+
+func TestEventService_restore_missing_isNotFound(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	if _, err := svc.Restore(context.Background(), "ghost"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Restore ghost err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestEventService_restore_eventsTableGone_internalError(t *testing.T) {
+	svc, db := newTestEventService(t)
+	if _, err := db.Exec(`DROP TABLE events`); err != nil {
+		t.Fatalf("drop events: %v", err)
+	}
+	if _, err := svc.Restore(context.Background(), "any"); err == nil {
+		t.Fatal("Restore succeeded, want internal error")
+	}
+}
+
+func TestEventService_listDeleted_softDeletedOnly(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	keep, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed keep: %v", err)
+	}
+	drop, err := svc.Create(context.Background(), EventInput{
+		Title:    "Drop",
+		StartsAt: mustTime(t, "2026-10-20T09:00:00Z"),
+		EndsAt:   mustTime(t, "2026-10-20T10:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("seed drop: %v", err)
+	}
+	if err := svc.Delete(context.Background(), drop.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	deleted, err := svc.ListDeleted(context.Background())
+	if err != nil {
+		t.Fatalf("ListDeleted: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].ID != drop.ID {
+		t.Fatalf("ListDeleted = %+v, want only %s", deleted, drop.ID)
+	}
+
+	live, err := svc.List(context.Background(),
+		mustTime(t, "2026-10-01T00:00:00Z"), mustTime(t, "2026-10-31T00:00:00Z"))
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(live) != 1 || live[0].ID != keep.ID {
+		t.Fatalf("List = %+v, want only %s", live, keep.ID)
+	}
+}
+
+func TestEventService_listDeleted_eventsTableGone_internalError(t *testing.T) {
+	svc, db := newTestEventService(t)
+	if _, err := db.Exec(`DROP TABLE events`); err != nil {
+		t.Fatalf("drop events: %v", err)
+	}
+	if _, err := svc.ListDeleted(context.Background()); err == nil {
+		t.Fatal("ListDeleted succeeded, want internal error")
+	}
+}
+
+func TestEventService_purge_removesOnlyPastCutoff(t *testing.T) {
+	svc, db := newTestEventService(t)
+	old, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed old: %v", err)
+	}
+	recent, err := svc.Create(context.Background(), EventInput{
+		Title:    "Recent",
+		StartsAt: mustTime(t, "2026-10-20T09:00:00Z"),
+		EndsAt:   mustTime(t, "2026-10-20T10:00:00Z"),
+	})
+	if err != nil {
+		t.Fatalf("seed recent: %v", err)
+	}
+	for _, id := range []string{old.ID, recent.ID} {
+		if err := svc.Delete(context.Background(), id); err != nil {
+			t.Fatalf("Delete %s: %v", id, err)
+		}
+	}
+	// Backdate one row past the retention window.
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, old.ID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	purgeNow := mustTime(t, "2026-10-15T00:00:00Z")
+	n, err := svc.Purge(context.Background(), purgeNow)
+	if err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Purge rows = %d, want 1", n)
+	}
+
+	deleted, err := svc.ListDeleted(context.Background())
+	if err != nil {
+		t.Fatalf("ListDeleted: %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].ID != recent.ID {
+		t.Fatalf("ListDeleted after purge = %+v, want only %s", deleted, recent.ID)
+	}
+}
+
+func TestEventService_purge_zeroWhenNothingDue(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	n, err := svc.Purge(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("Purge rows = %d, want 0", n)
 	}
 }
 

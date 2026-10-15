@@ -1,13 +1,16 @@
 -- name: BalanceSums :one
 -- Derived balance: no stored total anywhere (ARCHITECTURE.md D4).
+-- Soft-deleted (voided) transactions drop out of the sums on read.
 SELECT CAST(COALESCE(SUM(CASE WHEN kind = 'income' THEN amount_cents ELSE 0 END), 0) AS INTEGER)  AS income_cents,
        CAST(COALESCE(SUM(CASE WHEN kind = 'expense' THEN amount_cents ELSE 0 END), 0) AS INTEGER) AS expense_cents
-FROM transactions;
+FROM transactions
+WHERE deleted_at IS NULL;
 
 -- name: RecentTransactions :many
 -- Cursor-free first page (newest first); cursor paging uses the variant below.
 SELECT *
 FROM transactions
+WHERE deleted_at IS NULL
 ORDER BY occurred_on DESC, id DESC
 LIMIT ?;
 
@@ -15,15 +18,17 @@ LIMIT ?;
 -- Keyset page: rows strictly older than (cursor_occurred_on, cursor_id).
 SELECT *
 FROM transactions
-WHERE occurred_on < sqlc.arg(cursor_occurred_on)
-   OR (occurred_on = sqlc.arg(cursor_occurred_on) AND id < sqlc.arg(cursor_id))
+WHERE deleted_at IS NULL
+  AND (occurred_on < sqlc.arg(cursor_occurred_on)
+       OR (occurred_on = sqlc.arg(cursor_occurred_on) AND id < sqlc.arg(cursor_id)))
 ORDER BY occurred_on DESC, id DESC
 LIMIT sqlc.arg(page_limit);
 
 -- name: GetTransaction :one
 SELECT *
 FROM transactions
-WHERE id = ?;
+WHERE id = ?
+  AND deleted_at IS NULL;
 
 -- name: CreateTransaction :one
 INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id,
@@ -46,7 +51,26 @@ SET kind        = ?,
 WHERE id = ?
 RETURNING *;
 
--- name: DeleteTransaction :exec
+-- name: SoftDeleteTransaction :exec
+UPDATE transactions
+SET deleted_at = sqlc.arg(deleted_at)
+WHERE id = sqlc.arg(id)
+  AND deleted_at IS NULL;
+
+-- name: RestoreTransaction :one
+UPDATE transactions
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING *;
+
+-- name: ListDeletedTransactions :many
+SELECT *
+FROM transactions
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id;
+
+-- name: PurgeTransactionsDeletedBefore :execrows
 DELETE
 FROM transactions
-WHERE id = ?;
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < sqlc.arg(cutoff);

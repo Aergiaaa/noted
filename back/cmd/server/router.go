@@ -60,6 +60,7 @@ func (a *app) newRouter() http.Handler {
 			r.Post("/events", a.handler.CreateEvent)
 			r.Patch("/events/{id}", a.handler.UpdateEvent)
 			r.Delete("/events/{id}", a.handler.DeleteEvent)
+			r.Post("/events/{id}/restore", a.handler.RestoreEvent)
 		})
 	})
 

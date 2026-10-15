@@ -35,6 +35,7 @@ func newTestEventsHandler(t *testing.T) (*Handler, http.Handler, *service.EventS
 	r.Post("/api/events", h.CreateEvent)
 	r.Patch("/api/events/{id}", h.UpdateEvent)
 	r.Delete("/api/events/{id}", h.DeleteEvent)
+	r.Post("/api/events/{id}/restore", h.RestoreEvent)
 	return h, r, svc, db
 }
 
@@ -330,6 +331,92 @@ func TestDeleteEvent_internal_500Envelope(t *testing.T) {
 		t.Fatalf("drop events: %v", err)
 	}
 	rec := eventsRequest(t, router, http.MethodDelete, "/api/events/ghost", "")
+
+	status, code, _ := decodeErr(t, rec)
+	if status != http.StatusInternalServerError || code != "internal_error" {
+		t.Fatalf("status=%d code=%q, want 500 internal_error", status, code)
+	}
+}
+
+func TestRestoreEvent_ok_200(t *testing.T) {
+	_, router, _, _ := newTestEventsHandler(t)
+	created := createViaAPI(t, router, "Dentist")
+
+	if rec := eventsRequest(t, router, http.MethodDelete, "/api/events/"+created.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d", rec.Code)
+	}
+	rec := eventsRequest(t, router, http.MethodPost, "/api/events/"+created.ID+"/restore", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	restored := decodeEvent(t, rec)
+	if restored.ID != created.ID || restored.Title != "Dentist" {
+		t.Fatalf("restored = %+v, want original row", restored)
+	}
+}
+
+func TestRestoreEvent_missing_404(t *testing.T) {
+	_, router, _, _ := newTestEventsHandler(t)
+	rec := eventsRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
+
+	status, code, _ := decodeErr(t, rec)
+	if status != http.StatusNotFound || code != "not_found" {
+		t.Fatalf("status=%d code=%q, want 404 not_found", status, code)
+	}
+}
+
+func TestRestoreEvent_internal_500Envelope(t *testing.T) {
+	_, router, _, db := newTestEventsHandler(t)
+	if _, err := db.Exec(`DROP TABLE events`); err != nil {
+		t.Fatalf("drop events: %v", err)
+	}
+	rec := eventsRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
+
+	status, code, _ := decodeErr(t, rec)
+	if status != http.StatusInternalServerError || code != "internal_error" {
+		t.Fatalf("status=%d code=%q, want 500 internal_error", status, code)
+	}
+}
+
+func TestListEvents_trash_softDeletedOnly_noRangeNeeded(t *testing.T) {
+	_, router, _, _ := newTestEventsHandler(t)
+	keep := createViaAPI(t, router, "Keep")
+	drop := createViaAPI(t, router, "Drop")
+
+	if rec := eventsRequest(t, router, http.MethodDelete, "/api/events/"+drop.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d", rec.Code)
+	}
+
+	rec := eventsRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trash status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data []eventJSON `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data) != 1 || body.Data[0].ID != drop.ID {
+		t.Fatalf("trash data = %+v, want only %s", body.Data, drop.ID)
+	}
+
+	rec = eventsRequest(t, router, http.MethodGet,
+		"/api/events?from=2026-10-01T00:00:00.000Z&to=2026-10-31T23:59:59.000Z", "")
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode range: %v", err)
+	}
+	if len(body.Data) != 1 || body.Data[0].ID != keep.ID {
+		t.Fatalf("range data = %+v, want only %s", body.Data, keep.ID)
+	}
+}
+
+func TestListEvents_trash_internal_500Envelope(t *testing.T) {
+	_, router, _, db := newTestEventsHandler(t)
+	if _, err := db.Exec(`DROP TABLE events`); err != nil {
+		t.Fatalf("drop events: %v", err)
+	}
+	rec := eventsRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusInternalServerError || code != "internal_error" {

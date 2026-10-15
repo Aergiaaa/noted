@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, isApiError, type Event, type EventsResponse } from "../lib/api";
 import { formatMonthTitle } from "../lib/format";
 import CalendarGrid from "../features/calendar/CalendarGrid";
 import EventForm from "../features/calendar/EventForm";
+import TrashPanel from "../features/calendar/TrashPanel";
 import { getMonthMatrix } from "../features/calendar/month";
 import EmptyState from "../components/ui/EmptyState";
 import ErrorState from "../components/ui/ErrorState";
+import Toast, { type ToastData } from "../components/ui/Toast";
 
 const LOAD_FAILED = "Couldn't load events.";
 const EMPTY_MESSAGE = "No events this month.";
+const RESTORE_FAILED = "Couldn't restore the event.";
 
 export default function CalendarPage() {
   const [month, setMonth] = useState(
@@ -21,6 +24,12 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [createDay, setCreateDay] = useState<Date | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashEvents, setTrashEvents] = useState<Event[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashError, setTrashError] = useState<string | null>(null);
+  const [trashNonce, setTrashNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,8 +51,34 @@ export default function CalendarPage() {
     };
   }, [month, nonce]);
 
+  useEffect(() => {
+    if (!trashOpen) return;
+    let cancelled = false;
+    api<EventsResponse>("/events?trash=1")
+      .then((res) => {
+        if (!cancelled) {
+          setTrashEvents(res.data);
+          setTrashError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled)
+          setTrashError(isApiError(err) ? err.message : LOAD_FAILED);
+      })
+      .finally(() => {
+        if (!cancelled) setTrashLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trashOpen, trashNonce]);
+
   // Loading flips on in the handlers below, not in the effect, so a render
   // never starts a cascade (lint: setState-in-effect).
+  const refetch = () => {
+    setError(null);
+    setNonce((n) => n + 1);
+  };
   const retry = () => {
     setError(null);
     setLoading(true);
@@ -72,6 +107,41 @@ export default function CalendarPage() {
     setEditing(null);
     setCreateDay(null);
   };
+  const openTrash = () => {
+    setTrashError(null);
+    setTrashLoading(true);
+    setTrashOpen(true);
+    setTrashNonce((n) => n + 1);
+  };
+  const retryTrash = () => {
+    setTrashError(null);
+    setTrashLoading(true);
+    setTrashNonce((n) => n + 1);
+  };
+  const restoreEvent = async (id: string, after: () => void) => {
+    try {
+      await api(`/events/${id}/restore`, { method: "POST" });
+      after();
+    } catch (err: unknown) {
+      setToast({
+        message: isApiError(err) ? err.message : RESTORE_FAILED,
+        kind: "error",
+      });
+    }
+  };
+  const undoDelete = (id: string) => {
+    void restoreEvent(id, () => {
+      setToast(null);
+      refetch();
+    });
+  };
+  const restoreFromTrash = (id: string) => {
+    void restoreEvent(id, () => {
+      setTrashNonce((n) => n + 1);
+      refetch();
+    });
+  };
+  const dismissToast = useCallback(() => setToast(null), []);
 
   if (error !== null) {
     return (
@@ -121,6 +191,14 @@ export default function CalendarPage() {
           </button>
           <button
             type="button"
+            aria-label="Open trash"
+            className="btn btn-ghost btn-sm"
+            onClick={openTrash}
+          >
+            Trash
+          </button>
+          <button
+            type="button"
             className="btn btn-primary btn-sm"
             onClick={openCreate}
           >
@@ -154,9 +232,28 @@ export default function CalendarPage() {
           event={editing}
           defaultDay={createDay ?? new Date()}
           onClose={closeForm}
-          onSaved={retry}
+          onSaved={refetch}
+          onDeleted={(id) =>
+            setToast({
+              message: "Event deleted",
+              kind: "success",
+              action: { label: "Undo", onAction: () => undoDelete(id) },
+            })
+          }
         />
       )}
+
+      <TrashPanel
+        open={trashOpen}
+        events={trashEvents}
+        loading={trashLoading}
+        error={trashError}
+        onRestore={restoreFromTrash}
+        onRetry={retryTrash}
+        onClose={() => setTrashOpen(false)}
+      />
+
+      {toast !== null && <Toast toast={toast} onDismiss={dismissToast} />}
     </section>
   );
 }
