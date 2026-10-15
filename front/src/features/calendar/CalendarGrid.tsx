@@ -46,6 +46,7 @@ export default function CalendarGrid({
           const inMonth =
             day.getMonth() === month.getMonth() &&
             day.getFullYear() === month.getFullYear();
+
           const cellClass = [
             "min-h-24 cursor-pointer border border-base-300 p-1 hover:bg-base-300",
             inMonth ? "" : "opacity-40",

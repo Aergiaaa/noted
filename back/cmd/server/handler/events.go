@@ -46,6 +46,7 @@ type eventJSON struct {
 // sends both (CalendarPage's gridBounds).
 func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+
 	from, ok := parseTimeParam(q.Get("from"))
 	if !ok {
 		WriteError(w, http.StatusBadRequest, "", map[string]string{"from": "required RFC3339 datetime"})
@@ -56,6 +57,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "", map[string]string{"to": "required RFC3339 datetime"})
 		return
 	}
+
 	if !from.Before(to) {
 		WriteError(w, http.StatusBadRequest, "", map[string]string{"from": "must be before to"})
 		return
@@ -66,10 +68,12 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		writeEventError(w, err, "list events")
 		return
 	}
+
 	data := make([]eventJSON, len(events))
 	for i, event := range events {
 		data[i] = toEventJSON(event)
 	}
+
 	WriteJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
@@ -78,6 +82,7 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if !DecodeJSON(w, r, &req) {
 		return
 	}
+
 	starts, ok := parseTimeParam(req.StartsAt)
 	if !ok {
 		WriteError(w, http.StatusBadRequest, "", map[string]string{"starts_at": "invalid RFC3339 datetime"})
@@ -100,6 +105,7 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		writeEventError(w, err, "create event")
 		return
 	}
+
 	WriteJSON(w, http.StatusCreated, toEventJSON(event))
 }
 
@@ -108,11 +114,13 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if !DecodeJSON(w, r, &req) {
 		return
 	}
+
 	patch := service.EventPatch{
 		Title:       req.Title,
 		Description: req.Description,
 		NoteID:      req.NoteID,
 	}
+
 	if req.StartsAt != nil {
 		starts, ok := parseTimeParam(*req.StartsAt)
 		if !ok {
@@ -135,6 +143,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		writeEventError(w, err, "update event")
 		return
 	}
+
 	WriteJSON(w, http.StatusOK, toEventJSON(event))
 }
 
@@ -144,6 +153,7 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 		writeEventError(w, err, "delete event")
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -151,6 +161,7 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 // reports whether it wrote, so callers just return.
 func writeEventError(w http.ResponseWriter, err error, op string) bool {
 	var validation *service.ValidationError
+
 	switch {
 	case errors.As(err, &validation):
 		WriteError(w, http.StatusBadRequest, "", validation.Fields)
@@ -160,6 +171,7 @@ func writeEventError(w http.ResponseWriter, err error, op string) bool {
 		log.Printf("handler: %s: %v", op, err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 	}
+
 	return true
 }
 

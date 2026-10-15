@@ -5,6 +5,7 @@ import type { Event } from "./api";
 export function isSameDay(a: string, b: string): boolean {
   const left = new Date(a);
   const right = new Date(b);
+
   return (
     left.getFullYear() === right.getFullYear() &&
     left.getMonth() === right.getMonth() &&

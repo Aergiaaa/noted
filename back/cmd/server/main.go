@@ -94,7 +94,13 @@ func (a *app) wire(db *sql.DB) {
 	a.auth = auth.New(db, a.conf.TOTPEncKey)
 	a.secure = a.conf.AppEnv == "prod"
 
-	a.handler = handler.New(a.auth, service.NewEventService(generated.New(db)), a.secure)
+	queries := generated.New(db)
+
+	a.handler = handler.New(
+		a.auth,
+		service.NewEventService(queries),
+		a.secure,
+	)
 	a.bootAuth(context.Background())
 }
 

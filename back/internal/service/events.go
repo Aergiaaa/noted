@@ -15,7 +15,7 @@ import (
 	"noted/internal/database/generated"
 )
 
-const TITLE_MAX = 200
+const TITLE_MAX_CHAR = 200
 
 // ValidationError carries per-field messages straight into the frozen
 // 400 envelope (API.md); the handler maps Fields without re-deriving them.
@@ -23,6 +23,7 @@ type ValidationError struct {
 	Fields map[string]string
 }
 
+// just error implementation
 func (e *ValidationError) Error() string { return "validation failed" }
 
 // ErrNotFound: the handler maps it to the 404 envelope.
@@ -78,10 +79,12 @@ func (s *EventService) List(ctx context.Context, from, to time.Time) ([]Event, e
 	if err != nil {
 		return nil, err
 	}
+
 	events := make([]Event, len(rows))
 	for i, row := range rows {
 		events[i] = fromRow(row)
 	}
+
 	return events, nil
 }
 
@@ -90,6 +93,7 @@ func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error)
 	if err := s.validate(ctx, in); err != nil {
 		return Event{}, err
 	}
+
 	now := formatStored(time.Now())
 	row, err := s.q.CreateEvent(ctx, generated.CreateEventParams{
 		ID:          uuid.NewString(),
@@ -97,13 +101,14 @@ func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error)
 		StartsAt:    formatStored(in.StartsAt),
 		EndsAt:      formatStored(in.EndsAt),
 		Description: in.Description,
-		NoteID:      normalizeNoteID(in.NoteID),
+		NoteID:      normalizeID(in.NoteID),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	})
 	if err != nil {
 		return Event{}, err
 	}
+
 	return fromRow(row), nil
 }
 
@@ -127,18 +132,20 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 	if err := s.validate(ctx, merged); err != nil {
 		return Event{}, err
 	}
+
 	updated, err := s.q.UpdateEvent(ctx, generated.UpdateEventParams{
 		ID:          id,
 		Title:       merged.Title,
 		StartsAt:    formatStored(merged.StartsAt),
 		EndsAt:      formatStored(merged.EndsAt),
 		Description: merged.Description,
-		NoteID:      normalizeNoteID(merged.NoteID),
+		NoteID:      normalizeID(merged.NoteID),
 		UpdatedAt:   formatStored(time.Now()),
 	})
 	if err != nil {
 		return Event{}, err
 	}
+
 	return fromRow(updated), nil
 }
 
@@ -155,22 +162,26 @@ func (s *EventService) validate(ctx context.Context, in EventInput) error {
 	switch {
 	case title == "":
 		fields["title"] = "required"
-	case len([]rune(title)) > TITLE_MAX:
+	case len([]rune(title)) > TITLE_MAX_CHAR:
 		fields["title"] = "must be at most 200 characters"
 	}
+
 	if !in.EndsAt.After(in.StartsAt) {
 		fields["ends_at"] = "must be after starts_at"
 	}
-	if noteID := normalizeNoteID(in.NoteID); noteID != nil {
+
+	if noteID := normalizeID(in.NoteID); noteID != nil {
 		if _, err := s.q.GetNote(ctx, *noteID); errors.Is(err, sql.ErrNoRows) {
 			fields["note_id"] = "unknown note"
 		} else if err != nil {
 			return err
 		}
 	}
+
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}
 	}
+
 	return nil
 }
 
@@ -185,6 +196,7 @@ func mergePatch(row generated.Event, patch EventPatch) (EventInput, error) {
 	if err != nil {
 		return EventInput{}, err
 	}
+
 	in := EventInput{
 		Title:       row.Title,
 		StartsAt:    starts,
@@ -192,6 +204,7 @@ func mergePatch(row generated.Event, patch EventPatch) (EventInput, error) {
 		Description: row.Description,
 		NoteID:      row.NoteID,
 	}
+
 	if patch.Title != nil {
 		in.Title = *patch.Title
 	}
@@ -221,9 +234,9 @@ func parseStored(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
-// normalizeNoteID: an empty string means "no link", matching the
+// normalizeID: an empty string means "no link", matching the
 // nullable-FK shape the frontend omits when unlinked.
-func normalizeNoteID(id *string) *string {
+func normalizeID(id *string) *string {
 	if id != nil && *id == "" {
 		return nil
 	}
