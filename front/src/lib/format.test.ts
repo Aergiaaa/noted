@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatMonthTitle, formatTime, toLocalInput } from "./format";
+import {
+  formatDayHeader,
+  formatHourLabel,
+  formatMonthTitle,
+  formatTime,
+  fromDayKey,
+  toDayKey,
+  toLocalInput,
+} from "./format";
 
 describe("formatTime", () => {
   it("renders HH:MM from an instant in local time", () => {
@@ -27,5 +35,32 @@ describe("toLocalInput", () => {
 
     expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     expect(new Date(value).getTime()).toBe(new Date(iso).getTime());
+  });
+});
+
+describe("toDayKey / fromDayKey", () => {
+  it("round-trips a local date through its YYYY-MM-DD key", () => {
+    const date = new Date(2026, 9, 5);
+    expect(toDayKey(date)).toBe("2026-10-05");
+    const back = fromDayKey("2026-10-05");
+    expect(back.getFullYear()).toBe(2026);
+    expect(back.getMonth()).toBe(9);
+    expect(back.getDate()).toBe(5);
+    expect(back.getHours()).toBe(0);
+  });
+});
+
+describe("formatDayHeader", () => {
+  it("renders a short weekday and day number", () => {
+    expect(formatDayHeader(new Date(2026, 9, 12))).toBe("Mon 12");
+    expect(formatDayHeader(new Date(2026, 9, 18))).toBe("Sun 18");
+  });
+});
+
+describe("formatHourLabel", () => {
+  it("zero-pads the hour", () => {
+    expect(formatHourLabel(0)).toBe("00");
+    expect(formatHourLabel(9)).toBe("09");
+    expect(formatHourLabel(23)).toBe("23");
   });
 });

@@ -37,6 +37,24 @@ export function toDayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// Parse a YYYY-MM-DD day key back into a local Date (midnight).
+export function fromDayKey(key: string): Date {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Weekday header for the time grid: "Mon 12".
+export function formatDayHeader(date: Date): string {
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()}`;
+}
+
+// Compact hour label for the time gutter: "09".
+export function formatHourLabel(hour: number): string {
+  return pad(hour);
+}
+
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }

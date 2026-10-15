@@ -1,28 +1,31 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, isApiError, type Event, type EventsResponse } from "../lib/api";
-import { formatMonthTitle } from "../lib/format";
-import CalendarGrid from "../features/calendar/CalendarGrid";
-import EventForm from "../features/calendar/EventForm";
+import CalendarEventForm from "../features/calendar/EventForm";
+import MiniMonth from "../features/calendar/MiniMonth";
+import MonthHeader from "../features/calendar/MonthHeader";
 import TrashPanel from "../features/calendar/TrashPanel";
-import { getMonthMatrix } from "../features/calendar/month";
-import EmptyState from "../components/ui/EmptyState";
+import WeekTimeGrid from "../features/calendar/WeekTimeGrid";
+import {
+  addWeeks,
+  startOfWeek,
+  weekBounds,
+  weekDays,
+} from "../features/calendar/week";
 import ErrorState from "../components/ui/ErrorState";
+import EmptyState from "../components/ui/EmptyState";
 import Toast, { type ToastData } from "../components/ui/Toast";
 
 const LOAD_FAILED = "Couldn't load events.";
-const EMPTY_MESSAGE = "No events this month.";
+const EMPTY_MESSAGE = "No events this week.";
 const RESTORE_FAILED = "Couldn't restore the event.";
 
 export default function CalendarPage() {
-  const [month, setMonth] = useState(
-    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-  );
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [createDay, setCreateDay] = useState<Date | null>(null);
+  const [createStart, setCreateStart] = useState<Date | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
@@ -33,7 +36,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api<EventsResponse>(eventsPathFor(month))
+    api<EventsResponse>(eventsPathFor(selectedDate))
       .then((res) => {
         if (!cancelled) {
           setEvents(res.data);
@@ -49,7 +52,7 @@ export default function CalendarPage() {
     return () => {
       cancelled = true;
     };
-  }, [month, nonce]);
+  }, [selectedDate, nonce]);
 
   useEffect(() => {
     if (!trashOpen) return;
@@ -84,28 +87,32 @@ export default function CalendarPage() {
     setLoading(true);
     setNonce((n) => n + 1);
   };
-  const prevMonth = () => {
+  const stepWeek = (weeks: number) => {
     setError(null);
     setLoading(true);
-    setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
+    setSelectedDate((d) => addWeeks(d, weeks));
   };
-  const nextMonth = () => {
+  const selectDay = (day: Date) => {
     setError(null);
     setLoading(true);
-    setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
+    setSelectedDate(day);
   };
   const openCreate = () => {
     setEditing(null);
-    setCreateDay(new Date());
+    const now = new Date();
+    setCreateStart(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0),
+    );
   };
-  const pickDay = (day: Date) => {
+  const createAt = (day: Date, hour: number) => {
     setEditing(null);
-    setCreateDay(day);
-    setSelectedDay(day);
+    setCreateStart(
+      new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0),
+    );
   };
   const closeForm = () => {
     setEditing(null);
-    setCreateDay(null);
+    setCreateStart(null);
   };
   const openTrash = () => {
     setTrashError(null);
@@ -156,39 +163,28 @@ export default function CalendarPage() {
     return (
       <section>
         <h1 className="text-xl font-semibold">Calendar</h1>
-        <div className="mt-4 grid grid-cols-7">
-          {Array.from({ length: 42 }, (_, i) => (
-            <div key={i} className="skeleton h-24" />
+        <div className="mt-4 grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] gap-2">
+          <div className="skeleton h-16" />
+          {Array.from({ length: 7 }, (_, i) => (
+            <div key={i} className="skeleton h-16" />
           ))}
         </div>
       </section>
     );
   }
 
-  const days = getMonthMatrix(month.getFullYear(), month.getMonth());
+  const weekStart = startOfWeek(selectedDate);
 
   return (
     <section>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Calendar</h1>
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-medium">{formatMonthTitle(month)}</h2>
-          <button
-            type="button"
-            aria-label="Previous month"
-            className="btn btn-ghost btn-sm"
-            onClick={prevMonth}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            aria-label="Next month"
-            className="btn btn-ghost btn-sm"
-            onClick={nextMonth}
-          >
-            ›
-          </button>
+          <MonthHeader
+            month={selectedDate}
+            onPrevWeek={() => stepWeek(-1)}
+            onNextWeek={() => stepWeek(1)}
+          />
           <button
             type="button"
             aria-label="Open trash"
@@ -207,30 +203,34 @@ export default function CalendarPage() {
         </div>
       </header>
 
-      <CalendarGrid
-        days={days}
-        month={month}
-        today={new Date()}
-        selectedDay={selectedDay}
-        events={events}
-        onSelectDay={pickDay}
-        onSelectEvent={(event) => {
-          setCreateDay(null);
-          setEditing(event);
-        }}
-      />
+      <div className="mt-4 flex flex-col gap-4 lg:flex-row">
+        <aside className="shrink-0 lg:w-56">
+          <MiniMonth selected={selectedDate} onSelect={selectDay} />
+        </aside>
+        <div className="min-w-0 flex-1">
+          <WeekTimeGrid
+            days={weekDays(weekStart)}
+            events={events}
+            onSlotClick={createAt}
+            onEventClick={(event) => {
+              setCreateStart(null);
+              setEditing(event);
+            }}
+          />
 
-      {events.length === 0 && (
-        <EmptyState
-          message={EMPTY_MESSAGE}
-          action={{ label: "Create your first event", onClick: openCreate }}
-        />
-      )}
+          {events.length === 0 && (
+            <EmptyState
+              message={EMPTY_MESSAGE}
+              action={{ label: "Create your first event", onClick: openCreate }}
+            />
+          )}
+        </div>
+      </div>
 
-      {(createDay !== null || editing !== null) && (
-        <EventForm
+      {(createStart !== null || editing !== null) && (
+        <CalendarEventForm
           event={editing}
-          defaultDay={createDay ?? new Date()}
+          defaultStart={createStart ?? new Date()}
           onClose={closeForm}
           onSaved={refetch}
           onDeleted={(id) =>
@@ -258,18 +258,8 @@ export default function CalendarPage() {
   );
 }
 
-// Range = the visible 42-cell grid, not just the month, so spill cells
-// from the neighbouring months fetch their events too.
-function eventsPathFor(month: Date): string {
-  const [first, last] = gridBounds(month);
-  return `/events?from=${encodeURIComponent(first)}&to=${encodeURIComponent(last)}`;
-}
-
-function gridBounds(month: Date): [string, string] {
-  const days = getMonthMatrix(month.getFullYear(), month.getMonth());
-  const from = days[0];
-  from.setHours(0, 0, 0, 0);
-  const to = days[41];
-  to.setHours(23, 59, 59, 999);
-  return [from.toISOString(), to.toISOString()];
+// The visible week Mon 00:00 .. Sun 23:59:59.999 local, as ISO instants.
+function eventsPathFor(selectedDate: Date): string {
+  const [from, to] = weekBounds(startOfWeek(selectedDate));
+  return `/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
 }

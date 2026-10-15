@@ -8,7 +8,7 @@ const ENDS_AFTER_STARTS = "Ends must be after starts.";
 
 interface EventFormProps {
   event: Event | null;
-  defaultDay: Date;
+  defaultStart: Date;
   onClose: () => void;
   onSaved: () => void;
   onDeleted?: (id: string) => void;
@@ -16,17 +16,17 @@ interface EventFormProps {
 
 export default function EventForm({
   event,
-  defaultDay,
+  defaultStart,
   onClose,
   onSaved,
   onDeleted,
 }: EventFormProps) {
   const [title, setTitle] = useState(event?.title ?? "");
   const [starts, setStarts] = useState(
-    toLocalInput(event?.starts_at ?? at(defaultDay, 9)),
+    toLocalInput(event?.starts_at ?? defaultStart.toISOString()),
   );
   const [ends, setEnds] = useState(
-    toLocalInput(event?.ends_at ?? at(defaultDay, 10)),
+    toLocalInput(event?.ends_at ?? plusHour(defaultStart).toISOString()),
   );
   const [description, setDescription] = useState(event?.description ?? "");
   const [errors, setErrors] = useState<string[]>([]);
@@ -221,12 +221,6 @@ function saveErrorLines(err: unknown): string[] {
   return [err.message];
 }
 
-function at(day: Date, hour: number): string {
-  return new Date(
-    day.getFullYear(),
-    day.getMonth(),
-    day.getDate(),
-    hour,
-    0,
-  ).toISOString();
+function plusHour(instant: Date): Date {
+  return new Date(instant.getTime() + 60 * 60 * 1000);
 }

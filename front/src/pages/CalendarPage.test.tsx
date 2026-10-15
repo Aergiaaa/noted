@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -8,11 +8,22 @@ import {
   waitFor,
 } from "@testing-library/react";
 import CalendarPage from "./CalendarPage";
-import { formatMonthTitle } from "../lib/format";
+import { formatDayHeader, formatMonthTitle } from "../lib/format";
 import type { Event } from "../lib/api";
+
+// Fixed clock: Wed 2026-10-15 12:00 local — the visible week is always
+// Mon 2026-10-12 .. Sun 2026-10-18. shouldAdvanceTime keeps RTL's waitFor
+// (and cally's async render) working under fake timers.
+beforeEach(() => {
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    now: new Date(2026, 9, 15, 12, 0, 0),
+  });
+});
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -27,13 +38,9 @@ function listResponse(events: Event[]) {
   return jsonResponse(200, { data: events });
 }
 
-// Local-constructed values keep every assertion correct in any test TZ.
-function dayKey(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+const TODAY_KEY = "2026-10-15";
+const WEEK_FROM = new Date(2026, 9, 12).toISOString();
+const WEEK_TO = new Date(2026, 9, 18, 23, 59, 59, 999).toISOString();
 
 function localISO(key: string, time: string): string {
   return new Date(`${key}T${time}`).toISOString();
@@ -60,8 +67,20 @@ function fillEventForm(title: string, start: string, end: string) {
   fireEvent.change(screen.getByLabelText("Ends"), { target: { value: end } });
 }
 
+function eventBlock(name: string | RegExp) {
+  return screen.getByRole("button", { name });
+}
+
+async function waitForGrid() {
+  await waitFor(() =>
+    expect(
+      document.querySelectorAll("button[aria-label^='Create event on']"),
+    ).toHaveLength(7 * 24),
+  );
+}
+
 describe("CalendarPage", () => {
-  it("shows a skeleton while the month loads, then the grid", async () => {
+  it("shows a skeleton while the week loads, then the grid", async () => {
     let resolveList!: (r: Response) => void;
     const fetchMock = vi.fn().mockImplementationOnce(
       () =>
@@ -78,10 +97,12 @@ describe("CalendarPage", () => {
       resolveList(listResponse([]));
     });
 
-    await waitFor(() =>
-      expect(screen.getAllByRole("gridcell")).toHaveLength(42),
-    );
+    await waitForGrid();
     expect(container.querySelector(".skeleton")).toBeNull();
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(
+      encodeURIComponent(WEEK_FROM),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(encodeURIComponent(WEEK_TO));
   });
 
   it("offers an empty state whose CTA opens the create form", async () => {
@@ -89,7 +110,7 @@ describe("CalendarPage", () => {
 
     render(<CalendarPage />);
     await waitFor(() =>
-      expect(screen.getByText("No events this month.")).toBeDefined(),
+      expect(screen.getByText("No events this week.")).toBeDefined(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Create your first/ }));
@@ -97,9 +118,8 @@ describe("CalendarPage", () => {
     expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
   });
 
-  it("creates an event from an empty day cell", async () => {
-    const key = dayKey();
-    const created = eventOn(key, "Dentist");
+  it("creates an event from an empty hour slot", async () => {
+    const created = eventOn(TODAY_KEY, "Dentist");
     let resolvePost!: (r: Response) => void;
     const fetchMock = vi
       .fn()
@@ -114,14 +134,20 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("gridcell", { name: key })).toBeDefined(),
+    await waitForGrid();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Create event on ${formatDayHeader(new Date(2026, 9, 15))} at 14:00`,
+      }),
+    );
+    expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
+    expect(screen.getByLabelText("Starts")).toHaveProperty(
+      "value",
+      `${TODAY_KEY}T14:00`,
     );
 
-    fireEvent.click(screen.getByRole("gridcell", { name: key }));
-    expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
-
-    fillEventForm("Dentist", `${key}T09:00`, `${key}T10:00`);
+    fillEventForm("Dentist", `${TODAY_KEY}T14:00`, `${TODAY_KEY}T15:00`);
     fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "checkup" },
     });
@@ -132,17 +158,15 @@ describe("CalendarPage", () => {
       resolvePost(jsonResponse(201, created));
     });
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock(/Dentist/)).toBeDefined());
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     const [, postInit] = fetchMock.mock.calls[1];
     expect(postInit.method).toBe("POST");
     expect(JSON.parse(postInit.body)).toMatchObject({
       title: "Dentist",
-      starts_at: created.starts_at,
-      ends_at: created.ends_at,
+      starts_at: localISO(TODAY_KEY, "14:00"),
+      ends_at: localISO(TODAY_KEY, "15:00"),
       description: "checkup",
     });
   });
@@ -151,9 +175,7 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -163,18 +185,15 @@ describe("CalendarPage", () => {
   });
 
   it("rejects an end time that is not after the start client-side", async () => {
-    const key = dayKey();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     // Both values differ from the prefill so each onChange actually fires
     // (React drops change events whose value didn't move).
-    fillEventForm("X", `${key}T11:00`, `${key}T08:00`);
+    fillEventForm("X", `${TODAY_KEY}T11:00`, `${TODAY_KEY}T08:00`);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Ends must be after starts.")).toBeDefined();
@@ -182,7 +201,6 @@ describe("CalendarPage", () => {
   });
 
   it("renders server-side field errors from a 400", async () => {
-    const key = dayKey();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
@@ -198,12 +216,10 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${key}T09:00`, `${key}T10:00`);
+    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
@@ -213,7 +229,6 @@ describe("CalendarPage", () => {
   });
 
   it("keeps the form open when saving fails without an error envelope", async () => {
-    const key = dayKey();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
@@ -221,12 +236,10 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${key}T09:00`, `${key}T10:00`);
+    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
@@ -236,7 +249,6 @@ describe("CalendarPage", () => {
   });
 
   it("shows the generic save message when the success body is not JSON", async () => {
-    const key = dayKey();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
@@ -244,12 +256,10 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${key}T09:00`, `${key}T10:00`);
+    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
@@ -257,9 +267,8 @@ describe("CalendarPage", () => {
     expect(screen.getByText("Couldn't save the event.")).toBeDefined();
   });
 
-  it("edits an event from its chip", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+  it("edits an event from its block", async () => {
+    const original = eventOn(TODAY_KEY, "Dentist");
     const renamed: Event = { ...original, title: "Dentist 2.0" };
     const fetchMock = vi
       .fn()
@@ -269,11 +278,9 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
     expect(screen.getByLabelText("Title")).toHaveProperty("value", "Dentist");
 
@@ -284,11 +291,7 @@ describe("CalendarPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
 
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /Dentist 2\.0/ }),
-      ).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 2.0 09:00")).toBeDefined());
 
     const [, patchInit] = fetchMock.mock.calls[1];
     expect(patchInit.method).toBe("PATCH");
@@ -296,8 +299,7 @@ describe("CalendarPage", () => {
   });
 
   it("deletes only after the inline confirmation", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
@@ -306,11 +308,9 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByText("Delete this event?")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -320,7 +320,9 @@ describe("CalendarPage", () => {
     });
 
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /Dentist/ })).toBeNull(),
+      expect(
+        screen.queryByRole("button", { name: "Dentist 09:00" }),
+      ).toBeNull(),
     );
     const [, deleteInit] = fetchMock.mock.calls[1];
     expect(deleteInit.method).toBe("DELETE");
@@ -328,8 +330,7 @@ describe("CalendarPage", () => {
   });
 
   it("deleting shows an Undo toast that restores the event", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     let listCalls = 0;
     const fetchMock = vi
       .fn()
@@ -346,11 +347,9 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -374,8 +373,7 @@ describe("CalendarPage", () => {
   });
 
   it("keeps the event and shows an error toast when undo fails", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
@@ -385,11 +383,9 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -412,8 +408,7 @@ describe("CalendarPage", () => {
   });
 
   it("opens the trash panel and restores an event from it", async () => {
-    const key = dayKey();
-    const trashed: Event = { ...eventOn(key, "Old dentist"), id: "e9" };
+    const trashed: Event = { ...eventOn(TODAY_KEY, "Old dentist"), id: "e9" };
     let trashCalls = 0;
     const fetchMock = vi
       .fn()
@@ -432,9 +427,7 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trash" }));
     await waitFor(() => expect(screen.getByText("Old dentist")).toBeDefined());
@@ -462,9 +455,7 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Open trash" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trash" }));
     await waitFor(() => expect(screen.getByText("boom")).toBeDefined());
@@ -485,9 +476,7 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Open trash" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trash" }));
     await waitFor(() =>
@@ -511,9 +500,7 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Open trash" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trash" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -532,8 +519,7 @@ describe("CalendarPage", () => {
   });
 
   it("shows the restore failure when the undo response is not JSON", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
@@ -543,11 +529,9 @@ describe("CalendarPage", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -566,19 +550,16 @@ describe("CalendarPage", () => {
   });
 
   it("keeps the event when the confirmation is dismissed", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValueOnce(listResponse([original])),
     );
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
 
@@ -588,8 +569,7 @@ describe("CalendarPage", () => {
   });
 
   it("keeps the event and drops the confirm when delete fails", async () => {
-    const key = dayKey();
-    const original = eventOn(key, "Dentist");
+    const original = eventOn(TODAY_KEY, "Dentist");
     vi.stubGlobal(
       "fetch",
       vi
@@ -599,11 +579,9 @@ describe("CalendarPage", () => {
     );
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Dentist/ })).toBeDefined(),
-    );
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
-    fireEvent.click(screen.getByRole("button", { name: /Dentist/ }));
+    fireEvent.click(eventBlock("Dentist 09:00"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -685,45 +663,95 @@ describe("CalendarPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    await waitFor(() =>
-      expect(screen.getAllByRole("gridcell")).toHaveLength(42),
-    );
+    await waitForGrid();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("navigates to the next and previous month", async () => {
-    // A fresh Response per call — a consumed body can't be read twice.
+  it("steps whole weeks and flips the month title at the boundary", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(() => Promise.resolve(listResponse([]))),
     );
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByText(formatMonthTitle(new Date()))).toBeDefined(),
+    await waitFor(() => expect(screen.getByText("October 2026")).toBeDefined());
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toContain(
+      encodeURIComponent(WEEK_FROM),
     );
 
-    const next = new Date();
-    next.setMonth(next.getMonth() + 1);
-    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    await waitFor(() =>
-      expect(screen.getByText(formatMonthTitle(next))).toBeDefined(),
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    await waitForGrid();
+    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toContain(
+      encodeURIComponent(new Date(2026, 9, 19).toISOString()),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
-    await waitFor(() =>
-      expect(screen.getByText(formatMonthTitle(new Date()))).toBeDefined(),
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitForGrid();
+    expect(vi.mocked(fetch).mock.calls[2]?.[0]).toContain(
+      encodeURIComponent(WEEK_FROM),
     );
-    expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitForGrid();
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitForGrid();
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitFor(() =>
+      expect(screen.getByText("September 2026")).toBeDefined(),
+    );
+    expect(vi.mocked(fetch).mock.calls[5]?.[0]).toContain(
+      encodeURIComponent(new Date(2026, 8, 21).toISOString()),
+    );
+  });
+
+  it("selects a day from the mini calendar and refetches that week", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(listResponse([])));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { container } = render(<CalendarPage />);
+    await waitForGrid();
+
+    const host = container.querySelector("calendar-date") as HTMLElement;
+    await waitFor(() =>
+      expect(
+        host
+          .querySelector("calendar-month")
+          ?.shadowRoot?.querySelectorAll("button").length ?? 0,
+      ).toBeGreaterThan(0),
+    );
+
+    const month = host.querySelector("calendar-month") as HTMLElement;
+    const day20 = Array.from(
+      month.shadowRoot?.querySelectorAll("button") ?? [],
+    ).find((b) => b.textContent === "20");
+    fireEvent.click(day20 as HTMLElement);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls[1]?.[0]).toContain(
+        encodeURIComponent(new Date(2026, 9, 19).toISOString()),
+      ),
+    );
+    expect(screen.getByText("October 2026")).toBeDefined();
+  });
+
+  it("shows a single now-line in the current week", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
+
+    const { container } = render(<CalendarPage />);
+    await waitForGrid();
+
+    expect(container.querySelectorAll("[data-testid='now-line']")).toHaveLength(
+      1,
+    );
   });
 
   it("closes the form with Escape without saving", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
 
     render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "New event" })).toBeDefined(),
-    );
+    await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     fireEvent.keyDown(window, { key: "Tab" });
@@ -732,5 +760,19 @@ describe("CalendarPage", () => {
 
     expect(screen.queryByRole("heading", { name: "New event" })).toBeNull();
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the fixed week's day headers", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
+
+    render(<CalendarPage />);
+    await waitForGrid();
+
+    expect(
+      screen.getByText(formatDayHeader(new Date(2026, 9, 12))),
+    ).toBeDefined();
+    expect(
+      screen.getByText(formatMonthTitle(new Date(2026, 9, 15))),
+    ).toBeDefined();
   });
 });
