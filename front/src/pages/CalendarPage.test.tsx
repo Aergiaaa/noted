@@ -8,7 +8,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import CalendarPage from "./CalendarPage";
-import { formatDayHeader, formatMonthTitle } from "../lib/format";
+import {
+  formatDateTime,
+  formatDayHeader,
+  formatMonthTitle,
+} from "../lib/format";
 import type { Event } from "../lib/api";
 
 // Fixed clock: Wed 2026-10-15 12:00 local — the visible week is always
@@ -57,14 +61,39 @@ function eventOn(key: string, title: string): Event {
   };
 }
 
-function fillEventForm(title: string, start: string, end: string) {
+// Drive one date-time picker the way a user would: open it, click the day
+// in cally's shadow DOM, set hour/minute, close it again.
+async function pickDateTime(label: string, value: string) {
+  const trigger = screen.getByLabelText(label);
+  fireEvent.click(trigger);
+  const host = trigger.parentElement?.querySelector(
+    "calendar-date",
+  ) as HTMLElement;
+  await waitFor(() =>
+    expect(
+      host.shadowRoot?.querySelectorAll("button").length ?? 0,
+    ).toBeGreaterThan(0),
+  );
+  const month = host.querySelector("calendar-month") as HTMLElement;
+  const day = Array.from(
+    month.shadowRoot?.querySelectorAll("button") ?? [],
+  ).find((b) => b.textContent === String(Number(value.slice(8, 10))));
+  fireEvent.click(day as HTMLElement);
+  fireEvent.change(screen.getByLabelText(`${label} hour`), {
+    target: { value: value.slice(11, 13) },
+  });
+  fireEvent.change(screen.getByLabelText(`${label} minute`), {
+    target: { value: value.slice(14, 16) },
+  });
+  fireEvent.click(trigger);
+}
+
+async function fillEventForm(title: string, start: string, end: string) {
   fireEvent.change(screen.getByLabelText("Title"), {
     target: { value: title },
   });
-  fireEvent.change(screen.getByLabelText("Starts"), {
-    target: { value: start },
-  });
-  fireEvent.change(screen.getByLabelText("Ends"), { target: { value: end } });
+  await pickDateTime("Starts", start);
+  await pickDateTime("Ends", end);
 }
 
 function eventBlock(name: string | RegExp) {
@@ -142,12 +171,11 @@ describe("CalendarPage", () => {
       }),
     );
     expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
-    expect(screen.getByLabelText("Starts")).toHaveProperty(
-      "value",
-      `${TODAY_KEY}T14:00`,
+    expect(screen.getByLabelText("Starts").textContent).toBe(
+      formatDateTime(`${TODAY_KEY}T14:00`),
     );
 
-    fillEventForm("Dentist", `${TODAY_KEY}T14:00`, `${TODAY_KEY}T15:00`);
+    await fillEventForm("Dentist", `${TODAY_KEY}T14:00`, `${TODAY_KEY}T15:00`);
     fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "checkup" },
     });
@@ -193,7 +221,7 @@ describe("CalendarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
     // Both values differ from the prefill so each onChange actually fires
     // (React drops change events whose value didn't move).
-    fillEventForm("X", `${TODAY_KEY}T11:00`, `${TODAY_KEY}T08:00`);
+    await fillEventForm("X", `${TODAY_KEY}T11:00`, `${TODAY_KEY}T08:00`);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Ends must be after starts.")).toBeDefined();
@@ -219,7 +247,7 @@ describe("CalendarPage", () => {
     await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
+    await fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
@@ -239,7 +267,7 @@ describe("CalendarPage", () => {
     await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
+    await fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
@@ -259,7 +287,7 @@ describe("CalendarPage", () => {
     await waitForGrid();
 
     fireEvent.click(screen.getByRole("button", { name: "New event" }));
-    fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
+    await fillEventForm("X", `${TODAY_KEY}T09:00`, `${TODAY_KEY}T10:00`);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });

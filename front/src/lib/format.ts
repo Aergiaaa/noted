@@ -17,6 +17,21 @@ const MONTHS = [
   "December",
 ];
 
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
 export function formatTime(iso: string): string {
   const date = new Date(iso);
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -35,6 +50,13 @@ export function toLocalInput(iso: string): string {
 // Stable key for a local day: YYYY-MM-DD (grid aria-labels, comparisons).
 export function toDayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Naive local datetime (YYYY-MM-DDTHH:MM) for the date-time picker
+// trigger: "Thu 15 Oct 2026, 14:37".
+export function formatDateTime(value: string): string {
+  const day = new Date(value);
+  return `${WEEKDAYS[day.getDay()]} ${day.getDate()} ${MONTHS_SHORT[day.getMonth()]} ${day.getFullYear()}, ${value.slice(11)}`;
 }
 
 // Parse a YYYY-MM-DD day key back into a local Date (midnight).

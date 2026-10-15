@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { api, isApiError, type Event } from "../../lib/api";
 import { toLocalInput } from "../../lib/format";
+import DateTimeField from "./DateTimeField";
 
 const SAVE_FAILED = "Couldn't save the event.";
 const TITLE_REQUIRED = "Title is required.";
@@ -112,30 +113,8 @@ export default function EventForm({
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
-          <label className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Starts
-            </span>
-            <input
-              type="datetime-local"
-              className="input input-bordered input-sm mt-1 w-full"
-              aria-label="Starts"
-              value={starts}
-              onChange={(e) => setStarts(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Ends
-            </span>
-            <input
-              type="datetime-local"
-              className="input input-bordered input-sm mt-1 w-full"
-              aria-label="Ends"
-              value={ends}
-              onChange={(e) => setEnds(e.target.value)}
-            />
-          </label>
+          <DateTimeField label="Starts" value={starts} onChange={setStarts} />
+          <DateTimeField label="Ends" value={ends} onChange={setEnds} />
           <label className="block">
             <span className="label-text text-xs uppercase text-base-content/60">
               Description
