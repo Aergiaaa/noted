@@ -7,6 +7,7 @@ import WeekTimeGrid from "./WeekTimeGrid";
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function localISO(
@@ -52,8 +53,26 @@ function classNameTokens(el: Element | null | undefined): string[] {
   return (el?.getAttribute("class") ?? "").split(/\s+/);
 }
 
+// jsdom has no layout: stub the row's box as 24 x 60px hour columns so
+// mousemove clientX maps to hours (1440 minutes wide, one px per minute).
+function stubDayRow(container: HTMLElement, index = 0): HTMLElement {
+  const row = container.querySelectorAll("[data-testid='day-row']")[index];
+  vi.spyOn(row as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    top: 0,
+    right: 1440,
+    bottom: 64,
+    width: 1440,
+    height: 64,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+  return row as HTMLElement;
+}
+
 describe("WeekTimeGrid", () => {
-  it("renders day headers, an hour gutter and one slot per hour", () => {
+  it("renders a sticky time axis over day rows with one slot per hour", () => {
     const { container } = renderGrid([]);
     const slots = container.querySelectorAll(
       "button[aria-label^='Create event on']",
@@ -62,9 +81,17 @@ describe("WeekTimeGrid", () => {
     expect(container.textContent).toContain("Mon 12");
     expect(container.textContent).toContain("Sun 18");
     expect(container.textContent).toContain("09");
+    // The axis must paint above the grid when it scrolls (the old z bug),
+    // and day labels above the blocks scrolled underneath them.
+    expect(
+      classNameTokens(container.querySelector("[data-testid='time-axis']")),
+    ).toContain("z-40");
+    expect(
+      classNameTokens(container.querySelector("[data-testid='day-label']")),
+    ).toContain("z-30");
   });
 
-  it("renders an event as a block in its day column", () => {
+  it("renders an event as a block across time in its day row", () => {
     const e = event(
       "e1",
       localISO(2026, 10, 12, 9),
@@ -73,11 +100,11 @@ describe("WeekTimeGrid", () => {
     const { container } = renderGrid([e]);
     const block = container.querySelector("button[aria-label='Dentist 09:00']");
     expect(block).not.toBeNull();
-    expect(block?.getAttribute("style")).toContain("top: 37.5%");
-    expect(block?.getAttribute("style")).toContain("height: 4.166");
+    expect(block?.getAttribute("style")).toContain("left: 37.5%");
+    expect(block?.getAttribute("style")).toContain("width: calc(4.166");
   });
 
-  it("splits overlapping events into lanes", () => {
+  it("stacks overlapping events into lanes", () => {
     const a = event(
       "e1",
       localISO(2026, 10, 12, 9),
@@ -93,9 +120,9 @@ describe("WeekTimeGrid", () => {
     const second = container.querySelector(
       "button[aria-label='event e2 10:00']",
     );
-    expect(first?.getAttribute("style")).toContain("left: 0%");
-    expect(second?.getAttribute("style")).toContain("left: 50%");
-    expect(second?.getAttribute("style")).toContain("width: calc(50%");
+    expect(first?.getAttribute("style")).toContain("top: 0%");
+    expect(second?.getAttribute("style")).toContain("top: 50%");
+    expect(second?.getAttribute("style")).toContain("height: calc(50%");
   });
 
   it("rounds only the outer edges of a multi-day block", () => {
@@ -115,7 +142,7 @@ describe("WeekTimeGrid", () => {
     expect(blocks[1]?.className).not.toContain("rounded-r-none");
   });
 
-  it("shows one now-line on today's column", () => {
+  it("shows one now-line on today's row", () => {
     const today = new Date();
     const week = weekDays(startOfWeek(today));
     const { container } = render(
@@ -200,26 +227,23 @@ describe("WeekTimeGrid", () => {
       "button[aria-label^='Add event on']",
     );
     expect(affordances).toHaveLength(2);
-    // Hidden until the pointer sits on that specific hour row.
+    // Hidden until the pointer sits on that specific hour cell.
     expect(classNameTokens(affordances[0])).toContain("opacity-0");
     expect(classNameTokens(affordances[0])).not.toContain("opacity-100");
 
-    const [monday] = container.querySelectorAll("[data-testid='day-column']");
-    fireEvent.mouseMove(monday as HTMLElement, { clientY: 11 * 56 + 28 });
-    const revealed = container.querySelector(
-      "button[aria-label='Add event on Mon 12 at 11:00']",
-    );
-    const stillHidden = container.querySelector(
-      "button[aria-label='Add event on Mon 12 at 10:00']",
-    );
-    expect(classNameTokens(revealed)).toContain("opacity-100");
-    expect(classNameTokens(stillHidden)).not.toContain("opacity-100");
-
-    fireEvent.mouseLeave(monday as HTMLElement);
+    const row = stubDayRow(container);
+    fireEvent.mouseMove(row, { clientX: 11 * 60 + 30 });
     expect(
       classNameTokens(
         container.querySelector(
           "button[aria-label='Add event on Mon 12 at 11:00']",
+        ),
+      ),
+    ).toContain("opacity-100");
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Mon 12 at 10:00']",
         ),
       ),
     ).not.toContain("opacity-100");
@@ -233,6 +257,37 @@ describe("WeekTimeGrid", () => {
     const [day, hour] = onSlotClick.mock.calls[0] as [Date, number];
     expect(day.getDate()).toBe(12);
     expect(hour).toBe(11);
+
+    fireEvent.mouseLeave(row);
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Mon 12 at 11:00']",
+        ),
+      ),
+    ).not.toContain("opacity-100");
+  });
+
+  it("stretches rows and slots to fill the available height", () => {
+    const { container } = renderGrid([]);
+    // Rows and the grid root flex into the scroller's height; slots fill
+    // the row so blocks scale with it. min-h keeps the week scrollable on
+    // short viewports instead of squashing.
+    expect(
+      classNameTokens(
+        container.querySelector("[data-testid='day-row']")?.parentElement,
+      ),
+    ).toContain("flex-1");
+    expect(
+      classNameTokens(
+        container.querySelector("[data-testid='day-row']")?.parentElement,
+      ),
+    ).toContain("min-h-16");
+    const slot = container.querySelector(
+      "button[aria-label='Create event on Mon 12 at 09:00']",
+    );
+    expect(classNameTokens(slot)).toContain("h-full");
+    expect(classNameTokens(slot)).toContain("flex-1");
   });
 
   it("skips the affordance when lanes leave the slot half free", () => {

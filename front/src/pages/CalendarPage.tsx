@@ -170,8 +170,7 @@ export default function CalendarPage() {
     return (
       <section>
         <h1 className="text-xl font-semibold">Calendar</h1>
-        <div className="mt-4 grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] gap-2">
-          <div className="skeleton h-16" />
+        <div className="mt-4 flex flex-col gap-2">
           {Array.from({ length: 7 }, (_, i) => (
             <div key={i} className="skeleton h-16" />
           ))}
@@ -221,10 +220,10 @@ export default function CalendarPage() {
           )}
         </aside>
         <div className="min-w-0 flex-1">
-          <div className="calendar-scroll max-h-[calc(100vh-9rem)] overflow-auto rounded-lg border border-base-300 bg-base-200">
+          <div className="calendar-scroll flex h-[calc(100vh-9rem)] flex-col overflow-auto rounded-lg border border-base-300 bg-base-200">
             <div
               key={toDayKey(weekStart)}
-              className={weekDir === 1 ? "week-slide-fwd" : "week-slide-back"}
+              className={`flex flex-1 flex-col ${weekDir === 1 ? "week-slide-fwd" : "week-slide-back"}`}
             >
               <WeekTimeGrid
                 days={weekDays(weekStart)}
