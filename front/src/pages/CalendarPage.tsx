@@ -213,6 +213,12 @@ export default function CalendarPage() {
       <div className="mt-4 flex flex-col gap-4 lg:flex-row">
         <aside className="shrink-0">
           <MiniMonth selected={selectedDate} onSelect={selectDay} />
+          {events.length === 0 && (
+            <EmptyState
+              message={EMPTY_MESSAGE}
+              action={{ label: "Create your first event", onClick: openCreate }}
+            />
+          )}
         </aside>
         <div className="min-w-0 flex-1">
           <div className="calendar-scroll max-h-[calc(100vh-9rem)] overflow-auto rounded-lg border border-base-300 bg-base-200">
@@ -231,13 +237,6 @@ export default function CalendarPage() {
               />
             </div>
           </div>
-
-          {events.length === 0 && (
-            <EmptyState
-              message={EMPTY_MESSAGE}
-              action={{ label: "Create your first event", onClick: openCreate }}
-            />
-          )}
         </div>
       </div>
 

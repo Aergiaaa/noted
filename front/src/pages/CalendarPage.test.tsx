@@ -143,6 +143,11 @@ describe("CalendarPage", () => {
       expect(screen.getByText("No events this week.")).toBeDefined(),
     );
 
+    // Under the mini calendar so an empty week needs no scrolling.
+    expect(
+      screen.getByText("No events this week.").closest("aside"),
+    ).not.toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /Create your first/ }));
 
     expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
