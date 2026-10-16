@@ -31,6 +31,10 @@ export default function WeekTimeGrid({
   onEventClick,
 }: WeekTimeGridProps) {
   const [now, setNow] = useState(() => new Date());
+  // Hour row under the pointer in whichever day column the cursor is in —
+  // a covered hour's affordance reveals only when its own row is hovered,
+  // so a 1-6pm block shows the "+" just under the cursor, not for all hours.
+  const [hoverHour, setHoverHour] = useState<number | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), NOW_TICK_MS);
@@ -75,7 +79,16 @@ export default function WeekTimeGrid({
         {days.map((day, dayIndex) => {
           const key = toDayKey(day);
           return (
-            <div key={key} className="group relative border-l border-base-300">
+            <div
+              key={key}
+              data-testid="day-column"
+              className="relative border-l border-base-300"
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setHoverHour(Math.floor((e.clientY - rect.top) / SLOT_PX));
+              }}
+              onMouseLeave={() => setHoverHour(null)}
+            >
               {HOURS.map((hour) => (
                 <button
                   key={hour}
@@ -100,7 +113,7 @@ export default function WeekTimeGrid({
                 <button
                   key={hour}
                   type="button"
-                  className="absolute right-1 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-base-200 hover:text-primary"
+                  className={`absolute right-1 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 transition-opacity duration-150 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-base-200 hover:text-primary ${hoverHour === hour ? "opacity-100" : "opacity-0"}`}
                   style={{ top: hour * SLOT_PX + 3 }}
                   aria-label={`Add event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
                   onClick={() => onSlotClick(day, hour)}

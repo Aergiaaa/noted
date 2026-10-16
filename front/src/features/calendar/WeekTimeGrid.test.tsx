@@ -48,6 +48,10 @@ function renderGrid(
   );
 }
 
+function classNameTokens(el: Element | null | undefined): string[] {
+  return (el?.getAttribute("class") ?? "").split(/\s+/);
+}
+
 describe("WeekTimeGrid", () => {
   it("renders day headers, an hour gutter and one slot per hour", () => {
     const { container } = renderGrid([]);
@@ -196,9 +200,29 @@ describe("WeekTimeGrid", () => {
       "button[aria-label^='Add event on']",
     );
     expect(affordances).toHaveLength(2);
-    // Hidden until the day column is hovered (touch devices see it always).
-    expect(affordances[0]?.className).toContain("opacity-0");
-    expect(affordances[0]?.className).toContain("group-hover:opacity-100");
+    // Hidden until the pointer sits on that specific hour row.
+    expect(classNameTokens(affordances[0])).toContain("opacity-0");
+    expect(classNameTokens(affordances[0])).not.toContain("opacity-100");
+
+    const [monday] = container.querySelectorAll("[data-testid='day-column']");
+    fireEvent.mouseMove(monday as HTMLElement, { clientY: 11 * 56 + 28 });
+    const revealed = container.querySelector(
+      "button[aria-label='Add event on Mon 12 at 11:00']",
+    );
+    const stillHidden = container.querySelector(
+      "button[aria-label='Add event on Mon 12 at 10:00']",
+    );
+    expect(classNameTokens(revealed)).toContain("opacity-100");
+    expect(classNameTokens(stillHidden)).not.toContain("opacity-100");
+
+    fireEvent.mouseLeave(monday as HTMLElement);
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Mon 12 at 11:00']",
+        ),
+      ),
+    ).not.toContain("opacity-100");
 
     fireEvent.click(
       container.querySelector(
