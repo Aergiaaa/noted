@@ -41,3 +41,20 @@ export function addWeeks(date: Date, weeks: number): Date {
     date.getDate() + weeks * 7,
   );
 }
+
+// True when `day` falls inside the Mon..Sun week starting at weekStart.
+// `day` must be a UTC-midnight instant (Cally's getDayParts convention)
+// while weekStart is local midnight — compare calendar-day tuples, never
+// instants, or timezones behind UTC land a day off.
+export function isWithinWeek(day: Date, weekStart: Date): boolean {
+  const dayKey =
+    day.getUTCFullYear() * 10000 + day.getUTCMonth() * 100 + day.getUTCDate();
+  const startKey = localDayKey(weekStart);
+  const endKey = localDayKey(weekDays(weekStart)[6]);
+  return dayKey >= startKey && dayKey <= endKey;
+}
+
+// Compact local calendar-day number, YYYYMMDD.
+function localDayKey(date: Date): number {
+  return date.getFullYear() * 10000 + date.getMonth() * 100 + date.getDate();
+}

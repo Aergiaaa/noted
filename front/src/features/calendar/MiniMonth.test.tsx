@@ -61,4 +61,62 @@ describe("MiniMonth", () => {
       expect(heading?.textContent).toContain("November");
     });
   });
+
+  it("tags the displayed week's days and keeps the picked day selected", async () => {
+    // Wednesday 2026-10-14: its week is Mon 12 .. Sun 18, all in October.
+    const { container } = render(
+      <MiniMonth selected={new Date(2026, 9, 14)} onSelect={() => {}} />,
+    );
+    const host = container.querySelector("calendar-date") as HTMLElement;
+    await dayButton(host, "14");
+
+    const month = host.querySelector("calendar-month") as HTMLElement;
+    const week = Array.from(
+      month.shadowRoot?.querySelectorAll('button[part~="noted-week"]') ?? [],
+    );
+    expect(week.map((b) => b.textContent)).toEqual([
+      "12",
+      "13",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18",
+    ]);
+
+    const picked = await dayButton(host, "14");
+    expect(picked?.getAttribute("part")).toContain("noted-week");
+    expect(picked?.getAttribute("part")).toContain("selected");
+
+    const outside = await dayButton(host, "10");
+    expect(outside?.getAttribute("part")).not.toContain("noted-week");
+  });
+
+  it("moves the week tags when the selection moves", async () => {
+    const { container, rerender } = render(
+      <MiniMonth selected={new Date(2026, 9, 14)} onSelect={() => {}} />,
+    );
+    const host = container.querySelector("calendar-date") as HTMLElement;
+    await dayButton(host, "14");
+
+    rerender(
+      <MiniMonth selected={new Date(2026, 10, 5)} onSelect={() => {}} />,
+    );
+    await waitFor(() => {
+      const month = host.querySelector("calendar-month") as HTMLElement;
+      const week = Array.from(
+        month.shadowRoot?.querySelectorAll('button[part~="noted-week"]') ?? [],
+      );
+      // Thursday Nov 5: its week is Mon Nov 2 .. Sun Nov 8.
+      expect(week.map((b) => b.textContent)).toEqual([
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+      ]);
+    });
+  });
 });

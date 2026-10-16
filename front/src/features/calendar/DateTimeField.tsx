@@ -1,5 +1,5 @@
 import "cally";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { formatDateTime } from "../../lib/format";
 
@@ -36,7 +36,6 @@ export default function DateTimeField({
 }: DateTimeFieldProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const date = value.slice(0, 10);
   const time = value.slice(11);
 
@@ -46,12 +45,17 @@ export default function DateTimeField({
   const pickMinute = (nextMinute: string) =>
     onChange(`${date}T${time.slice(0, 2)}:${nextMinute}`);
 
-  const toggle = () => {
+  // The trigger is the click target, so currentTarget is the rect source —
+  // no ref, no null-guard branch.
+  const toggle = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!open) {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect !== undefined) {
-        setPos(placePicker(rect, window.innerWidth, window.innerHeight));
-      }
+      setPos(
+        placePicker(
+          event.currentTarget.getBoundingClientRect(),
+          window.innerWidth,
+          window.innerHeight,
+        ),
+      );
     }
     setOpen(!open);
   };
@@ -62,7 +66,6 @@ export default function DateTimeField({
         {label}
       </span>
       <button
-        ref={triggerRef}
         type="button"
         className="input input-bordered input-sm mt-1 w-full text-left font-normal"
         aria-label={label}

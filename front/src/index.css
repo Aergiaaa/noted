@@ -58,6 +58,19 @@ h3 {
   display: none;
 }
 
+/* MiniMonth week tint: the grid's displayed week reads as a soft band
+   (MiniMonth's getDayParts tags those days `noted-week`). The picked day
+   is painted solid primary so the contrast is deliberate — the row is the
+   lighter one, the pick the strong one. */
+calendar-month.cally-weekrow::part(noted-week) {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+calendar-month.cally-weekrow::part(selected) {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+
 /* Week scroller: theme-matched scrollbar, never the UA default grey. */
 .calendar-scroll {
   scrollbar-width: thin;

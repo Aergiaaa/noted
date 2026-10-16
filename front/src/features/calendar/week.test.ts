@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { addWeeks, startOfWeek, weekBounds, weekDays } from "./week";
+import {
+  addWeeks,
+  isWithinWeek,
+  startOfWeek,
+  weekBounds,
+  weekDays,
+} from "./week";
 
 describe("startOfWeek", () => {
   it("walks back to Monday from any weekday", () => {
@@ -53,5 +59,32 @@ describe("addWeeks", () => {
     const back = addWeeks(new Date(2026, 9, 1), -1);
     expect(back.getMonth()).toBe(8);
     expect(back.getDate()).toBe(24);
+  });
+});
+
+describe("isWithinWeek", () => {
+  // Cally hands getDayParts UTC-midnight instants; weekStart is local
+  // midnight. The comparison must be by calendar day, never by instant.
+  const weekStart = new Date(2026, 9, 12); // Monday, local
+
+  it("accepts every day of the week, Monday through Sunday", () => {
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 12)), weekStart)).toBe(true);
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 14)), weekStart)).toBe(true);
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 18)), weekStart)).toBe(true);
+  });
+
+  it("rejects days before Monday and after Sunday", () => {
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 11)), weekStart)).toBe(
+      false,
+    );
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 19)), weekStart)).toBe(
+      false,
+    );
+  });
+
+  it("handles a week that straddles a month boundary", () => {
+    const sepStart = new Date(2026, 8, 28); // Monday, September
+    expect(isWithinWeek(new Date(Date.UTC(2026, 9, 1)), sepStart)).toBe(true); // Thu Oct
+    expect(isWithinWeek(new Date(Date.UTC(2026, 8, 27)), sepStart)).toBe(false); // Sun Sep
   });
 });
