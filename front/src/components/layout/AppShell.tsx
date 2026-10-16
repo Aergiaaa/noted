@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 import { useSession } from "../../lib/session";
 
 const links = [
@@ -13,6 +13,7 @@ const links = [
 export default function AppShell({ children }: { children: ReactNode }) {
   const { logout } = useSession();
   const [logoutFailed, setLogoutFailed] = useState(false);
+  const { pathname } = useLocation();
 
   const onLogout = () => {
     setLogoutFailed(false);
@@ -50,7 +51,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       </nav>
-      <main className="mx-auto max-w-5xl p-4">{children}</main>
+      {/* Calendar spans the full width; every other page stays centered. */}
+      <main
+        className={pathname === "/calendar" ? "p-4" : "mx-auto max-w-5xl p-4"}
+      >
+        {children}
+      </main>
     </div>
   );
 }

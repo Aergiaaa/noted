@@ -128,6 +128,7 @@ describe("CalendarPage", () => {
 
     await waitForGrid();
     expect(container.querySelector(".skeleton")).toBeNull();
+    expect(container.querySelector(".calendar-scroll")).not.toBeNull();
     expect(fetchMock.mock.calls[0]?.[0]).toContain(
       encodeURIComponent(WEEK_FROM),
     );
@@ -708,27 +709,31 @@ describe("CalendarPage", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Next week" }));
-    await waitForGrid();
-    expect(vi.mocked(fetch).mock.calls[1]?.[0]).toContain(
-      encodeURIComponent(new Date(2026, 9, 19).toISOString()),
+    await waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls[1]?.[0]).toContain(
+        encodeURIComponent(new Date(2026, 9, 19).toISOString()),
+      ),
     );
+    expect(document.querySelector(".week-slide-fwd")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
-    await waitForGrid();
-    expect(vi.mocked(fetch).mock.calls[2]?.[0]).toContain(
-      encodeURIComponent(WEEK_FROM),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
-    await waitForGrid();
-    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
-    await waitForGrid();
     fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
     await waitFor(() =>
-      expect(screen.getByText("September 2026")).toBeDefined(),
+      expect(vi.mocked(fetch).mock.calls[2]?.[0]).toContain(
+        encodeURIComponent(WEEK_FROM),
+      ),
     );
-    expect(vi.mocked(fetch).mock.calls[5]?.[0]).toContain(
-      encodeURIComponent(new Date(2026, 8, 21).toISOString()),
+    expect(document.querySelector(".week-slide-back")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    await waitFor(() =>
+      expect(vi.mocked(fetch).mock.calls[5]?.[0]).toContain(
+        encodeURIComponent(new Date(2026, 8, 21).toISOString()),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("September 2026")).toBeDefined(),
     );
   });
 
@@ -761,6 +766,19 @@ describe("CalendarPage", () => {
         encodeURIComponent(new Date(2026, 9, 19).toISOString()),
       ),
     );
+    expect(screen.getByText("October 2026")).toBeDefined();
+
+    const day5 = Array.from(
+      month.shadowRoot?.querySelectorAll("button") ?? [],
+    ).find((b) => b.textContent === "5");
+    fireEvent.click(day5 as HTMLElement);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls[2]?.[0]).toContain(
+        encodeURIComponent(new Date(2026, 9, 5).toISOString()),
+      ),
+    );
+    expect(document.querySelector(".week-slide-back")).not.toBeNull();
     expect(screen.getByText("October 2026")).toBeDefined();
   });
 

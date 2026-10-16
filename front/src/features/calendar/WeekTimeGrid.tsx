@@ -39,69 +39,67 @@ export default function WeekTimeGrid({
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-base-300 bg-base-200">
-      <div className="min-w-[700px]">
-        <div className="sticky top-0 z-10 grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] border-b border-base-300 bg-base-200">
-          <div aria-hidden="true" />
-          {days.map((day) => {
-            const key = toDayKey(day);
-            return (
-              <div
-                key={key}
-                className={`px-1 py-1 text-center text-xs ${
-                  key === nowKey
-                    ? "font-semibold text-primary"
-                    : "text-base-content/70"
-                }`}
-              >
-                {formatDayHeader(day)}
-              </div>
-            );
-          })}
+    <div className="min-w-[700px]">
+      <div className="sticky top-0 z-10 grid grid-cols-[3rem_repeat(7,minmax(0,1fr))] border-b border-base-300 bg-base-200">
+        <div aria-hidden="true" />
+        {days.map((day) => {
+          const key = toDayKey(day);
+          return (
+            <div
+              key={key}
+              className={`px-1 py-1 text-center text-xs ${
+                key === nowKey
+                  ? "font-semibold text-primary"
+                  : "text-base-content/70"
+              }`}
+            >
+              {formatDayHeader(day)}
+            </div>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-[3rem_repeat(7,minmax(0,1fr))]">
+        <div>
+          {HOURS.map((hour) => (
+            <div
+              key={hour}
+              className="h-14 pr-1 text-right text-[10px] tabular-nums text-base-content/50"
+            >
+              {formatHourLabel(hour)}
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-[3rem_repeat(7,minmax(0,1fr))]">
-          <div>
-            {HOURS.map((hour) => (
-              <div
-                key={hour}
-                className="h-14 pr-1 text-right text-[10px] tabular-nums text-base-content/50"
-              >
-                {formatHourLabel(hour)}
-              </div>
-            ))}
-          </div>
-          {days.map((day, dayIndex) => {
-            const key = toDayKey(day);
-            return (
-              <div key={key} className="relative border-l border-base-300">
-                {HOURS.map((hour) => (
-                  <button
-                    key={hour}
-                    type="button"
-                    className="block h-14 w-full border-t border-base-300 hover:bg-base-300"
-                    aria-label={`Create event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
-                    onClick={() => onSlotClick(day, hour)}
-                  />
-                ))}
-                {dayLayouts[dayIndex].map((block) => (
-                  <EventBlock
-                    key={`${block.event.id}-${block.lane}`}
-                    block={block}
-                    onClick={onEventClick}
-                  />
-                ))}
-                {key === nowKey && (
-                  <div
-                    data-testid="now-line"
-                    className="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-[#f87171]"
-                    style={{ top: `${(nowMin / 1440) * 100}%` }}
-                    aria-hidden="true"
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {days.map((day, dayIndex) => {
+          const key = toDayKey(day);
+          return (
+            <div key={key} className="relative border-l border-base-300">
+              {HOURS.map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  className="block h-14 w-full border-t border-base-300 hover:bg-base-300"
+                  aria-label={`Create event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
+                  onClick={() => onSlotClick(day, hour)}
+                />
+              ))}
+              {dayLayouts[dayIndex].map((block) => (
+                <EventBlock
+                  key={`${block.event.id}-${block.lane}`}
+                  block={block}
+                  onClick={onEventClick}
+                />
+              ))}
+              {key === nowKey && (
+                <div
+                  data-testid="now-line"
+                  className="pointer-events-none absolute inset-x-0 z-20 h-0.5 bg-[#f87171]"
+                  style={{ top: `${(nowMin / 1440) * 100}%` }}
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

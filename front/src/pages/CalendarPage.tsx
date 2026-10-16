@@ -14,6 +14,7 @@ import {
 import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
 import Toast, { type ToastData } from "../components/ui/Toast";
+import { toDayKey } from "../lib/format";
 
 const LOAD_FAILED = "Couldn't load events.";
 const EMPTY_MESSAGE = "No events this week.";
@@ -21,6 +22,7 @@ const RESTORE_FAILED = "Couldn't restore the event.";
 
 export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [weekDir, setWeekDir] = useState<1 | -1>(1);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +78,9 @@ export default function CalendarPage() {
     };
   }, [trashOpen, trashNonce]);
 
-  // Loading flips on in the handlers below, not in the effect, so a render
-  // never starts a cascade (lint: setState-in-effect).
+  // Loading flips on only for the first load and retry, not on navigation:
+  // the grid must stay mounted so the week-slide animation can play while
+  // the next fetch swaps events in behind it.
   const refetch = () => {
     setError(null);
     setNonce((n) => n + 1);
@@ -89,12 +92,16 @@ export default function CalendarPage() {
   };
   const stepWeek = (weeks: number) => {
     setError(null);
-    setLoading(true);
+    setWeekDir(weeks > 0 ? 1 : -1);
     setSelectedDate((d) => addWeeks(d, weeks));
   };
   const selectDay = (day: Date) => {
     setError(null);
-    setLoading(true);
+    setWeekDir(
+      startOfWeek(day).getTime() >= startOfWeek(selectedDate).getTime()
+        ? 1
+        : -1,
+    );
     setSelectedDate(day);
   };
   const openCreate = () => {
@@ -204,19 +211,26 @@ export default function CalendarPage() {
       </header>
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row">
-        <aside className="shrink-0 lg:w-56">
+        <aside className="shrink-0">
           <MiniMonth selected={selectedDate} onSelect={selectDay} />
         </aside>
         <div className="min-w-0 flex-1">
-          <WeekTimeGrid
-            days={weekDays(weekStart)}
-            events={events}
-            onSlotClick={createAt}
-            onEventClick={(event) => {
-              setCreateStart(null);
-              setEditing(event);
-            }}
-          />
+          <div className="calendar-scroll max-h-[calc(100vh-9rem)] overflow-auto rounded-lg border border-base-300 bg-base-200">
+            <div
+              key={toDayKey(weekStart)}
+              className={weekDir === 1 ? "week-slide-fwd" : "week-slide-back"}
+            >
+              <WeekTimeGrid
+                days={weekDays(weekStart)}
+                events={events}
+                onSlotClick={createAt}
+                onEventClick={(event) => {
+                  setCreateStart(null);
+                  setEditing(event);
+                }}
+              />
+            </div>
+          </div>
 
           {events.length === 0 && (
             <EmptyState
