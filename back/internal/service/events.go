@@ -237,7 +237,7 @@ func (s *EventService) validate(ctx context.Context, in EventInput) error {
 }
 
 // validateNoteLink records "unknown note" for a non-empty link id; a
-// storage failure aborts validation with the raw error (writeEventError
+// storage failure aborts validation with the raw error (writeServiceError
 // maps it to the generic 500).
 func (s *EventService) validateNoteLink(ctx context.Context, fields map[string]string, noteID *string) error {
 	id := normalizeID(noteID)
@@ -306,8 +306,9 @@ func parseStored(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
-// normalizeID: an empty string means "no link", matching the
-// nullable-FK shape the frontend omits when unlinked.
+// normalizeID: an empty string means "no value" — a cleared link or
+// due_date, matching the nullable-FK shape the frontend sends when it
+// unlinks ("" clears, absent/null keeps).
 func normalizeID(id *string) *string {
 	if id != nil && *id == "" {
 		return nil

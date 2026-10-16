@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"errors"
-	"log"
 	"net/http"
 	"time"
 
@@ -77,7 +75,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.events.List(r.Context(), from, to)
 	if err != nil {
-		writeEventError(w, err, "list events")
+		writeServiceError(w, err, "list events")
 		return
 	}
 
@@ -93,7 +91,7 @@ func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listDeletedEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := h.events.ListDeleted(r.Context())
 	if err != nil {
-		writeEventError(w, err, "list deleted events")
+		writeServiceError(w, err, "list deleted events")
 		return
 	}
 
@@ -130,7 +128,7 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		NoteID:      req.NoteID,
 	})
 	if err != nil {
-		writeEventError(w, err, "create event")
+		writeServiceError(w, err, "create event")
 		return
 	}
 
@@ -168,7 +166,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	event, err := h.events.Update(r.Context(), chi.URLParam(r, "id"), patch)
 	if err != nil {
-		writeEventError(w, err, "update event")
+		writeServiceError(w, err, "update event")
 		return
 	}
 
@@ -179,7 +177,7 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 // Soft-delete: the row keeps its links until purge, so Undo can restore.
 func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	if err := h.events.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
-		writeEventError(w, err, "delete event")
+		writeServiceError(w, err, "delete event")
 		return
 	}
 
@@ -190,34 +188,11 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RestoreEvent(w http.ResponseWriter, r *http.Request) {
 	event, err := h.events.Restore(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeEventError(w, err, "restore event")
+		writeServiceError(w, err, "restore event")
 		return
 	}
 
 	WriteJSON(w, http.StatusOK, toEventJSON(event))
-}
-
-// writeEventError maps service failures onto the frozen envelope and
-// reports whether it wrote, so callers just return.
-func writeEventError(w http.ResponseWriter, err error, op string) bool {
-	var validation *service.ValidationError
-
-	switch {
-	case errors.As(err, &validation):
-		WriteError(w, http.StatusBadRequest, "", validation.Fields)
-	case errors.Is(err, service.ErrNotFound):
-		WriteError(w, http.StatusNotFound, "", nil)
-	default:
-		log.Printf("handler: %s: %v", op, err)
-		WriteError(w, http.StatusInternalServerError, "", nil)
-	}
-
-	return true
-}
-
-// writeFieldError is the single-field validation_error case (API.md).
-func writeFieldError(w http.ResponseWriter, field, message string) {
-	WriteError(w, http.StatusBadRequest, "", map[string]string{field: message})
 }
 
 // parseTimeParam accepts RFC3339 with or without fractional seconds (the
