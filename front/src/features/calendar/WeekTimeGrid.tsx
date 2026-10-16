@@ -10,6 +10,9 @@ import { getDayLayout, type PlacedEvent } from "./weekLayout";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const NOW_TICK_MS = 60000;
+// Hour rows are h-14 (3.5rem) — the covered-slot affordance is positioned
+// in px against the column, so the two must stay in step.
+const SLOT_PX = 56;
 
 interface WeekTimeGridProps {
   days: Date[];
@@ -89,6 +92,22 @@ export default function WeekTimeGrid({
                   onClick={onEventClick}
                 />
               ))}
+              {HOURS.filter((hour) =>
+                dayLayouts[dayIndex].some((block) =>
+                  isHourCovered(block, hour),
+                ),
+              ).map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  className="absolute right-1 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 hover:bg-base-200 hover:text-primary"
+                  style={{ top: hour * SLOT_PX + 3 }}
+                  aria-label={`Add event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
+                  onClick={() => onSlotClick(day, hour)}
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              ))}
               {key === nowKey && (
                 <div
                   data-testid="now-line"
@@ -102,6 +121,17 @@ export default function WeekTimeGrid({
         })}
       </div>
     </div>
+  );
+}
+
+// True when a block hides the slot button underneath for the whole hour:
+// full-width (laneCount 1) and spanning it end to end. Partial coverage
+// or half-width lanes leave enough of the slot clickable.
+function isHourCovered(block: PlacedEvent, hour: number): boolean {
+  return (
+    block.laneCount === 1 &&
+    block.startMin <= hour * 60 &&
+    block.endMin >= (hour + 1) * 60
   );
 }
 

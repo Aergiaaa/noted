@@ -182,4 +182,58 @@ describe("WeekTimeGrid", () => {
       container.querySelector("button[aria-label='Dentist 09:00']"),
     ).toBeNull();
   });
+
+  it("offers a create affordance on hours fully covered by a block", () => {
+    const e = event(
+      "e1",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 12, 12),
+    );
+    const onSlotClick = vi.fn();
+    const { container } = renderGrid([e], onSlotClick);
+
+    const affordances = container.querySelectorAll(
+      "button[aria-label^='Add event on']",
+    );
+    expect(affordances).toHaveLength(2);
+
+    fireEvent.click(
+      container.querySelector(
+        "button[aria-label='Add event on Mon 12 at 11:00']",
+      ) as HTMLElement,
+    );
+    expect(onSlotClick).toHaveBeenCalledTimes(1);
+    const [day, hour] = onSlotClick.mock.calls[0] as [Date, number];
+    expect(day.getDate()).toBe(12);
+    expect(hour).toBe(11);
+  });
+
+  it("skips the affordance when lanes leave the slot half free", () => {
+    const a = event(
+      "e1",
+      localISO(2026, 10, 12, 9),
+      localISO(2026, 10, 12, 11),
+    );
+    const b = event(
+      "e2",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 12, 12),
+    );
+    const { container } = renderGrid([a, b]);
+    expect(
+      container.querySelectorAll("button[aria-label^='Add event on']"),
+    ).toHaveLength(0);
+  });
+
+  it("skips the affordance when a block covers only part of the hour", () => {
+    const e = event(
+      "e1",
+      localISO(2026, 10, 12, 9, 15),
+      localISO(2026, 10, 12, 9, 45),
+    );
+    const { container } = renderGrid([e]);
+    expect(
+      container.querySelectorAll("button[aria-label^='Add event on']"),
+    ).toHaveLength(0);
+  });
 });
