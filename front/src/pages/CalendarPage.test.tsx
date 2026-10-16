@@ -317,6 +317,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
     expect(screen.getByLabelText("Title")).toHaveProperty("value", "Dentist");
 
@@ -334,6 +335,47 @@ describe("CalendarPage", () => {
     expect(JSON.parse(patchInit.body)).toMatchObject({ title: "Dentist 2.0" });
   });
 
+  it("shows event details from the fetched week before editing", async () => {
+    const detailed: Event = {
+      ...eventOn(TODAY_KEY, "Dentist"),
+      description: "Bring insurance card.",
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(listResponse([detailed]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CalendarPage />);
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
+
+    fireEvent.click(eventBlock("Dentist 09:00"));
+    expect(screen.getByRole("heading", { name: "Dentist" })).toBeDefined();
+    expect(screen.getByText("Bring insurance card.")).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
+    expect(screen.getByLabelText("Title")).toHaveProperty("value", "Dentist");
+    expect(screen.queryByRole("heading", { name: "Dentist" })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the details card without opening the form", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(listResponse([eventOn(TODAY_KEY, "Dentist")]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CalendarPage />);
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
+
+    fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("heading", { name: "Dentist" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Edit event" })).toBeNull();
+    expect(eventBlock("Dentist 09:00")).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("deletes only after the inline confirmation", async () => {
     const original = eventOn(TODAY_KEY, "Dentist");
     const fetchMock = vi
@@ -347,6 +389,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByText("Delete this event?")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -386,6 +429,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -422,6 +466,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -568,6 +613,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -596,6 +642,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
 
@@ -618,6 +665,7 @@ describe("CalendarPage", () => {
     await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
 
     fireEvent.click(eventBlock("Dentist 09:00"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));

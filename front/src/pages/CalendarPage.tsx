@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, isApiError, type Event, type EventsResponse } from "../lib/api";
 import CalendarEventForm from "../features/calendar/EventForm";
+import EventInfo from "../features/calendar/EventInfo";
 import MiniMonth from "../features/calendar/MiniMonth";
 import MonthHeader from "../features/calendar/MonthHeader";
 import TrashPanel from "../features/calendar/TrashPanel";
@@ -28,6 +29,7 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [createStart, setCreateStart] = useState<Date | null>(null);
+  const [viewing, setViewing] = useState<Event | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
@@ -231,13 +233,24 @@ export default function CalendarPage() {
                 onSlotClick={createAt}
                 onEventClick={(event) => {
                   setCreateStart(null);
-                  setEditing(event);
+                  setViewing(event);
                 }}
               />
             </div>
           </div>
         </div>
       </div>
+
+      {viewing !== null && (
+        <EventInfo
+          event={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={(event) => {
+            setViewing(null);
+            setEditing(event);
+          }}
+        />
+      )}
 
       {(createStart !== null || editing !== null) && (
         <CalendarEventForm
