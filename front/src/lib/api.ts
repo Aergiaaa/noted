@@ -35,6 +35,33 @@ export interface EventsResponse {
   data: Event[];
 }
 
+// Notes are plain markdown documents; tasks are open/done actions with
+// optional calendar-day due dates and module links (API.md list rows).
+export interface Note {
+  id: string;
+  title: string;
+  body_md: string;
+  pinned: boolean;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  status: "open" | "done";
+  due_date: string | null;
+  event_id: string | null;
+  note_id: string | null;
+  completed_at: string | null;
+}
+
+export interface NotesResponse {
+  data: Note[];
+}
+
+export interface TasksResponse {
+  data: Task[];
+}
+
 // HTTP status codes we branch on (API.md envelope contract).
 export const STATUS_UNAUTHENTICATED = 401;
 export const STATUS_TOO_MANY_REQUESTS = 429;
@@ -98,4 +125,16 @@ export async function api<T = unknown>(
     fields,
     retryAfter,
   } satisfies ApiError;
+}
+
+// Server envelope fields (API.md validation_error) become "field: message";
+// anything else falls back to the caller's generic failure line.
+export function errorLines(err: unknown, fallback: string): string[] {
+  if (!isApiError(err)) return [fallback];
+  if (err.fields !== undefined) {
+    return Object.entries(err.fields).map(
+      ([field, message]) => `${field}: ${message}`,
+    );
+  }
+  return [err.message];
 }
