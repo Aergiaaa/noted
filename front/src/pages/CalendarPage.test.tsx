@@ -66,8 +66,10 @@ function eventOn(key: string, title: string): Event {
 async function pickDateTime(label: string, value: string) {
   const trigger = screen.getByLabelText(label);
   fireEvent.click(trigger);
-  const host = trigger.parentElement?.querySelector(
-    "calendar-date",
+  // The panel is portaled to body (DateTimeField), outside the card, and
+  // distinct from the MiniMonth calendar on the page.
+  const host = document.querySelector(
+    '[data-testid="picker-panel"] calendar-date',
   ) as HTMLElement;
   await waitFor(() =>
     expect(
