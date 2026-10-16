@@ -196,6 +196,9 @@ describe("WeekTimeGrid", () => {
       "button[aria-label^='Add event on']",
     );
     expect(affordances).toHaveLength(2);
+    // Hidden until the day column is hovered (touch devices see it always).
+    expect(affordances[0]?.className).toContain("opacity-0");
+    expect(affordances[0]?.className).toContain("group-hover:opacity-100");
 
     fireEvent.click(
       container.querySelector(

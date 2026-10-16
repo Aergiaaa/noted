@@ -75,7 +75,7 @@ export default function WeekTimeGrid({
         {days.map((day, dayIndex) => {
           const key = toDayKey(day);
           return (
-            <div key={key} className="relative border-l border-base-300">
+            <div key={key} className="group relative border-l border-base-300">
               {HOURS.map((hour) => (
                 <button
                   key={hour}
@@ -100,7 +100,7 @@ export default function WeekTimeGrid({
                 <button
                   key={hour}
                   type="button"
-                  className="absolute right-1 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 hover:bg-base-200 hover:text-primary"
+                  className="absolute right-1 z-30 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-base-200 hover:text-primary"
                   style={{ top: hour * SLOT_PX + 3 }}
                   aria-label={`Add event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
                   onClick={() => onSlotClick(day, hour)}
