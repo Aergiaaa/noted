@@ -131,9 +131,7 @@ function EventBlock({ block, onClick }: EventBlockProps) {
       aria-label={`${block.event.title} ${formatTime(block.event.starts_at)}`}
       onClick={() => onClick(block.event)}
     >
-      <span className="truncate">
-        {formatTime(block.event.starts_at)} {block.event.title}
-      </span>
+      <span className="truncate">{block.event.title}</span>
     </button>
   );
 }
