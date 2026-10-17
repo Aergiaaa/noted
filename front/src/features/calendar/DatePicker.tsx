@@ -1,49 +1,43 @@
 import "cally";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { formatDateTime } from "../../lib/format";
-
-const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
-const MINUTES = Array.from({ length: 60 }, (_, m) =>
-  String(m).padStart(2, "0"),
-);
+import { formatDate, fromDayKey } from "../../lib/format";
 
 // Fixed placement for the picker panel. The modal card clips overflow
 // (daisyUI modal-box is overflow-y:auto), so the panel is portaled to body
 // and anchored right of the trigger, past the card's padding. It flips to
 // the left when the viewport is too narrow and clamps vertically.
 const PICKER_WIDTH = 288;
-const PICKER_HEIGHT = 360;
+const PICKER_HEIGHT = 280;
 const PICKER_GAP = 12;
 const CARD_PADDING = 24;
 const VIEWPORT_MARGIN = 8;
 
-interface DateTimeFieldProps {
+interface DatePickerProps {
+  // aria-label only; the visible group label is rendered by the form.
   label: string;
-  // Naive local datetime, YYYY-MM-DDTHH:MM (datetime-local shape).
+  // Naive local datetime, YYYY-MM-DDTHH:MM — the date part is the picker,
+  // the time part rides along untouched so callers keep one value.
   value: string;
   onChange: (value: string) => void;
 }
 
-// Date-time picker for the event modal: Cally date (built-in header kept
-// for month navigation) plus hour/minute selects, spawned as a fixed panel
-// outside the card. A portal backdrop gives outside-click close; clicking
-// the trigger while open toggles it shut the same way.
-export default function DateTimeField({
+// Date picker for the event modal: Cally date (built-in header kept for
+// month navigation), spawned as a fixed panel outside the card. A portal
+// backdrop gives outside-click close; clicking the trigger while open
+// toggles it shut the same way. Hour and minute are separate TimeInput
+// fields beside the trigger, not part of this panel.
+export default function DatePicker({
   label,
   value,
   onChange,
-}: DateTimeFieldProps) {
+}: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const date = value.slice(0, 10);
   const time = value.slice(11);
 
   const pickDate = (nextDate: string) => onChange(`${nextDate}T${time}`);
-  const pickHour = (nextHour: string) =>
-    onChange(`${date}T${nextHour}:${time.slice(3)}`);
-  const pickMinute = (nextMinute: string) =>
-    onChange(`${date}T${time.slice(0, 2)}:${nextMinute}`);
 
   // The trigger is the click target, so currentTarget is the rect source —
   // no ref, no null-guard branch.
@@ -61,20 +55,14 @@ export default function DateTimeField({
   };
 
   return (
-    <div className="block">
-      <span className="label-text text-xs uppercase text-base-content/60">
-        {label}
-      </span>
-      <button
-        type="button"
-        className="input input-bordered input-sm mt-1 w-full text-left font-normal"
-        aria-label={label}
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        {formatDateTime(value)}
-      </button>
-
+    <button
+      type="button"
+      className="input input-bordered input-sm w-full text-left font-normal"
+      aria-label={label}
+      aria-expanded={open}
+      onClick={toggle}
+    >
+      {formatDate(fromDayKey(date))}
       {open &&
         pos !== null &&
         createPortal(
@@ -89,6 +77,7 @@ export default function DateTimeField({
               data-testid="picker-panel"
               className="fixed z-[1001] w-72 rounded-md border border-base-300 bg-base-200 p-2"
               style={{ top: pos.top, left: pos.left }}
+              onClick={(e) => e.stopPropagation()}
             >
               <calendar-date
                 className="cally"
@@ -98,37 +87,11 @@ export default function DateTimeField({
               >
                 <calendar-month />
               </calendar-date>
-              <div className="mt-2 flex gap-2">
-                <select
-                  className="select select-bordered select-sm w-full"
-                  aria-label={`${label} hour`}
-                  value={time.slice(0, 2)}
-                  onChange={(e) => pickHour(e.target.value)}
-                >
-                  {HOURS.map((hour) => (
-                    <option key={hour} value={hour}>
-                      {hour}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="select select-bordered select-sm w-full"
-                  aria-label={`${label} minute`}
-                  value={time.slice(3)}
-                  onChange={(e) => pickMinute(e.target.value)}
-                >
-                  {MINUTES.map((minute) => (
-                    <option key={minute} value={minute}>
-                      {minute}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
           </>,
           document.body,
         )}
-    </div>
+    </button>
   );
 }
 

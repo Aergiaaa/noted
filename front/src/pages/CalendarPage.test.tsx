@@ -9,9 +9,10 @@ import {
 } from "@testing-library/react";
 import CalendarPage from "./CalendarPage";
 import {
-  formatDateTime,
+  formatDate,
   formatDayHeader,
   formatMonthTitle,
+  fromDayKey,
 } from "../lib/format";
 import type { Event } from "../lib/api";
 
@@ -61,12 +62,13 @@ function eventOn(key: string, title: string): Event {
   };
 }
 
-// Drive one date-time picker the way a user would: open it, click the day
-// in cally's shadow DOM, set hour/minute, close it again.
+// Drive one start/end field the way a user would: open the date panel,
+// click the day in cally's shadow DOM, close it, then set hour/minute
+// (committed on blur — the comboboxes only commit valid values).
 async function pickDateTime(label: string, value: string) {
   const trigger = screen.getByLabelText(label);
   fireEvent.click(trigger);
-  // The panel is portaled to body (DateTimeField), outside the card, and
+  // The panel is portaled to body (DatePicker), outside the card, and
   // distinct from the MiniMonth calendar on the page.
   const host = document.querySelector(
     '[data-testid="picker-panel"] calendar-date',
@@ -81,13 +83,14 @@ async function pickDateTime(label: string, value: string) {
     month.shadowRoot?.querySelectorAll("button") ?? [],
   ).find((b) => b.textContent === String(Number(value.slice(8, 10))));
   fireEvent.click(day as HTMLElement);
-  fireEvent.change(screen.getByLabelText(`${label} hour`), {
-    target: { value: value.slice(11, 13) },
-  });
-  fireEvent.change(screen.getByLabelText(`${label} minute`), {
-    target: { value: value.slice(14, 16) },
-  });
   fireEvent.click(trigger);
+
+  const hour = screen.getByLabelText(`${label} hour`);
+  fireEvent.change(hour, { target: { value: value.slice(11, 13) } });
+  fireEvent.blur(hour);
+  const minute = screen.getByLabelText(`${label} minute`);
+  fireEvent.change(minute, { target: { value: value.slice(14, 16) } });
+  fireEvent.blur(minute);
 }
 
 async function fillEventForm(title: string, start: string, end: string) {
@@ -180,7 +183,7 @@ describe("CalendarPage", () => {
     );
     expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
     expect(screen.getByLabelText("Starts").textContent).toBe(
-      formatDateTime(`${TODAY_KEY}T14:00`),
+      formatDate(fromDayKey(TODAY_KEY)),
     );
 
     await fillEventForm("Dentist", `${TODAY_KEY}T14:00`, `${TODAY_KEY}T15:00`);
@@ -218,6 +221,40 @@ describe("CalendarPage", () => {
 
     expect(screen.getByText("Title is required.")).toBeDefined();
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("strips control characters from title and description before saving", async () => {
+    const created = eventOn(TODAY_KEY, "Dentist");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(jsonResponse(201, created))
+      .mockResolvedValueOnce(listResponse([created]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CalendarPage />);
+    await waitForGrid();
+
+    const nul = String.fromCharCode(0);
+    const bel = String.fromCharCode(7);
+    fireEvent.click(screen.getByRole("button", { name: "New event" }));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: `Den${nul}t ist ` },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: `check${bel}up\nnow` },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [, postInit] = fetchMock.mock.calls[1];
+    expect(postInit.method).toBe("POST");
+    expect(JSON.parse(postInit.body)).toMatchObject({
+      title: "Dent ist",
+      description: "checkup\nnow",
+    });
   });
 
   it("rejects an end time that is not after the start client-side", async () => {

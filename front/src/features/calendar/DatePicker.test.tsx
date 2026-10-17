@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import DateTimeField from "./DateTimeField";
+import DatePicker from "./DatePicker";
 
 afterEach(() => {
   cleanup();
@@ -49,20 +49,20 @@ function setViewport(width: number, height: number) {
   Object.defineProperty(window, "innerHeight", { value: height });
 }
 
-describe("DateTimeField", () => {
-  it("shows the formatted datetime on a closed trigger", () => {
+describe("DatePicker", () => {
+  it("shows the formatted date on a closed trigger", () => {
     const { getByLabelText } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(trigger.textContent).toBe("Thu 15 Oct 2026, 14:37");
+    expect(trigger.textContent).toBe("Thu 15 Oct 2026");
     expect(document.querySelector("calendar-date")).toBeNull();
   });
 
   it("opens and closes the picker via the trigger", () => {
     const { getByLabelText } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
 
@@ -77,7 +77,7 @@ describe("DateTimeField", () => {
 
   it("renders the open picker in a portal on body, outside the field", () => {
     const { container, getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     fireEvent.click(getByLabelText("Starts"));
 
@@ -89,7 +89,7 @@ describe("DateTimeField", () => {
 
   it("anchors the panel to the right of the trigger, outside the card", () => {
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     stubRect(trigger, { top: 120, left: 300, right: 580 });
@@ -104,7 +104,7 @@ describe("DateTimeField", () => {
   it("flips the panel to the left when the right side has no room", () => {
     setViewport(500, 768);
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     stubRect(trigger, { top: 50, left: 400, right: 650 });
@@ -117,7 +117,7 @@ describe("DateTimeField", () => {
   it("clamps a left flip to the viewport edge", () => {
     setViewport(500, 768);
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     stubRect(trigger, { top: 50, left: 100, right: 300 });
@@ -129,20 +129,20 @@ describe("DateTimeField", () => {
   it("clamps the panel up when it would hang off the bottom", () => {
     setViewport(1024, 768);
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     stubRect(trigger, { top: 700, left: 300, right: 580 });
 
     fireEvent.click(trigger);
-    // viewport 768 - panel 360 - margin 8 = 400.
-    expect(getByTestId("picker-panel").style.top).toBe("400px");
+    // viewport 768 - panel height (280) - margin 8 = 480.
+    expect(getByTestId("picker-panel").style.top).toBe("480px");
   });
 
   it("keeps the panel inside short viewports", () => {
-    setViewport(1024, 300);
+    setViewport(1024, 250);
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
     stubRect(trigger, { top: 100, left: 300, right: 580 });
@@ -153,7 +153,7 @@ describe("DateTimeField", () => {
 
   it("closes when the backdrop is clicked", () => {
     const { getByLabelText, getByTestId } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={() => {}} />,
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     fireEvent.click(getByLabelText("Starts"));
     expect(document.querySelector("calendar-date")).toBeTruthy();
@@ -162,53 +162,15 @@ describe("DateTimeField", () => {
     expect(document.querySelector("calendar-date")).toBeNull();
   });
 
-  it("picking a day keeps hour and minute", async () => {
+  it("picking a day keeps the time part", async () => {
     const onChange = vi.fn();
     const { getByLabelText } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={onChange} />,
+      <DatePicker label="Starts" value={VALUE} onChange={onChange} />,
     );
     fireEvent.click(getByLabelText("Starts"));
     const day20 = await dayButton(pickerHost(), "20");
     fireEvent.click(day20 as HTMLElement);
 
     expect(onChange).toHaveBeenCalledWith("2026-10-20T14:37");
-  });
-
-  it("picking an hour keeps date and minute", () => {
-    const onChange = vi.fn();
-    const { getByLabelText } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={onChange} />,
-    );
-    fireEvent.click(getByLabelText("Starts"));
-
-    fireEvent.change(getByLabelText("Starts hour"), {
-      target: { value: "09" },
-    });
-    expect(onChange).toHaveBeenCalledWith("2026-10-15T09:37");
-  });
-
-  it("picking a minute keeps date and hour", () => {
-    const onChange = vi.fn();
-    const { getByLabelText } = render(
-      <DateTimeField label="Starts" value={VALUE} onChange={onChange} />,
-    );
-    fireEvent.click(getByLabelText("Starts"));
-
-    fireEvent.change(getByLabelText("Starts minute"), {
-      target: { value: "05" },
-    });
-    expect(onChange).toHaveBeenCalledWith("2026-10-15T14:05");
-  });
-
-  it("preselects the current hour and minute in the selects", () => {
-    const { getByLabelText } = render(
-      <DateTimeField label="Ends" value={VALUE} onChange={() => {}} />,
-    );
-    fireEvent.click(getByLabelText("Ends"));
-
-    expect((getByLabelText("Ends hour") as HTMLSelectElement).value).toBe("14");
-    expect((getByLabelText("Ends minute") as HTMLSelectElement).value).toBe(
-      "37",
-    );
   });
 });

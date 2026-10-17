@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDateTime,
+  formatDate,
   formatDayHeader,
   formatHourLabel,
   formatMonthTitle,
@@ -70,5 +71,12 @@ describe("formatDateTime", () => {
   it("renders the picker trigger for a naive local datetime", () => {
     expect(formatDateTime("2026-10-15T14:37")).toBe("Thu 15 Oct 2026, 14:37");
     expect(formatDateTime("2026-01-03T07:05")).toBe("Sat 3 Jan 2026, 07:05");
+  });
+});
+
+describe("formatDate", () => {
+  it("renders a local date without the time", () => {
+    expect(formatDate(new Date(2026, 9, 15))).toBe("Thu 15 Oct 2026");
+    expect(formatDate(new Date(2026, 0, 3))).toBe("Sat 3 Jan 2026");
   });
 });

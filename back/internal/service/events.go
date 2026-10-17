@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -94,7 +95,8 @@ func (s *EventService) List(ctx context.Context, from, to time.Time) ([]Event, e
 }
 
 func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error) {
-	in.Title = strings.TrimSpace(in.Title)
+	in.Title = sanitizeLine(in.Title)
+	in.Description = sanitizeDescription(in.Description)
 	if err := s.validate(ctx, in); err != nil {
 		return Event{}, err
 	}
@@ -133,7 +135,8 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 	if err != nil {
 		return Event{}, err
 	}
-	merged.Title = strings.TrimSpace(merged.Title)
+	merged.Title = sanitizeLine(merged.Title)
+	merged.Description = sanitizeDescription(merged.Description)
 	if err := s.validate(ctx, merged); err != nil {
 		return Event{}, err
 	}
@@ -211,11 +214,10 @@ func (s *EventService) Purge(ctx context.Context, now time.Time) (int64, error) 
 
 func (s *EventService) validate(ctx context.Context, in EventInput) error {
 	fields := map[string]string{}
-	title := strings.TrimSpace(in.Title)
 	switch {
-	case title == "":
+	case in.Title == "":
 		fields["title"] = "required"
-	case len([]rune(title)) > TITLE_MAX_CHAR:
+	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
 		fields["title"] = "must be at most 200 characters"
 	}
 
@@ -324,4 +326,46 @@ func fromRow(row generated.Event) Event {
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}
+}
+
+// sanitizeLine: strip every control character (tabs included) and trim
+// the edges — a title is a single opaque line (DOMAIN.md lengths still
+// apply after sanitizing).
+func sanitizeLine(s string) string {
+	return strings.TrimSpace(strings.Map(dropControl, s))
+}
+
+// sanitizeBody: newlines and tabs survive; CRLF and lone CR normalize to
+// LF first so stored bodies never carry Windows line endings.
+func sanitizeBody(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.TrimSpace(strings.Map(dropControlKeepBreaks, s))
+}
+
+// sanitizeDescription: nil in, nil out; a body that reduces to "" (only
+// controls/whitespace) becomes "no description" rather than "".
+func sanitizeDescription(d *string) *string {
+	if d == nil {
+		return nil
+	}
+	clean := sanitizeBody(*d)
+	if clean == "" {
+		return nil
+	}
+	return &clean
+}
+
+func dropControl(r rune) rune {
+	if unicode.IsControl(r) {
+		return -1
+	}
+	return r
+}
+
+func dropControlKeepBreaks(r rune) rune {
+	if unicode.IsControl(r) && r != '\n' && r != '\t' {
+		return -1
+	}
+	return r
 }

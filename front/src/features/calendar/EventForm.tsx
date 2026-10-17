@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { api, isApiError, type Event } from "../../lib/api";
 import { toLocalInput } from "../../lib/format";
-import DateTimeField from "./DateTimeField";
+import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
+import DatePicker from "./DatePicker";
+import TimeInput from "./TimeInput";
 
 const SAVE_FAILED = "Couldn't save the event.";
 const TITLE_REQUIRED = "Title is required.";
@@ -49,7 +51,7 @@ export default function EventForm({
 
   const onSubmit = async (formEvent: FormEvent) => {
     formEvent.preventDefault();
-    if (title.trim() === "") {
+    if (sanitizeLine(title) === "") {
       setErrors([TITLE_REQUIRED]);
       return;
     }
@@ -60,9 +62,9 @@ export default function EventForm({
 
     setErrors([]);
     setSaving(true);
-    const trimmed = description.trim();
+    const trimmed = sanitizeBody(description);
     const body = {
-      title: title.trim(),
+      title: sanitizeLine(title),
       starts_at: new Date(starts).toISOString(),
       ends_at: new Date(ends).toISOString(),
       description: trimmed === "" ? undefined : trimmed,
@@ -113,8 +115,74 @@ export default function EventForm({
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
-          <DateTimeField label="Starts" value={starts} onChange={setStarts} />
-          <DateTimeField label="Ends" value={ends} onChange={setEnds} />
+          <div className="block">
+            <span className="label-text text-xs uppercase text-base-content/60">
+              Starts
+            </span>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <DatePicker
+                  label="Starts"
+                  value={starts}
+                  onChange={setStarts}
+                />
+              </div>
+              <TimeInput
+                label="Starts hour"
+                value={starts.slice(11, 13)}
+                max={23}
+                onChange={(hour) =>
+                  setStarts(
+                    `${starts.slice(0, 10)}T${hour}:${starts.slice(14)}`,
+                  )
+                }
+              />
+              <span aria-hidden="true" className="text-sm text-base-content/60">
+                :
+              </span>
+              <TimeInput
+                label="Starts minute"
+                value={starts.slice(14, 16)}
+                max={59}
+                onChange={(minute) =>
+                  setStarts(
+                    `${starts.slice(0, 10)}T${starts.slice(11, 13)}:${minute}`,
+                  )
+                }
+              />
+            </div>
+          </div>
+          <div className="block">
+            <span className="label-text text-xs uppercase text-base-content/60">
+              Ends
+            </span>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <DatePicker label="Ends" value={ends} onChange={setEnds} />
+              </div>
+              <TimeInput
+                label="Ends hour"
+                value={ends.slice(11, 13)}
+                max={23}
+                onChange={(hour) =>
+                  setEnds(`${ends.slice(0, 10)}T${hour}:${ends.slice(14)}`)
+                }
+              />
+              <span aria-hidden="true" className="text-sm text-base-content/60">
+                :
+              </span>
+              <TimeInput
+                label="Ends minute"
+                value={ends.slice(14, 16)}
+                max={59}
+                onChange={(minute) =>
+                  setEnds(
+                    `${ends.slice(0, 10)}T${ends.slice(11, 13)}:${minute}`,
+                  )
+                }
+              />
+            </div>
+          </div>
           <label className="block">
             <span className="label-text text-xs uppercase text-base-content/60">
               Description

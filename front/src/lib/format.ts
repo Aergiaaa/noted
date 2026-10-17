@@ -59,6 +59,11 @@ export function formatDateTime(value: string): string {
   return `${WEEKDAYS[day.getDay()]} ${day.getDate()} ${MONTHS_SHORT[day.getMonth()]} ${day.getFullYear()}, ${value.slice(11)}`;
 }
 
+// Date-only companion for the DatePicker trigger: "Thu 15 Oct 2026".
+export function formatDate(date: Date): string {
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS_SHORT[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 // Parse a YYYY-MM-DD day key back into a local Date (midnight).
 export function fromDayKey(key: string): Date {
   const [year, month, day] = key.split("-").map(Number);

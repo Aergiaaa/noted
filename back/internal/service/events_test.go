@@ -104,6 +104,52 @@ func TestEventService_create_titleTooLong_400(t *testing.T) {
 	}
 }
 
+func TestEventService_create_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	description := "line1\r\nline2\x07"
+
+	created, err := svc.Create(context.Background(), EventInput{
+		Title:       "Den\x00t\tist ",
+		StartsAt:    mustTime(t, "2026-10-14T09:00:00Z"),
+		EndsAt:      mustTime(t, "2026-10-14T10:00:00Z"),
+		Description: &description,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", created.Title)
+	}
+	if created.Description == nil || *created.Description != "line1\nline2" {
+		t.Errorf("Description = %v, want CR normalized, controls stripped", created.Description)
+	}
+}
+
+func TestEventService_create_controlOnlyTitle_400(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	in := validInput(t)
+	in.Title = "\x00\x07\t\n"
+
+	_, err := svc.Create(context.Background(), in)
+	if got := fieldsOf(t, err)["title"]; got != "required" {
+		t.Fatalf("title field = %q, want required", got)
+	}
+}
+
+func TestEventService_create_controlOnlyDescription_storedAsNil(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	in := validInput(t)
+	in.Description = func() *string { s := "\x00\x07"; return &s }()
+
+	created, err := svc.Create(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Description != nil {
+		t.Errorf("Description = %v, want nil after sanitize", created.Description)
+	}
+}
+
 func TestEventService_create_endNotAfterStart_400(t *testing.T) {
 	svc, _ := newTestEventService(t)
 	in := validInput(t)
@@ -251,6 +297,28 @@ func TestEventService_update_keepsUnpatchedFields(t *testing.T) {
 	}
 	if updated.StartsAt != created.StartsAt || updated.EndsAt != created.EndsAt {
 		t.Errorf("times changed on a title-only patch: %q/%q", updated.StartsAt, updated.EndsAt)
+	}
+}
+
+func TestEventService_update_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	created, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	updated, err := svc.Update(context.Background(), created.ID, EventPatch{
+		Title:       ptr("Den\x00tist\x1b"),
+		Description: ptr("clean\x07 me"),
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", updated.Title)
+	}
+	if updated.Description == nil || *updated.Description != "clean me" {
+		t.Errorf("Description = %v, want controls stripped", updated.Description)
 	}
 }
 
