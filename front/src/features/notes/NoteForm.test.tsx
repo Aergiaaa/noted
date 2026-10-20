@@ -68,6 +68,44 @@ describe("NoteForm", () => {
     });
   });
 
+  it("strips control characters from title and body before sending", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Den\x00t\tist " },
+    });
+    fireEvent.change(screen.getByLabelText("Body"), {
+      target: { value: "line1\r\nline2\x07" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        title: "Dentist",
+        body_md: "line1\nline2",
+        pinned: false,
+      }),
+    });
+  });
+
+  it("rejects a control-only title before touching the network", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "\x00\x07\t\n" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("Title is required.")).toBeDefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("prefills the form and PATCHes an edited note", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
     vi.stubGlobal("fetch", fetchMock);

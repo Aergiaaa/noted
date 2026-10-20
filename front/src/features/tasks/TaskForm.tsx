@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { api, errorLines, type Task } from "../../lib/api";
+import { sanitizeLine } from "../../lib/sanitize";
 
 const SAVE_FAILED = "Couldn't save the task.";
 const TITLE_REQUIRED = "Title is required.";
@@ -40,14 +41,14 @@ export default function TaskForm({
 
   const onSubmit = async (formEvent: FormEvent) => {
     formEvent.preventDefault();
-    if (title.trim() === "") {
+    if (sanitizeLine(title) === "") {
       setErrors([TITLE_REQUIRED]);
       return;
     }
 
     setErrors([]);
     setSaving(true);
-    const trimmedTitle = title.trim();
+    const cleanTitle = sanitizeLine(title);
     // Create omits empty optionals; PATCH always sends them so "" clears a
     // stored value (events normalize the same way server-side).
     const optional = {
@@ -56,7 +57,7 @@ export default function TaskForm({
       ...(noteId.trim() !== "" ? { note_id: noteId.trim() } : {}),
     };
     const patch = {
-      title: trimmedTitle,
+      title: cleanTitle,
       due_date: due,
       event_id: eventId.trim(),
       note_id: noteId.trim(),
@@ -66,7 +67,7 @@ export default function TaskForm({
       if (task === null) {
         await api("/tasks", {
           method: "POST",
-          body: { title: trimmedTitle, ...optional },
+          body: { title: cleanTitle, ...optional },
         });
       } else {
         await api(`/tasks/${task.id}`, { method: "PATCH", body: patch });

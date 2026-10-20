@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,7 +74,8 @@ func (s *NoteService) List(ctx context.Context, pinned *bool) ([]Note, error) {
 }
 
 func (s *NoteService) Create(ctx context.Context, in NoteInput) (Note, error) {
-	in.Title = strings.TrimSpace(in.Title)
+	in.Title = sanitizeLine(in.Title)
+	in.BodyMD = sanitizeBody(in.BodyMD)
 	if err := validateNote(in); err != nil {
 		return Note{}, err
 	}
@@ -108,7 +108,8 @@ func (s *NoteService) Update(ctx context.Context, id string, patch NotePatch) (N
 	}
 
 	merged := mergeNotePatch(row, patch)
-	merged.Title = strings.TrimSpace(merged.Title)
+	merged.Title = sanitizeLine(merged.Title)
+	merged.BodyMD = sanitizeBody(merged.BodyMD)
 	if err := validateNote(merged); err != nil {
 		return Note{}, err
 	}
@@ -153,11 +154,10 @@ func (s *NoteService) Purge(ctx context.Context, now time.Time) (int64, error) {
 
 func validateNote(in NoteInput) error {
 	fields := map[string]string{}
-	title := strings.TrimSpace(in.Title)
 	switch {
-	case title == "":
+	case in.Title == "":
 		fields["title"] = "required"
-	case len([]rune(title)) > TITLE_MAX_CHAR:
+	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
 		fields["title"] = "must be at most 200 characters"
 	}
 

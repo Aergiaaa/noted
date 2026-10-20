@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,7 +83,7 @@ func (s *TaskService) List(ctx context.Context, status, due *string) ([]Task, er
 }
 
 func (s *TaskService) Create(ctx context.Context, in TaskInput) (Task, error) {
-	in.Title = strings.TrimSpace(in.Title)
+	in.Title = sanitizeLine(in.Title)
 	in.Status = STATUS_OPEN
 	if err := s.validate(ctx, in); err != nil {
 		return Task{}, err
@@ -120,7 +119,7 @@ func (s *TaskService) Update(ctx context.Context, id string, patch TaskPatch) (T
 	}
 
 	merged := mergeTaskPatch(row, patch)
-	merged.Title = strings.TrimSpace(merged.Title)
+	merged.Title = sanitizeLine(merged.Title)
 	if err := s.validate(ctx, merged); err != nil {
 		return Task{}, err
 	}
@@ -168,11 +167,10 @@ func (s *TaskService) Purge(ctx context.Context, now time.Time) (int64, error) {
 
 func (s *TaskService) validate(ctx context.Context, in TaskInput) error {
 	fields := map[string]string{}
-	title := strings.TrimSpace(in.Title)
 	switch {
-	case title == "":
+	case in.Title == "":
 		fields["title"] = "required"
-	case len([]rune(title)) > TITLE_MAX_CHAR:
+	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
 		fields["title"] = "must be at most 200 characters"
 	}
 

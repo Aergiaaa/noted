@@ -114,6 +114,48 @@ func TestNoteService_create_bodyAtLimit_ok(t *testing.T) {
 	}
 }
 
+func TestNoteService_create_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestNoteService(t)
+
+	created, err := svc.Create(context.Background(), NoteInput{
+		Title:  "Den\x00t\tist ",
+		BodyMD: "line1\r\nline2\x07",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", created.Title)
+	}
+	if created.BodyMD != "line1\nline2" {
+		t.Errorf("BodyMD = %q, want CR normalized, controls stripped", created.BodyMD)
+	}
+}
+
+func TestNoteService_create_controlOnlyTitle_400(t *testing.T) {
+	svc, _ := newTestNoteService(t)
+
+	_, err := svc.Create(context.Background(), NoteInput{Title: "\x00\x07\t\n"})
+	if got := fieldsOf(t, err)["title"]; got != "required" {
+		t.Fatalf("title field = %q, want required", got)
+	}
+}
+
+func TestNoteService_create_controlOnlyBody_storedEmpty(t *testing.T) {
+	svc, _ := newTestNoteService(t)
+
+	created, err := svc.Create(context.Background(), NoteInput{
+		Title:  "Empty body",
+		BodyMD: "\x00\x07",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.BodyMD != "" {
+		t.Errorf("BodyMD = %q, want empty after sanitize", created.BodyMD)
+	}
+}
+
 func TestNoteService_create_noteTableGone_internalError(t *testing.T) {
 	svc, db := newTestNoteService(t)
 	if _, err := db.Exec(`DROP TABLE notes`); err != nil {
@@ -182,6 +224,27 @@ func TestNoteService_list_noteTableGone_internalError(t *testing.T) {
 
 	if _, err := svc.List(context.Background(), nil); err == nil {
 		t.Fatal("List succeeded, want internal error")
+	}
+}
+
+func TestNoteService_update_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestNoteService(t)
+	note := seedNote(t, svc, "Plain")
+	title := "Den\x00tist\x1b"
+	body := "clean\x07 me"
+
+	updated, err := svc.Update(context.Background(), note.ID, NotePatch{
+		Title:  &title,
+		BodyMD: &body,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", updated.Title)
+	}
+	if updated.BodyMD != "clean me" {
+		t.Errorf("BodyMD = %q, want controls stripped", updated.BodyMD)
 	}
 }
 

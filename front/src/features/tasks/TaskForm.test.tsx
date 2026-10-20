@@ -81,6 +81,37 @@ describe("TaskForm", () => {
     });
   });
 
+  it("strips control characters from the title before sending", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Den\x00t\tist " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ title: "Dentist" }),
+    });
+  });
+
+  it("rejects a control-only title before touching the network", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "\x00\x07\t\n" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("Title is required.")).toBeDefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("prefills and PATCHes, sending empty strings to clear fields", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
     vi.stubGlobal("fetch", fetchMock);

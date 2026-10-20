@@ -140,6 +140,27 @@ func TestTaskService_create_unknownNote_400(t *testing.T) {
 	}
 }
 
+func TestTaskService_create_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestTaskService(t)
+
+	created, err := svc.Create(context.Background(), TaskInput{Title: "Den\x00t\tist "})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if created.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", created.Title)
+	}
+}
+
+func TestTaskService_create_controlOnlyTitle_400(t *testing.T) {
+	svc, _ := newTestTaskService(t)
+
+	_, err := svc.Create(context.Background(), TaskInput{Title: "\x00\x07\t\n"})
+	if got := fieldsOf(t, err)["title"]; got != "required" {
+		t.Fatalf("title field = %q, want required", got)
+	}
+}
+
 func TestTaskService_create_eventTableGone_internalError(t *testing.T) {
 	svc, db := newTestTaskService(t)
 	if _, err := db.Exec(`DROP TABLE events`); err != nil {
@@ -275,6 +296,20 @@ func TestTaskService_list_taskTableGone_internalError(t *testing.T) {
 
 	if _, err := svc.List(context.Background(), nil, nil); err == nil {
 		t.Fatal("List succeeded, want internal error")
+	}
+}
+
+func TestTaskService_update_stripsControlCharacters(t *testing.T) {
+	svc, _ := newTestTaskService(t)
+	task := seedTask(t, svc, TaskInput{Title: "Plain"})
+	title := "Den\x00tist\x1b"
+
+	updated, err := svc.Update(context.Background(), task.ID, TaskPatch{Title: &title})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Title != "Dentist" {
+		t.Errorf("Title = %q, want controls stripped", updated.Title)
 	}
 }
 

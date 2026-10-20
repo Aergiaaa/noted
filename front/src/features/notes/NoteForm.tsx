@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { api, errorLines, type Note } from "../../lib/api";
+import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
 
 const SAVE_FAILED = "Couldn't save the note.";
 const TITLE_REQUIRED = "Title is required.";
@@ -40,14 +41,18 @@ export default function NoteForm({
 
   const onSubmit = async (formEvent: FormEvent) => {
     formEvent.preventDefault();
-    if (title.trim() === "") {
+    if (sanitizeLine(title) === "") {
       setErrors([TITLE_REQUIRED]);
       return;
     }
 
     setErrors([]);
     setSaving(true);
-    const bodyPayload = { title: title.trim(), body_md: body, pinned };
+    const bodyPayload = {
+      title: sanitizeLine(title),
+      body_md: sanitizeBody(body),
+      pinned,
+    };
 
     try {
       if (note === null) {
