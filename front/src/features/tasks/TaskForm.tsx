@@ -21,8 +21,6 @@ export default function TaskForm({
 }: TaskFormProps) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [due, setDue] = useState(task?.due_date ?? "");
-  const [eventId, setEventId] = useState(task?.event_id ?? "");
-  const [noteId, setNoteId] = useState(task?.note_id ?? "");
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -41,18 +39,15 @@ export default function TaskForm({
     setErrors([]);
     setSaving(true);
     const cleanTitle = sanitizeLine(title);
-    // Create omits empty optionals; PATCH always sends them so "" clears a
-    // stored value (events normalize the same way server-side).
+    // Create omits empty optionals; PATCH always sends due_date so "" clears
+    // it. Link keys stay out of the PATCH entirely (absent keeps the stored
+    // value) — the ID inputs are hidden until F9 pickers land.
     const optional = {
       ...(due !== "" ? { due_date: due } : {}),
-      ...(eventId.trim() !== "" ? { event_id: eventId.trim() } : {}),
-      ...(noteId.trim() !== "" ? { note_id: noteId.trim() } : {}),
     };
     const patch = {
       title: cleanTitle,
       due_date: due,
-      event_id: eventId.trim(),
-      note_id: noteId.trim(),
     };
 
     try {
@@ -115,30 +110,6 @@ export default function TaskForm({
             aria-label="Due"
             value={due}
             onChange={(e) => setDue(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="label-text text-xs uppercase text-base-content/60">
-            Event ID
-          </span>
-          <input
-            className="input input-bordered input-sm mt-1 w-full"
-            aria-label="Event ID"
-            placeholder="optional"
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-          />
-        </label>
-        <label className="block">
-          <span className="label-text text-xs uppercase text-base-content/60">
-            Note ID
-          </span>
-          <input
-            className="input input-bordered input-sm mt-1 w-full"
-            aria-label="Note ID"
-            placeholder="optional"
-            value={noteId}
-            onChange={(e) => setNoteId(e.target.value)}
           />
         </label>
 

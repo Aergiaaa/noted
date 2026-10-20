@@ -47,22 +47,19 @@ function renderForm(task: Task | null) {
 }
 
 describe("TaskForm", () => {
-  it("creates a task, trimming the due and link fields", async () => {
+  it("creates a task with title and due; link inputs stay hidden until F9", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
     vi.stubGlobal("fetch", fetchMock);
     const { onClose, onSaved } = renderForm(null);
+
+    expect(screen.queryByLabelText("Event ID")).toBeNull();
+    expect(screen.queryByLabelText("Note ID")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Ship it" },
     });
     fireEvent.change(screen.getByLabelText("Due"), {
       target: { value: "2026-10-20" },
-    });
-    fireEvent.change(screen.getByLabelText("Event ID"), {
-      target: { value: "  e9  " },
-    });
-    fireEvent.change(screen.getByLabelText("Note ID"), {
-      target: { value: "  n9  " },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -75,8 +72,6 @@ describe("TaskForm", () => {
       body: JSON.stringify({
         title: "Ship it",
         due_date: "2026-10-20",
-        event_id: "e9",
-        note_id: "n9",
       }),
     });
   });
@@ -112,7 +107,7 @@ describe("TaskForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("prefills and PATCHes, sending empty strings to clear fields", async () => {
+  it("prefills and PATCHes, clearing due while keeping stored links", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
     vi.stubGlobal("fetch", fetchMock);
     renderForm(TASK);
@@ -123,12 +118,9 @@ describe("TaskForm", () => {
     expect(screen.getByLabelText("Due").getAttribute("value")).toBe(
       "2026-10-20",
     );
-    expect(screen.getByLabelText("Event ID").getAttribute("value")).toBe("e9");
+    expect(screen.queryByLabelText("Event ID")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Due"), { target: { value: "" } });
-    fireEvent.change(screen.getByLabelText("Event ID"), {
-      target: { value: "" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
@@ -138,10 +130,13 @@ describe("TaskForm", () => {
       body: JSON.stringify({
         title: "Buy keyboard",
         due_date: "",
-        event_id: "",
-        note_id: "n9",
       }),
     });
+    // Absent link keys keep the stored event/note links (API.md PATCH).
+    const init = fetchMock.mock.calls[0]?.[1] as { body: string };
+    const body = JSON.parse(init.body);
+    expect(body).not.toHaveProperty("event_id");
+    expect(body).not.toHaveProperty("note_id");
   });
 
   it("rejects an empty title before touching the network", () => {
@@ -162,7 +157,7 @@ describe("TaskForm", () => {
           error: {
             code: "validation_error",
             message: "validation failed",
-            fields: { event_id: "unknown event" },
+            fields: { due_date: "must be YYYY-MM-DD" },
           },
         }),
       ),
@@ -175,7 +170,7 @@ describe("TaskForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(screen.getByText("event_id: unknown event")).toBeDefined(),
+      expect(screen.getByText("due_date: must be YYYY-MM-DD")).toBeDefined(),
     );
   });
 
