@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { api, isApiError, type Event } from "../../lib/api";
 import { toLocalInput } from "../../lib/format";
 import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
+import Modal from "../../components/ui/Modal";
 import DatePicker from "./DatePicker";
 import TimeInput from "./TimeInput";
 
@@ -36,15 +37,6 @@ export default function EventForm({
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const stop = (e: MouseEvent) => e.stopPropagation();
   // Confirming only ever opens in edit mode; "" is a placeholder that can
   // never reach confirmDelete.
   const editId = event?.id ?? "";
@@ -98,161 +90,151 @@ export default function EventForm({
   };
 
   return (
-    <div className="modal modal-open" onClick={onClose}>
-      <div className="modal-box w-full max-w-sm" onClick={stop}>
-        <h2 className="text-base font-semibold">
-          {event === null ? "New event" : "Edit event"}
-        </h2>
-        <form className="mt-3 space-y-3" onSubmit={onSubmit} noValidate>
-          <label className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Title
-            </span>
-            <input
-              className="input input-bordered input-sm mt-1 w-full"
-              aria-label="Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+    <Modal onClose={onClose}>
+      <h2 className="text-base font-semibold">
+        {event === null ? "New event" : "Edit event"}
+      </h2>
+      <form className="mt-3 space-y-3" onSubmit={onSubmit} noValidate>
+        <label className="block">
+          <span className="label-text text-xs uppercase text-base-content/60">
+            Title
+          </span>
+          <input
+            className="input input-bordered input-sm mt-1 w-full"
+            aria-label="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
+        <div className="block">
+          <span className="label-text text-xs uppercase text-base-content/60">
+            Starts
+          </span>
+          <div className="mt-1 flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <DatePicker label="Starts" value={starts} onChange={setStarts} />
+            </div>
+            <TimeInput
+              label="Starts hour"
+              value={starts.slice(11, 13)}
+              max={23}
+              onChange={(hour) =>
+                setStarts(`${starts.slice(0, 10)}T${hour}:${starts.slice(14)}`)
+              }
             />
-          </label>
-          <div className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Starts
+            <span aria-hidden="true" className="text-sm text-base-content/60">
+              :
             </span>
-            <div className="mt-1 flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <DatePicker
-                  label="Starts"
-                  value={starts}
-                  onChange={setStarts}
-                />
-              </div>
-              <TimeInput
-                label="Starts hour"
-                value={starts.slice(11, 13)}
-                max={23}
-                onChange={(hour) =>
-                  setStarts(
-                    `${starts.slice(0, 10)}T${hour}:${starts.slice(14)}`,
-                  )
-                }
-              />
-              <span aria-hidden="true" className="text-sm text-base-content/60">
-                :
-              </span>
-              <TimeInput
-                label="Starts minute"
-                value={starts.slice(14, 16)}
-                max={59}
-                onChange={(minute) =>
-                  setStarts(
-                    `${starts.slice(0, 10)}T${starts.slice(11, 13)}:${minute}`,
-                  )
-                }
-              />
-            </div>
-          </div>
-          <div className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Ends
-            </span>
-            <div className="mt-1 flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <DatePicker label="Ends" value={ends} onChange={setEnds} />
-              </div>
-              <TimeInput
-                label="Ends hour"
-                value={ends.slice(11, 13)}
-                max={23}
-                onChange={(hour) =>
-                  setEnds(`${ends.slice(0, 10)}T${hour}:${ends.slice(14)}`)
-                }
-              />
-              <span aria-hidden="true" className="text-sm text-base-content/60">
-                :
-              </span>
-              <TimeInput
-                label="Ends minute"
-                value={ends.slice(14, 16)}
-                max={59}
-                onChange={(minute) =>
-                  setEnds(
-                    `${ends.slice(0, 10)}T${ends.slice(11, 13)}:${minute}`,
-                  )
-                }
-              />
-            </div>
-          </div>
-          <label className="block">
-            <span className="label-text text-xs uppercase text-base-content/60">
-              Description
-            </span>
-            <textarea
-              className="textarea textarea-bordered mt-1 w-full text-sm"
-              aria-label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+            <TimeInput
+              label="Starts minute"
+              value={starts.slice(14, 16)}
+              max={59}
+              onChange={(minute) =>
+                setStarts(
+                  `${starts.slice(0, 10)}T${starts.slice(11, 13)}:${minute}`,
+                )
+              }
             />
-          </label>
-
-          {errors.length > 0 && (
-            <ul className="text-xs text-error" role="alert">
-              {errors.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          )}
-
-          {confirming ? (
-            <div className="mt-2 space-y-2 rounded-md border border-base-300 p-3">
-              <p className="text-sm">Delete this event?</p>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setConfirming(false)}
-                >
-                  Keep it
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-error btn-sm"
-                  onClick={() => confirmDelete(editId)}
-                >
-                  Yes, delete
-                </button>
-              </div>
+          </div>
+        </div>
+        <div className="block">
+          <span className="label-text text-xs uppercase text-base-content/60">
+            Ends
+          </span>
+          <div className="mt-1 flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <DatePicker label="Ends" value={ends} onChange={setEnds} />
             </div>
-          ) : (
-            <div className="mt-4 flex justify-end gap-2">
-              {event !== null && (
-                <button
-                  type="button"
-                  className="btn btn-error btn-sm"
-                  onClick={() => setConfirming(true)}
-                >
-                  Delete
-                </button>
-              )}
+            <TimeInput
+              label="Ends hour"
+              value={ends.slice(11, 13)}
+              max={23}
+              onChange={(hour) =>
+                setEnds(`${ends.slice(0, 10)}T${hour}:${ends.slice(14)}`)
+              }
+            />
+            <span aria-hidden="true" className="text-sm text-base-content/60">
+              :
+            </span>
+            <TimeInput
+              label="Ends minute"
+              value={ends.slice(14, 16)}
+              max={59}
+              onChange={(minute) =>
+                setEnds(`${ends.slice(0, 10)}T${ends.slice(11, 13)}:${minute}`)
+              }
+            />
+          </div>
+        </div>
+        <label className="block">
+          <span className="label-text text-xs uppercase text-base-content/60">
+            Description
+          </span>
+          <textarea
+            className="textarea textarea-bordered mt-1 w-full text-sm"
+            aria-label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+
+        {errors.length > 0 && (
+          <ul className="text-xs text-error" role="alert">
+            {errors.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+
+        {confirming ? (
+          <div className="mt-2 space-y-2 rounded-md border border-base-300 p-3">
+            <p className="text-sm">Delete this event?</p>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={onClose}
+                onClick={() => setConfirming(false)}
               >
-                Cancel
+                Keep it
               </button>
               <button
-                type="submit"
-                className="btn btn-primary btn-sm"
-                disabled={saving}
+                type="button"
+                className="btn btn-error btn-sm"
+                onClick={() => confirmDelete(editId)}
               >
-                {saving ? "Saving…" : "Save"}
+                Yes, delete
               </button>
             </div>
-          )}
-        </form>
-      </div>
-    </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex justify-end gap-2">
+            {event !== null && (
+              <button
+                type="button"
+                className="btn btn-error btn-sm"
+                onClick={() => setConfirming(true)}
+              >
+                Delete
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary btn-sm"
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        )}
+      </form>
+    </Modal>
   );
 }
 

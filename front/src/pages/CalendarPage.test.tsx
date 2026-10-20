@@ -413,6 +413,52 @@ describe("CalendarPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("replaces the details card with the create form when New event is clicked", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(listResponse([eventOn(TODAY_KEY, "Dentist")]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CalendarPage />);
+    await waitFor(() => expect(eventBlock("Dentist 09:00")).toBeDefined());
+
+    fireEvent.click(eventBlock("Dentist 09:00"));
+    expect(screen.getByRole("heading", { name: "Dentist" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "New event" }));
+    expect(screen.queryByRole("heading", { name: "Dentist" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "New event" })).toBeDefined();
+  });
+
+  it("shows an error toast when restore fails inside the trash panel", async () => {
+    const trashed: Event = { ...eventOn(TODAY_KEY, "Old dentist"), id: "e9" };
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((path: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return Promise.resolve(
+            jsonResponse(500, {
+              error: { code: "internal_error", message: "restore boom" },
+            }),
+          );
+        }
+        if (typeof path === "string" && path.includes("trash=1")) {
+          return Promise.resolve(listResponse([trashed]));
+        }
+        return Promise.resolve(listResponse([]));
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<CalendarPage />);
+    await waitForGrid();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trash" }));
+    await waitFor(() => expect(screen.getByText("Old dentist")).toBeDefined());
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    await waitFor(() => expect(screen.getByText("restore boom")).toBeDefined());
+  });
+
   it("deletes only after the inline confirmation", async () => {
     const original = eventOn(TODAY_KEY, "Dentist");
     const fetchMock = vi

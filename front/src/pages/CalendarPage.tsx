@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { api, isApiError, type Event, type EventsResponse } from "../lib/api";
 import CalendarEventForm from "../features/calendar/EventForm";
 import EventInfo from "../features/calendar/EventInfo";
@@ -16,123 +16,68 @@ import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
 import Toast, { type ToastData } from "../components/ui/Toast";
 import { toDayKey } from "../lib/format";
+import { useFetch } from "../lib/useFetch";
 
 const LOAD_FAILED = "Couldn't load events.";
 const EMPTY_MESSAGE = "No events this week.";
 const RESTORE_FAILED = "Couldn't restore the event.";
 
+// One dialog at a time: the union makes view+create stacking unrepresentable.
+type Dialog =
+  | { kind: "view"; event: Event }
+  | { kind: "create"; start: Date }
+  | { kind: "edit"; event: Event };
+
+// Week cursor: the anchor date and the slide direction always move together.
+interface Cursor {
+  date: Date;
+  dir: 1 | -1;
+}
+
 export default function CalendarPage() {
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [weekDir, setWeekDir] = useState<1 | -1>(1);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
-  const [createStart, setCreateStart] = useState<Date | null>(null);
-  const [viewing, setViewing] = useState<Event | null>(null);
-  const [editing, setEditing] = useState<Event | null>(null);
+  const [cursor, setCursor] = useState<Cursor>(() => ({
+    date: new Date(),
+    dir: 1,
+  }));
+  const [dialog, setDialog] = useState<Dialog | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
-  const [trashEvents, setTrashEvents] = useState<Event[]>([]);
-  const [trashLoading, setTrashLoading] = useState(false);
-  const [trashError, setTrashError] = useState<string | null>(null);
-  const [trashNonce, setTrashNonce] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    api<EventsResponse>(eventsPathFor(selectedDate))
-      .then((res) => {
-        if (!cancelled) {
-          setEvents(res.data);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(isApiError(err) ? err.message : LOAD_FAILED);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedDate, nonce]);
+  const events = useFetch<EventsResponse>(
+    eventsPathFor(cursor.date),
+    LOAD_FAILED,
+  );
 
-  useEffect(() => {
-    if (!trashOpen) return;
-    let cancelled = false;
-    api<EventsResponse>("/events?trash=1")
-      .then((res) => {
-        if (!cancelled) {
-          setTrashEvents(res.data);
-          setTrashError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled)
-          setTrashError(isApiError(err) ? err.message : LOAD_FAILED);
-      })
-      .finally(() => {
-        if (!cancelled) setTrashLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [trashOpen, trashNonce]);
-
-  // Loading flips on only for the first load and retry, not on navigation:
-  // the grid must stay mounted so the week-slide animation can play while
-  // the next fetch swaps events in behind it.
-  const refetch = () => {
-    setError(null);
-    setNonce((n) => n + 1);
-  };
-  const retry = () => {
-    setError(null);
-    setLoading(true);
-    setNonce((n) => n + 1);
-  };
   const stepWeek = (weeks: number) => {
-    setError(null);
-    setWeekDir(weeks > 0 ? 1 : -1);
-    setSelectedDate((d) => addWeeks(d, weeks));
+    setCursor((c) => ({
+      date: addWeeks(c.date, weeks),
+      dir: weeks > 0 ? 1 : -1,
+    }));
   };
   const selectDay = (day: Date) => {
-    setError(null);
-    setWeekDir(
-      startOfWeek(day).getTime() >= startOfWeek(selectedDate).getTime()
-        ? 1
-        : -1,
-    );
-    setSelectedDate(day);
+    setCursor((c) => ({
+      date: day,
+      dir: startOfWeek(day).getTime() >= startOfWeek(c.date).getTime() ? 1 : -1,
+    }));
   };
   const openCreate = () => {
-    setEditing(null);
     const now = new Date();
-    setCreateStart(
-      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0),
-    );
+    setDialog({
+      kind: "create",
+      start: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0),
+    });
   };
   const createAt = (day: Date, hour: number) => {
-    setEditing(null);
-    setCreateStart(
-      new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0),
-    );
-  };
-  const closeForm = () => {
-    setEditing(null);
-    setCreateStart(null);
-  };
-  const openTrash = () => {
-    setTrashError(null);
-    setTrashLoading(true);
-    setTrashOpen(true);
-    setTrashNonce((n) => n + 1);
-  };
-  const retryTrash = () => {
-    setTrashError(null);
-    setTrashLoading(true);
-    setTrashNonce((n) => n + 1);
+    setDialog({
+      kind: "create",
+      start: new Date(
+        day.getFullYear(),
+        day.getMonth(),
+        day.getDate(),
+        hour,
+        0,
+      ),
+    });
   };
   const restoreEvent = async (id: string, after: () => void) => {
     try {
@@ -148,27 +93,21 @@ export default function CalendarPage() {
   const undoDelete = (id: string) => {
     void restoreEvent(id, () => {
       setToast(null);
-      refetch();
-    });
-  };
-  const restoreFromTrash = (id: string) => {
-    void restoreEvent(id, () => {
-      setTrashNonce((n) => n + 1);
-      refetch();
+      events.refetch();
     });
   };
   const dismissToast = useCallback(() => setToast(null), []);
 
-  if (error !== null) {
+  if (events.error !== null) {
     return (
       <section>
         <h1 className="text-xl font-semibold">Calendar</h1>
-        <ErrorState message={error} onRetry={retry} />
+        <ErrorState message={events.error} onRetry={events.retry} />
       </section>
     );
   }
 
-  if (loading) {
+  if (events.loading) {
     return (
       <section>
         <h1 className="text-xl font-semibold">Calendar</h1>
@@ -181,7 +120,11 @@ export default function CalendarPage() {
     );
   }
 
-  const weekStart = startOfWeek(selectedDate);
+  const weekStart = startOfWeek(cursor.date);
+  // The loading/error early-returns above guarantee the fetch has landed,
+  // so data is non-null here (keep-previous navigation always carries the
+  // previous success's data forward).
+  const weekEvents = (events.data as EventsResponse).data;
 
   return (
     <section>
@@ -189,7 +132,7 @@ export default function CalendarPage() {
         <h1 className="text-xl font-semibold">Calendar</h1>
         <div className="flex items-center gap-2">
           <MonthHeader
-            month={selectedDate}
+            month={cursor.date}
             onPrevWeek={() => stepWeek(-1)}
             onNextWeek={() => stepWeek(1)}
           />
@@ -197,7 +140,7 @@ export default function CalendarPage() {
             type="button"
             aria-label="Open trash"
             className="btn btn-ghost btn-sm"
-            onClick={openTrash}
+            onClick={() => setTrashOpen(true)}
           >
             Trash
           </button>
@@ -213,8 +156,8 @@ export default function CalendarPage() {
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row">
         <aside className="shrink-0">
-          <MiniMonth selected={selectedDate} onSelect={selectDay} />
-          {events.length === 0 && (
+          <MiniMonth selected={cursor.date} onSelect={selectDay} />
+          {weekEvents.length === 0 && (
             <EmptyState
               message={EMPTY_MESSAGE}
               action={{ label: "Create your first event", onClick: openCreate }}
@@ -225,39 +168,33 @@ export default function CalendarPage() {
           <div className="calendar-scroll flex h-[calc(100vh-9rem)] flex-col overflow-auto rounded-lg border border-base-300 bg-base-200">
             <div
               key={toDayKey(weekStart)}
-              className={`flex flex-1 flex-col ${weekDir === 1 ? "week-slide-fwd" : "week-slide-back"}`}
+              className={`flex flex-1 flex-col ${cursor.dir === 1 ? "week-slide-fwd" : "week-slide-back"}`}
             >
               <WeekTimeGrid
                 days={weekDays(weekStart)}
-                events={events}
+                events={weekEvents}
                 onSlotClick={createAt}
-                onEventClick={(event) => {
-                  setCreateStart(null);
-                  setViewing(event);
-                }}
+                onEventClick={(event) => setDialog({ kind: "view", event })}
               />
             </div>
           </div>
         </div>
       </div>
 
-      {viewing !== null && (
+      {dialog?.kind === "view" && (
         <EventInfo
-          event={viewing}
-          onClose={() => setViewing(null)}
-          onEdit={(event) => {
-            setViewing(null);
-            setEditing(event);
-          }}
+          event={dialog.event}
+          onClose={() => setDialog(null)}
+          onEdit={(event) => setDialog({ kind: "edit", event })}
         />
       )}
 
-      {(createStart !== null || editing !== null) && (
+      {(dialog?.kind === "create" || dialog?.kind === "edit") && (
         <CalendarEventForm
-          event={editing}
-          defaultStart={createStart ?? new Date()}
-          onClose={closeForm}
-          onSaved={refetch}
+          event={dialog.kind === "edit" ? dialog.event : null}
+          defaultStart={dialog.kind === "create" ? dialog.start : new Date()}
+          onClose={() => setDialog(null)}
+          onSaved={events.refetch}
           onDeleted={(id) =>
             setToast({
               message: "Event deleted",
@@ -268,15 +205,13 @@ export default function CalendarPage() {
         />
       )}
 
-      <TrashPanel
-        open={trashOpen}
-        events={trashEvents}
-        loading={trashLoading}
-        error={trashError}
-        onRestore={restoreFromTrash}
-        onRetry={retryTrash}
-        onClose={() => setTrashOpen(false)}
-      />
+      {trashOpen && (
+        <TrashPanel
+          onClose={() => setTrashOpen(false)}
+          onRestored={events.refetch}
+          onRestoreError={(message) => setToast({ message, kind: "error" })}
+        />
+      )}
 
       {toast !== null && <Toast toast={toast} onDismiss={dismissToast} />}
     </section>
