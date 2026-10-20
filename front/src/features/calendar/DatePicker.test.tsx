@@ -80,18 +80,32 @@ describe("DatePicker", () => {
       <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
     );
     const trigger = getByLabelText("Starts");
+
+    // Escape while closed: no-op.
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
     fireEvent.click(trigger);
     expect(document.querySelector("calendar-date")).toBeTruthy();
 
-    // Modal listens for Esc on window; a leak would close the whole form.
-    const onWindowKey = vi.fn();
+    // Modal listens for Esc on window; an Escape leak would close the form.
+    const windowEscapes: KeyboardEvent[] = [];
+    const onWindowKey = (e: Event) => {
+      if ((e as KeyboardEvent).key === "Escape")
+        windowEscapes.push(e as KeyboardEvent);
+    };
     window.addEventListener("keydown", onWindowKey);
+
+    // Other keys never close the panel.
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
     fireEvent.keyDown(trigger, { key: "Escape" });
     window.removeEventListener("keydown", onWindowKey);
 
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.querySelector("calendar-date")).toBeNull();
-    expect(onWindowKey).not.toHaveBeenCalled();
+    expect(windowEscapes).toEqual([]);
   });
 
   it("renders the open picker in a portal on body, outside the field", () => {
