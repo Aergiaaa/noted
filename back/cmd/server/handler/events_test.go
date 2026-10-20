@@ -29,7 +29,7 @@ func newTestEventsHandler(t *testing.T) (*Handler, http.Handler, *service.EventS
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	svc := service.NewEventService(generated.New(db))
-	h := New(nil, svc, false)
+	h := New(nil, svc, nil, nil, false)
 	r := chi.NewRouter()
 	r.Get("/api/events", h.ListEvents)
 	r.Post("/api/events", h.CreateEvent)
@@ -39,7 +39,7 @@ func newTestEventsHandler(t *testing.T) (*Handler, http.Handler, *service.EventS
 	return h, r, svc, db
 }
 
-func eventsRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
+func httpRequest(t *testing.T, router http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
@@ -61,7 +61,7 @@ func decodeEvent(t *testing.T, rec *httptest.ResponseRecorder) eventJSON {
 
 func createViaAPI(t *testing.T, router http.Handler, title string) eventJSON {
 	t.Helper()
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"`+title+`","starts_at":"2026-10-14T09:00:00.000Z","ends_at":"2026-10-14T10:00:00.000Z"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("seed status = %d, body %s", rec.Code, rec.Body.String())
@@ -80,7 +80,7 @@ func TestListEvents_ok_orderedByStart(t *testing.T) {
 		}
 	}
 
-	rec := eventsRequest(t, router, http.MethodGet,
+	rec := httpRequest(t, router, http.MethodGet,
 		"/api/events?from=2026-10-01T00:00:00.000Z&to=2026-10-31T23:59:59.000Z", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
@@ -98,7 +98,7 @@ func TestListEvents_ok_orderedByStart(t *testing.T) {
 
 func TestListEvents_missingFrom_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodGet, "/api/events?to=2026-10-31T00:00:00Z", "")
+	rec := httpRequest(t, router, http.MethodGet, "/api/events?to=2026-10-31T00:00:00Z", "")
 
 	status, code, fields := decodeErr(t, rec)
 	if status != http.StatusBadRequest || code != "validation_error" {
@@ -111,7 +111,7 @@ func TestListEvents_missingFrom_400(t *testing.T) {
 
 func TestListEvents_invalidTo_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodGet, "/api/events?from=2026-10-01T00:00:00Z&to=soon", "")
+	rec := httpRequest(t, router, http.MethodGet, "/api/events?from=2026-10-01T00:00:00Z&to=soon", "")
 
 	_, _, fields := decodeErr(t, rec)
 	if fields["to"] != "required RFC3339 datetime" {
@@ -121,7 +121,7 @@ func TestListEvents_invalidTo_400(t *testing.T) {
 
 func TestListEvents_fromNotBeforeTo_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodGet,
+	rec := httpRequest(t, router, http.MethodGet,
 		"/api/events?from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z", "")
 
 	_, _, fields := decodeErr(t, rec)
@@ -135,7 +135,7 @@ func TestListEvents_internal_500Envelope(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE events`); err != nil {
 		t.Fatalf("drop events: %v", err)
 	}
-	rec := eventsRequest(t, router, http.MethodGet,
+	rec := httpRequest(t, router, http.MethodGet,
 		"/api/events?from=2026-10-01T00:00:00Z&to=2026-10-31T00:00:00Z", "")
 
 	status, code, _ := decodeErr(t, rec)
@@ -146,7 +146,7 @@ func TestListEvents_internal_500Envelope(t *testing.T) {
 
 func TestCreateEvent_ok_201_normalizesTimes(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"Dentist","starts_at":"2026-10-14T09:00:00.000Z","ends_at":"2026-10-14T10:00:00.000Z"}`)
 
 	if rec.Code != http.StatusCreated {
@@ -163,7 +163,7 @@ func TestCreateEvent_ok_201_normalizesTimes(t *testing.T) {
 
 func TestCreateEvent_missingTitle_400WithFields(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"","starts_at":"2026-10-14T09:00:00Z","ends_at":"2026-10-14T10:00:00Z"}`)
 
 	status, code, fields := decodeErr(t, rec)
@@ -177,7 +177,7 @@ func TestCreateEvent_missingTitle_400WithFields(t *testing.T) {
 
 func TestCreateEvent_endNotAfterStart_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"X","starts_at":"2026-10-14T10:00:00Z","ends_at":"2026-10-14T09:00:00Z"}`)
 
 	_, _, fields := decodeErr(t, rec)
@@ -188,7 +188,7 @@ func TestCreateEvent_endNotAfterStart_400(t *testing.T) {
 
 func TestCreateEvent_invalidStart_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"X","starts_at":"tomorrow","ends_at":"2026-10-14T10:00:00Z"}`)
 
 	_, _, fields := decodeErr(t, rec)
@@ -199,7 +199,7 @@ func TestCreateEvent_invalidStart_400(t *testing.T) {
 
 func TestCreateEvent_invalidEnd_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"X","starts_at":"2026-10-14T09:00:00Z","ends_at":"soon"}`)
 
 	_, _, fields := decodeErr(t, rec)
@@ -210,7 +210,7 @@ func TestCreateEvent_invalidEnd_400(t *testing.T) {
 
 func TestCreateEvent_unknownNote_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"X","starts_at":"2026-10-14T09:00:00Z","ends_at":"2026-10-14T10:00:00Z","note_id":"ghost"}`)
 
 	_, _, fields := decodeErr(t, rec)
@@ -221,7 +221,7 @@ func TestCreateEvent_unknownNote_400(t *testing.T) {
 
 func TestCreateEvent_unknownBodyField_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events",
+	rec := httpRequest(t, router, http.MethodPost, "/api/events",
 		`{"title":"X","starts_at":"2026-10-14T09:00:00Z","ends_at":"2026-10-14T10:00:00Z","color":"red"}`)
 
 	status, code, _ := decodeErr(t, rec)
@@ -232,7 +232,7 @@ func TestCreateEvent_unknownBodyField_400(t *testing.T) {
 
 func TestCreateEvent_malformedJSON_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events", `not-json`)
+	rec := httpRequest(t, router, http.MethodPost, "/api/events", `not-json`)
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusBadRequest || code != "validation_error" {
@@ -244,7 +244,7 @@ func TestUpdateEvent_ok_partialPatch(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	rec := eventsRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
+	rec := httpRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
 		`{"title":"Eye doctor","starts_at":"2026-10-15T11:00:00Z","ends_at":"2026-10-15T12:00:00Z"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
@@ -260,7 +260,7 @@ func TestUpdateEvent_ok_partialPatch(t *testing.T) {
 
 func TestUpdateEvent_missing_404(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPatch, "/api/events/ghost", `{"title":"X"}`)
+	rec := httpRequest(t, router, http.MethodPatch, "/api/events/ghost", `{"title":"X"}`)
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusNotFound || code != "not_found" {
@@ -272,7 +272,7 @@ func TestUpdateEvent_invalidStart_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	rec := eventsRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
+	rec := httpRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
 		`{"starts_at":"whenever"}`)
 	_, _, fields := decodeErr(t, rec)
 	if fields["starts_at"] != "invalid RFC3339 datetime" {
@@ -284,7 +284,7 @@ func TestUpdateEvent_invalidEnd_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	rec := eventsRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
+	rec := httpRequest(t, router, http.MethodPatch, "/api/events/"+created.ID,
 		`{"ends_at":"whenever"}`)
 	_, _, fields := decodeErr(t, rec)
 	if fields["ends_at"] != "invalid RFC3339 datetime" {
@@ -296,7 +296,7 @@ func TestUpdateEvent_malformedJSON_400(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	rec := eventsRequest(t, router, http.MethodPatch, "/api/events/"+created.ID, `not-json`)
+	rec := httpRequest(t, router, http.MethodPatch, "/api/events/"+created.ID, `not-json`)
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusBadRequest || code != "validation_error" {
 		t.Fatalf("status=%d code=%q", status, code)
@@ -307,11 +307,11 @@ func TestDeleteEvent_ok_204AndGone(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	rec := eventsRequest(t, router, http.MethodDelete, "/api/events/"+created.ID, "")
+	rec := httpRequest(t, router, http.MethodDelete, "/api/events/"+created.ID, "")
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	rec = eventsRequest(t, router, http.MethodPatch, "/api/events/"+created.ID, `{"title":"X"}`)
+	rec = httpRequest(t, router, http.MethodPatch, "/api/events/"+created.ID, `{"title":"X"}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("after delete status = %d, want 404", rec.Code)
 	}
@@ -319,7 +319,7 @@ func TestDeleteEvent_ok_204AndGone(t *testing.T) {
 
 func TestDeleteEvent_missing_204Idempotent(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodDelete, "/api/events/ghost", "")
+	rec := httpRequest(t, router, http.MethodDelete, "/api/events/ghost", "")
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
@@ -330,7 +330,7 @@ func TestDeleteEvent_internal_500Envelope(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE events`); err != nil {
 		t.Fatalf("drop events: %v", err)
 	}
-	rec := eventsRequest(t, router, http.MethodDelete, "/api/events/ghost", "")
+	rec := httpRequest(t, router, http.MethodDelete, "/api/events/ghost", "")
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusInternalServerError || code != "internal_error" {
@@ -342,10 +342,10 @@ func TestRestoreEvent_ok_200(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
 	created := createViaAPI(t, router, "Dentist")
 
-	if rec := eventsRequest(t, router, http.MethodDelete, "/api/events/"+created.ID, ""); rec.Code != http.StatusNoContent {
+	if rec := httpRequest(t, router, http.MethodDelete, "/api/events/"+created.ID, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d", rec.Code)
 	}
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events/"+created.ID+"/restore", "")
+	rec := httpRequest(t, router, http.MethodPost, "/api/events/"+created.ID+"/restore", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("restore status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -357,7 +357,7 @@ func TestRestoreEvent_ok_200(t *testing.T) {
 
 func TestRestoreEvent_missing_404(t *testing.T) {
 	_, router, _, _ := newTestEventsHandler(t)
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
+	rec := httpRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusNotFound || code != "not_found" {
@@ -370,7 +370,7 @@ func TestRestoreEvent_internal_500Envelope(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE events`); err != nil {
 		t.Fatalf("drop events: %v", err)
 	}
-	rec := eventsRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
+	rec := httpRequest(t, router, http.MethodPost, "/api/events/ghost/restore", "")
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusInternalServerError || code != "internal_error" {
@@ -383,11 +383,11 @@ func TestListEvents_trash_softDeletedOnly_noRangeNeeded(t *testing.T) {
 	keep := createViaAPI(t, router, "Keep")
 	drop := createViaAPI(t, router, "Drop")
 
-	if rec := eventsRequest(t, router, http.MethodDelete, "/api/events/"+drop.ID, ""); rec.Code != http.StatusNoContent {
+	if rec := httpRequest(t, router, http.MethodDelete, "/api/events/"+drop.ID, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d", rec.Code)
 	}
 
-	rec := eventsRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
+	rec := httpRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("trash status = %d, body %s", rec.Code, rec.Body.String())
 	}
@@ -401,7 +401,7 @@ func TestListEvents_trash_softDeletedOnly_noRangeNeeded(t *testing.T) {
 		t.Fatalf("trash data = %+v, want only %s", body.Data, drop.ID)
 	}
 
-	rec = eventsRequest(t, router, http.MethodGet,
+	rec = httpRequest(t, router, http.MethodGet,
 		"/api/events?from=2026-10-01T00:00:00.000Z&to=2026-10-31T23:59:59.000Z", "")
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode range: %v", err)
@@ -416,7 +416,7 @@ func TestListEvents_trash_internal_500Envelope(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE events`); err != nil {
 		t.Fatalf("drop events: %v", err)
 	}
-	rec := eventsRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
+	rec := httpRequest(t, router, http.MethodGet, "/api/events?trash=1", "")
 
 	status, code, _ := decodeErr(t, rec)
 	if status != http.StatusInternalServerError || code != "internal_error" {

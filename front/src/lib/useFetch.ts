@@ -37,6 +37,7 @@ export function useFetch<T>(
 
   useEffect(() => {
     let cancelled = false;
+
     api<T>(path)
       .then((res) => {
         if (!cancelled) {
@@ -44,12 +45,15 @@ export function useFetch<T>(
           setError(null);
         }
       })
+
       .catch((err: unknown) => {
         if (!cancelled) setError(isApiError(err) ? err.message : fallbackError);
       })
+
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
