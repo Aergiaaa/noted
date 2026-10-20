@@ -6,5 +6,5 @@ export default function DashboardPage() {
         Today at a glance — coming in F10.
       </p>
     </section>
-  )
+  );
 }

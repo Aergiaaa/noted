@@ -3,13 +3,16 @@
 -- dashboard's pinned card both come through here: nil means "no filter".
 SELECT *
 FROM notes
-WHERE sqlc.narg(pinned) IS NULL OR pinned = sqlc.narg(pinned)
+WHERE deleted_at IS NULL
+  AND (sqlc.narg(pinned) IS NULL OR pinned = sqlc.narg(pinned))
 ORDER BY pinned DESC, updated_at DESC;
 
 -- name: GetNote :one
+-- Soft-deleted notes are not linkable (events.note_id validation).
 SELECT *
 FROM notes
-WHERE id = ?;
+WHERE id = ?
+  AND deleted_at IS NULL;
 
 -- name: CreateNote :one
 INSERT INTO notes (id, title, body_md, pinned, created_at, updated_at)
@@ -25,8 +28,26 @@ SET title      = ?,
 WHERE id = ?
 RETURNING *;
 
--- name: DeleteNote :exec
--- Linked events.task/note links null out (ON DELETE SET NULL).
+-- name: SoftDeleteNote :exec
+UPDATE notes
+SET deleted_at = sqlc.arg(deleted_at)
+WHERE id = sqlc.arg(id)
+  AND deleted_at IS NULL;
+
+-- name: RestoreNote :one
+UPDATE notes
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING *;
+
+-- name: ListDeletedNotes :many
+SELECT *
+FROM notes
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id;
+
+-- name: PurgeNotesDeletedBefore :execrows
 DELETE
 FROM notes
-WHERE id = ?;
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < sqlc.arg(cutoff);

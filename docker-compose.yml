@@ -13,7 +13,7 @@ services:
     healthcheck:
       # Hardcoded :8080 — must match ADDR in .env.
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
-      interval: 10s
+      interval: 1m
       timeout: 3s
       retries: 3
       start_period: 5s

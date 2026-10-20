@@ -20,6 +20,7 @@ type Event struct {
 	NoteID      *string
 	CreatedAt   string
 	UpdatedAt   string
+	DeletedAt   *string
 }
 
 type Note struct {
@@ -29,6 +30,7 @@ type Note struct {
 	Pinned    int64
 	CreatedAt string
 	UpdatedAt string
+	DeletedAt *string
 }
 
 type RecoveryCode struct {
@@ -57,6 +59,7 @@ type Task struct {
 	CreatedAt   string
 	UpdatedAt   string
 	CompletedAt *string
+	DeletedAt   *string
 }
 
 type Transaction struct {
@@ -70,4 +73,5 @@ type Transaction struct {
 	EventID     *string
 	NoteID      *string
 	CreatedAt   string
+	DeletedAt   *string
 }

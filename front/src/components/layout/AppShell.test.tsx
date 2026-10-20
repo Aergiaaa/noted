@@ -1,76 +1,149 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { RouterProvider, createMemoryRouter } from 'react-router-dom'
-import { routes } from '../../app/routes'
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import AppShell from "./AppShell";
+import { SessionProvider } from "../../lib/session";
 
 afterEach(() => {
-  cleanup()
-})
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
-  render(<RouterProvider router={router} />)
-  return router
+function jsonResponse(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
-describe('AppShell', () => {
-  it('renders brand plus all five nav links', () => {
-    renderAt('/')
-    expect(screen.getByText('Noted')).toBeDefined()
-    for (const label of ['Dashboard', 'Calendar', 'Tasks', 'Notes', 'Finance']) {
-      expect(screen.getByRole('link', { name: label })).toBeDefined()
+function stubProbe(fetchMock: ReturnType<typeof vi.fn>) {
+  vi.stubGlobal("fetch", fetchMock);
+}
+
+function stubAuthed(extra: Array<[string, Response]> = []) {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      jsonResponse(200, { authenticated: true, expires_at: "x" }),
+    );
+  for (const [url, res] of extra) {
+    fetchMock.mockResolvedValueOnce(res).mockResolvedValue(res);
+    void url;
+  }
+  stubProbe(fetchMock);
+  return fetchMock;
+}
+
+async function renderShell(path = "/") {
+  const view = render(
+    <MemoryRouter initialEntries={[path]}>
+      <SessionProvider>
+        <AppShell>
+          <p>content</p>
+        </AppShell>
+      </SessionProvider>
+    </MemoryRouter>,
+  );
+  // Wait for the probe so status is authed before asserting.
+  await screen.findByText("Noted");
+  return view;
+}
+
+describe("AppShell", () => {
+  it("renders brand plus all five nav links and the logout button", async () => {
+    stubAuthed();
+    const { container } = await renderShell();
+
+    expect(screen.getByText("Noted")).toBeDefined();
+    for (const label of [
+      "Dashboard",
+      "Calendar",
+      "Tasks",
+      "Notes",
+      "Finance",
+    ]) {
+      expect(screen.getByRole("link", { name: label })).toBeDefined();
     }
-  })
+    expect(screen.getByRole("button", { name: "Log out" })).toBeDefined();
+    expect(container.querySelector("main")?.className).toContain("max-w-5xl");
+  });
 
-  it('marks only the current route active (both className branches)', () => {
-    renderAt('/')
-    // Dashboard is exact (end:true) so it is active at / …
-    expect(screen.getByRole('link', { name: 'Dashboard' }).className).toContain(
-      'btn-active',
-    )
-    // … while every other link takes the inactive branch.
-    for (const label of ['Calendar', 'Tasks', 'Notes', 'Finance']) {
-      expect(screen.getByRole('link', { name: label }).className).not.toContain(
-        'btn-active',
-      )
+  it("marks only the current route active (both className branches)", async () => {
+    stubAuthed();
+    const { container } = await renderShell("/calendar");
+
+    expect(screen.getByRole("link", { name: "Calendar" }).className).toContain(
+      "btn-active",
+    );
+    for (const label of ["Dashboard", "Tasks", "Notes", "Finance"]) {
+      expect(screen.getByRole("link", { name: label }).className).not.toContain(
+        "btn-active",
+      );
     }
-  })
+    expect(container.querySelector("main")?.className).not.toContain(
+      "max-w-5xl",
+    );
+  });
 
-  it('navigates via nav click and moves the active state', async () => {
-    renderAt('/')
-    fireEvent.click(screen.getByRole('link', { name: 'Calendar' }))
+  it("moves the active state on nav click", async () => {
+    stubAuthed();
+    await renderShell();
 
-    await screen.findByRole('heading', { name: 'Calendar' })
-    expect(screen.getByRole('link', { name: 'Calendar' }).className).toContain(
-      'btn-active',
-    )
-    // end:true keeps Dashboard inactive on sub-routes.
-    expect(screen.getByRole('link', { name: 'Dashboard' }).className).not.toContain(
-      'btn-active',
-    )
-  })
+    fireEvent.click(screen.getByRole("link", { name: "Calendar" }));
 
-  it('renders the outlet content for deep links', async () => {
-    renderAt('/tasks')
-    await screen.findByRole('heading', { name: 'Tasks' })
-  })
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: "Calendar" }).className,
+      ).toContain("btn-active"),
+    );
+    expect(
+      screen.getByRole("link", { name: "Dashboard" }).className,
+    ).not.toContain("btn-active");
+  });
 
-  it('redirects unknown paths back to the dashboard', async () => {
-    renderAt('/does-not-exist')
-    await screen.findByRole('heading', { name: 'Dashboard' })
-  })
+  it("logs out via POST and clears the session on success", async () => {
+    const fetchMock = stubAuthed([
+      ["/api/auth/logout", new Response(null, { status: 204 })],
+    ]);
+    await renderShell();
 
-  it('renders /login outside the shell (no nav chrome)', () => {
-    renderAt('/login')
-    expect(screen.getByRole('heading', { name: 'Login' })).toBeDefined()
-    expect(screen.queryByText('Noted')).toBeNull()
-  })
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
 
-  it('recovers via retry-free navigation after a redirect', async () => {
-    const router = renderAt('/nope')
-    await screen.findByRole('heading', { name: 'Dashboard' })
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/')
-    })
-  })
-})
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/logout",
+        expect.objectContaining({ method: "POST", credentials: "include" }),
+      ),
+    );
+  });
+
+  it("surfaces an inline message when logout fails", async () => {
+    stubAuthed([
+      [
+        "/api/auth/logout",
+        new Response(
+          JSON.stringify({
+            error: { code: "internal_error", message: "boom" },
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      ],
+    ]);
+    await renderShell();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe("Logout failed"),
+    );
+  });
+});

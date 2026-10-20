@@ -12,7 +12,7 @@ import (
 const createNote = `-- name: CreateNote :one
 INSERT INTO notes (id, title, body_md, pinned, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, title, body_md, pinned, created_at, updated_at
+RETURNING id, title, body_md, pinned, created_at, updated_at, deleted_at
 `
 
 type CreateNoteParams struct {
@@ -41,28 +41,19 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		&i.Pinned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const deleteNote = `-- name: DeleteNote :exec
-DELETE
-FROM notes
-WHERE id = ?
-`
-
-// Linked events.task/note links null out (ON DELETE SET NULL).
-func (q *Queries) DeleteNote(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteNote, id)
-	return err
-}
-
 const getNote = `-- name: GetNote :one
-SELECT id, title, body_md, pinned, created_at, updated_at
+SELECT id, title, body_md, pinned, created_at, updated_at, deleted_at
 FROM notes
 WHERE id = ?
+  AND deleted_at IS NULL
 `
 
+// Soft-deleted notes are not linkable (events.note_id validation).
 func (q *Queries) GetNote(ctx context.Context, id string) (Note, error) {
 	row := q.db.QueryRowContext(ctx, getNote, id)
 	var i Note
@@ -73,14 +64,54 @@ func (q *Queries) GetNote(ctx context.Context, id string) (Note, error) {
 		&i.Pinned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const listNotes = `-- name: ListNotes :many
-SELECT id, title, body_md, pinned, created_at, updated_at
+const listDeletedNotes = `-- name: ListDeletedNotes :many
+SELECT id, title, body_md, pinned, created_at, updated_at, deleted_at
 FROM notes
-WHERE ?1 IS NULL OR pinned = ?1
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id
+`
+
+func (q *Queries) ListDeletedNotes(ctx context.Context) ([]Note, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedNotes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Note{}
+	for rows.Next() {
+		var i Note
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.BodyMd,
+			&i.Pinned,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotes = `-- name: ListNotes :many
+SELECT id, title, body_md, pinned, created_at, updated_at, deleted_at
+FROM notes
+WHERE deleted_at IS NULL
+  AND (?1 IS NULL OR pinned = ?1)
 ORDER BY pinned DESC, updated_at DESC
 `
 
@@ -102,6 +133,7 @@ func (q *Queries) ListNotes(ctx context.Context, pinned interface{}) ([]Note, er
 			&i.Pinned,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -116,6 +148,60 @@ func (q *Queries) ListNotes(ctx context.Context, pinned interface{}) ([]Note, er
 	return items, nil
 }
 
+const purgeNotesDeletedBefore = `-- name: PurgeNotesDeletedBefore :execrows
+DELETE
+FROM notes
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < ?1
+`
+
+func (q *Queries) PurgeNotesDeletedBefore(ctx context.Context, cutoff *string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeNotesDeletedBefore, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const restoreNote = `-- name: RestoreNote :one
+UPDATE notes
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING id, title, body_md, pinned, created_at, updated_at, deleted_at
+`
+
+func (q *Queries) RestoreNote(ctx context.Context, id string) (Note, error) {
+	row := q.db.QueryRowContext(ctx, restoreNote, id)
+	var i Note
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.BodyMd,
+		&i.Pinned,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const softDeleteNote = `-- name: SoftDeleteNote :exec
+UPDATE notes
+SET deleted_at = ?1
+WHERE id = ?2
+  AND deleted_at IS NULL
+`
+
+type SoftDeleteNoteParams struct {
+	DeletedAt *string
+	ID        string
+}
+
+func (q *Queries) SoftDeleteNote(ctx context.Context, arg SoftDeleteNoteParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteNote, arg.DeletedAt, arg.ID)
+	return err
+}
+
 const updateNote = `-- name: UpdateNote :one
 UPDATE notes
 SET title      = ?,
@@ -123,7 +209,7 @@ SET title      = ?,
     pinned     = ?,
     updated_at = ?
 WHERE id = ?
-RETURNING id, title, body_md, pinned, created_at, updated_at
+RETURNING id, title, body_md, pinned, created_at, updated_at, deleted_at
 `
 
 type UpdateNoteParams struct {
@@ -150,6 +236,7 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, e
 		&i.Pinned,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

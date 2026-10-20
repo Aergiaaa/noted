@@ -201,6 +201,26 @@ func TestRouter_guardedRoute_401WithoutSession(t *testing.T) {
 	}
 }
 
+func TestRouter_eventsRoutes_requireSession(t *testing.T) {
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/events"},
+		{http.MethodPost, "/api/events"},
+		{http.MethodPatch, "/api/events/abc"},
+		{http.MethodDelete, "/api/events/abc"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
+			rec := httptest.NewRecorder()
+
+			newTestApp(t, Config{}).newRouter().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401 (RequireSession)", rec.Code)
+			}
+		})
+	}
+}
+
 func TestRouter_logout_isPublic_204(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	rec := httptest.NewRecorder()

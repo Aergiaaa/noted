@@ -13,6 +13,7 @@ const balanceSums = `-- name: BalanceSums :one
 SELECT CAST(COALESCE(SUM(CASE WHEN kind = 'income' THEN amount_cents ELSE 0 END), 0) AS INTEGER)  AS income_cents,
        CAST(COALESCE(SUM(CASE WHEN kind = 'expense' THEN amount_cents ELSE 0 END), 0) AS INTEGER) AS expense_cents
 FROM transactions
+WHERE deleted_at IS NULL
 `
 
 type BalanceSumsRow struct {
@@ -21,6 +22,7 @@ type BalanceSumsRow struct {
 }
 
 // Derived balance: no stored total anywhere (ARCHITECTURE.md D4).
+// Soft-deleted (voided) transactions drop out of the sums on read.
 func (q *Queries) BalanceSums(ctx context.Context) (BalanceSumsRow, error) {
 	row := q.db.QueryRowContext(ctx, balanceSums)
 	var i BalanceSumsRow
@@ -32,7 +34,7 @@ const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id,
                           note_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at
+RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
 `
 
 type CreateTransactionParams struct {
@@ -73,25 +75,16 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.EventID,
 		&i.NoteID,
 		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const deleteTransaction = `-- name: DeleteTransaction :exec
-DELETE
-FROM transactions
-WHERE id = ?
-`
-
-func (q *Queries) DeleteTransaction(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteTransaction, id)
-	return err
-}
-
 const getTransaction = `-- name: GetTransaction :one
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at
+SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
 FROM transactions
 WHERE id = ?
+  AND deleted_at IS NULL
 `
 
 func (q *Queries) GetTransaction(ctx context.Context, id string) (Transaction, error) {
@@ -108,13 +101,72 @@ func (q *Queries) GetTransaction(ctx context.Context, id string) (Transaction, e
 		&i.EventID,
 		&i.NoteID,
 		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const recentTransactions = `-- name: RecentTransactions :many
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at
+const listDeletedTransactions = `-- name: ListDeletedTransactions :many
+SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
 FROM transactions
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id
+`
+
+func (q *Queries) ListDeletedTransactions(ctx context.Context) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedTransactions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Transaction{}
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.AmountCents,
+			&i.Currency,
+			&i.OccurredOn,
+			&i.Memo,
+			&i.TaskID,
+			&i.EventID,
+			&i.NoteID,
+			&i.CreatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const purgeTransactionsDeletedBefore = `-- name: PurgeTransactionsDeletedBefore :execrows
+DELETE
+FROM transactions
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < ?1
+`
+
+func (q *Queries) PurgeTransactionsDeletedBefore(ctx context.Context, cutoff *string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeTransactionsDeletedBefore, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const recentTransactions = `-- name: RecentTransactions :many
+SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+FROM transactions
+WHERE deleted_at IS NULL
 ORDER BY occurred_on DESC, id DESC
 LIMIT ?
 `
@@ -140,6 +192,7 @@ func (q *Queries) RecentTransactions(ctx context.Context, limit int64) ([]Transa
 			&i.EventID,
 			&i.NoteID,
 			&i.CreatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -155,10 +208,11 @@ func (q *Queries) RecentTransactions(ctx context.Context, limit int64) ([]Transa
 }
 
 const recentTransactionsBefore = `-- name: RecentTransactionsBefore :many
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at
+SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
 FROM transactions
-WHERE occurred_on < ?1
-   OR (occurred_on = ?1 AND id < ?2)
+WHERE deleted_at IS NULL
+  AND (occurred_on < ?1
+       OR (occurred_on = ?1 AND id < ?2))
 ORDER BY occurred_on DESC, id DESC
 LIMIT ?3
 `
@@ -190,6 +244,7 @@ func (q *Queries) RecentTransactionsBefore(ctx context.Context, arg RecentTransa
 			&i.EventID,
 			&i.NoteID,
 			&i.CreatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -204,6 +259,49 @@ func (q *Queries) RecentTransactionsBefore(ctx context.Context, arg RecentTransa
 	return items, nil
 }
 
+const restoreTransaction = `-- name: RestoreTransaction :one
+UPDATE transactions
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+`
+
+func (q *Queries) RestoreTransaction(ctx context.Context, id string) (Transaction, error) {
+	row := q.db.QueryRowContext(ctx, restoreTransaction, id)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.AmountCents,
+		&i.Currency,
+		&i.OccurredOn,
+		&i.Memo,
+		&i.TaskID,
+		&i.EventID,
+		&i.NoteID,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const softDeleteTransaction = `-- name: SoftDeleteTransaction :exec
+UPDATE transactions
+SET deleted_at = ?1
+WHERE id = ?2
+  AND deleted_at IS NULL
+`
+
+type SoftDeleteTransactionParams struct {
+	DeletedAt *string
+	ID        string
+}
+
+func (q *Queries) SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTransactionParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteTransaction, arg.DeletedAt, arg.ID)
+	return err
+}
+
 const updateTransaction = `-- name: UpdateTransaction :one
 UPDATE transactions
 SET kind        = ?,
@@ -216,7 +314,7 @@ SET kind        = ?,
     note_id      = ?,
     created_at   = ?
 WHERE id = ?
-RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at
+RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
 `
 
 type UpdateTransactionParams struct {
@@ -258,6 +356,7 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.EventID,
 		&i.NoteID,
 		&i.CreatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }

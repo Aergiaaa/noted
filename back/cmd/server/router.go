@@ -49,12 +49,18 @@ func (a *app) newRouter() http.Handler {
 		r.Post("/auth/logout", a.handler.Logout)
 		r.Get("/session", a.handler.Session)
 
-		// Domain routes (events/notes/tasks/finance/dashboard, F6+) join
-		// this group.
+		// Domain routes (notes/tasks/finance/dashboard, F7+) join this
+		// group.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireSession(a.auth, a.secure))
 
 			r.Post("/auth/recovery-codes", a.handler.RecoveryCodes)
+
+			r.Get("/events", a.handler.ListEvents)
+			r.Post("/events", a.handler.CreateEvent)
+			r.Patch("/events/{id}", a.handler.UpdateEvent)
+			r.Delete("/events/{id}", a.handler.DeleteEvent)
+			r.Post("/events/{id}/restore", a.handler.RestoreEvent)
 		})
 	})
 
