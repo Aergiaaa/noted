@@ -49,8 +49,8 @@ func (a *app) newRouter() http.Handler {
 		r.Post("/auth/logout", a.handler.Logout)
 		r.Get("/session", a.handler.Session)
 
-		// Domain routes (notes/tasks/finance/dashboard, F7+) join this
-		// group.
+		// Domain routes (finance + dashboard join in F8/F10) live in
+		// this group, behind the session guard.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireSession(a.auth, a.secure))
 
@@ -61,6 +61,16 @@ func (a *app) newRouter() http.Handler {
 			r.Patch("/events/{id}", a.handler.UpdateEvent)
 			r.Delete("/events/{id}", a.handler.DeleteEvent)
 			r.Post("/events/{id}/restore", a.handler.RestoreEvent)
+
+			r.Get("/notes", a.handler.ListNotes)
+			r.Post("/notes", a.handler.CreateNote)
+			r.Patch("/notes/{id}", a.handler.UpdateNote)
+			r.Delete("/notes/{id}", a.handler.DeleteNote)
+
+			r.Get("/tasks", a.handler.ListTasks)
+			r.Post("/tasks", a.handler.CreateTask)
+			r.Patch("/tasks/{id}", a.handler.UpdateTask)
+			r.Delete("/tasks/{id}", a.handler.DeleteTask)
 		})
 	})
 

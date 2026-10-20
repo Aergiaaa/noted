@@ -7,9 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 
@@ -237,7 +235,7 @@ func (s *EventService) validate(ctx context.Context, in EventInput) error {
 }
 
 // validateNoteLink records "unknown note" for a non-empty link id; a
-// storage failure aborts validation with the raw error (writeEventError
+// storage failure aborts validation with the raw error (writeServiceError
 // maps it to the generic 500).
 func (s *EventService) validateNoteLink(ctx context.Context, fields map[string]string, noteID *string) error {
 	id := normalizeID(noteID)
@@ -306,8 +304,9 @@ func parseStored(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
-// normalizeID: an empty string means "no link", matching the
-// nullable-FK shape the frontend omits when unlinked.
+// normalizeID: an empty string means "no value" — a cleared link or
+// due_date, matching the nullable-FK shape the frontend sends when it
+// unlinks ("" clears, absent/null keeps).
 func normalizeID(id *string) *string {
 	if id != nil && *id == "" {
 		return nil
@@ -326,46 +325,4 @@ func fromRow(row generated.Event) Event {
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}
-}
-
-// sanitizeLine: strip every control character (tabs included) and trim
-// the edges — a title is a single opaque line (DOMAIN.md lengths still
-// apply after sanitizing).
-func sanitizeLine(s string) string {
-	return strings.TrimSpace(strings.Map(dropControl, s))
-}
-
-// sanitizeBody: newlines and tabs survive; CRLF and lone CR normalize to
-// LF first so stored bodies never carry Windows line endings.
-func sanitizeBody(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	return strings.TrimSpace(strings.Map(dropControlKeepBreaks, s))
-}
-
-// sanitizeDescription: nil in, nil out; a body that reduces to "" (only
-// controls/whitespace) becomes "no description" rather than "".
-func sanitizeDescription(d *string) *string {
-	if d == nil {
-		return nil
-	}
-	clean := sanitizeBody(*d)
-	if clean == "" {
-		return nil
-	}
-	return &clean
-}
-
-func dropControl(r rune) rune {
-	if unicode.IsControl(r) {
-		return -1
-	}
-	return r
-}
-
-func dropControlKeepBreaks(r rune) rune {
-	if unicode.IsControl(r) && r != '\n' && r != '\t' {
-		return -1
-	}
-	return r
 }

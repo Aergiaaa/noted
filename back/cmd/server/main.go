@@ -97,21 +97,31 @@ func (a *app) wire(db *sql.DB) {
 
 	queries := generated.New(db)
 	events := service.NewEventService(queries)
+	notes := service.NewNoteService(queries)
+	tasks := service.NewTaskService(queries)
 
 	a.handler = handler.New(
 		a.auth,
 		events,
+		notes,
+		tasks,
 		a.secure,
 	)
 	a.bootAuth(context.Background())
-	a.bootPurge(context.Background(), events)
+	a.bootPurge(context.Background(), events, notes, tasks)
 }
 
-// bootPurge removes soft-deleted rows past retention (DOMAIN.md 30d).
-// Failures log instead of blocking boot, like bootAuth.
-func (a *app) bootPurge(ctx context.Context, events *service.EventService) {
+// bootPurge removes soft-deleted rows past retention (DOMAIN.md 30d) for
+// every domain table. Failures log instead of blocking boot, like bootAuth.
+func (a *app) bootPurge(ctx context.Context, events *service.EventService, notes *service.NoteService, tasks *service.TaskService) {
 	if _, err := events.Purge(ctx, time.Now()); err != nil {
 		log.Printf("error purging soft-deleted events: %v", err)
+	}
+	if _, err := notes.Purge(ctx, time.Now()); err != nil {
+		log.Printf("error purging soft-deleted notes: %v", err)
+	}
+	if _, err := tasks.Purge(ctx, time.Now()); err != nil {
+		log.Printf("error purging soft-deleted tasks: %v", err)
 	}
 }
 

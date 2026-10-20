@@ -22,14 +22,14 @@ export function sanitizeBody(raw: string): string {
 
 function stripControls(raw: string, keepBreaks = false): string {
   let out = "";
-  for (const ch of raw) {
-    const code = ch.charCodeAt(0);
-    if (code <= C0_MAX) {
-      if (keepBreaks && (code === TAB || code === LF)) out += ch;
+  for (const rc of raw) {
+    const hex = rc.charCodeAt(0);
+    if (hex <= C0_MAX) {
+      if (keepBreaks && (hex === TAB || hex === LF)) out += rc;
       continue;
     }
-    if (code >= DEL_AND_C1_MIN && code <= C1_MAX) continue;
-    out += ch;
+    if (hex >= DEL_AND_C1_MIN && hex <= C1_MAX) continue;
+    out += rc;
   }
   return out;
 }

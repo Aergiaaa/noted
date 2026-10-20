@@ -3,7 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+
+	"noted/internal/service"
 )
 
 // Error is the frozen error envelope inner object (API.md).
@@ -77,4 +80,26 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+// writeServiceError maps service failures onto the frozen envelope:
+// ValidationError → 400 with its fields, ErrNotFound → 404, anything
+// else → a generic 500 with the detail in the server log only (API.md).
+func writeServiceError(w http.ResponseWriter, err error, op string) {
+	var validation *service.ValidationError
+
+	switch {
+	case errors.As(err, &validation):
+		WriteError(w, http.StatusBadRequest, "", validation.Fields)
+	case errors.Is(err, service.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "", nil)
+	default:
+		log.Printf("handler: %s: %v", op, err)
+		WriteError(w, http.StatusInternalServerError, "", nil)
+	}
+}
+
+// writeFieldError is the single-field validation_error case (API.md).
+func writeFieldError(w http.ResponseWriter, field, message string) {
+	WriteError(w, http.StatusBadRequest, "", map[string]string{field: message})
 }

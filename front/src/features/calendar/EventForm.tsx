@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, isApiError, type Event } from "../../lib/api";
+import { api, errorLines, type Event } from "../../lib/api";
 import { toLocalInput } from "../../lib/format";
 import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
@@ -68,7 +68,7 @@ export default function EventForm({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      setErrors(saveErrorLines(err));
+      setErrors(errorLines(err, SAVE_FAILED));
     } finally {
       setSaving(false);
     }
@@ -82,7 +82,7 @@ export default function EventForm({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      setErrors(saveErrorLines(err));
+      setErrors(errorLines(err, SAVE_FAILED));
       setConfirming(false);
     } finally {
       setSaving(false);
@@ -236,18 +236,6 @@ export default function EventForm({
       </form>
     </Modal>
   );
-}
-
-// Server envelope fields (API.md validation_error) become "field: message";
-// anything else falls back to the generic save failure.
-function saveErrorLines(err: unknown): string[] {
-  if (!isApiError(err)) return [SAVE_FAILED];
-  if (err.fields !== undefined) {
-    return Object.entries(err.fields).map(
-      ([field, message]) => `${field}: ${message}`,
-    );
-  }
-  return [err.message];
 }
 
 function plusHour(instant: Date): Date {

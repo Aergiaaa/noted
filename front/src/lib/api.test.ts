@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, isApiError, type ApiError } from "./api";
+import { api, errorLines, isApiError, type ApiError } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -212,5 +212,36 @@ describe("isApiError", () => {
     expect(isApiError(new TypeError("network down"))).toBe(false);
     expect(isApiError(null)).toBe(false);
     expect(isApiError("boom")).toBe(false);
+  });
+});
+
+describe("errorLines", () => {
+  it("prefers validation fields as field: message lines", () => {
+    expect(
+      errorLines(
+        {
+          status: 400,
+          code: "validation_error",
+          message: "validation failed",
+          fields: { title: "required", due_date: "must be YYYY-MM-DD" },
+        },
+        "fallback",
+      ),
+    ).toEqual(["title: required", "due_date: must be YYYY-MM-DD"]);
+  });
+
+  it("falls back to the API message without fields", () => {
+    expect(
+      errorLines(
+        { status: 500, code: "internal_error", message: "server exploded" },
+        "fallback",
+      ),
+    ).toEqual(["server exploded"]);
+  });
+
+  it("uses the caller's fallback for non-API errors", () => {
+    expect(errorLines(new TypeError("boom"), "Couldn't load.")).toEqual([
+      "Couldn't load.",
+    ]);
   });
 });
