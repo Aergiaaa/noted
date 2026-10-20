@@ -268,6 +268,55 @@ describe("WeekTimeGrid", () => {
     ).not.toContain("opacity-100");
   });
 
+  it("reveals a covered affordance only in the hovered day's column", () => {
+    const mon = event(
+      "e1",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 12, 12),
+    );
+    const tue = event(
+      "e2",
+      localISO(2026, 10, 13, 10),
+      localISO(2026, 10, 13, 12),
+    );
+    const { container } = renderGrid([mon, tue]);
+    const monday = stubDayRow(container, 0);
+    const tuesday = stubDayRow(container, 1);
+
+    fireEvent.mouseMove(monday, { clientX: 11 * 60 + 30 });
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Mon 12 at 11:00']",
+        ),
+      ),
+    ).toContain("opacity-100");
+    // Same hour, other column: the dayIndex half of hoverCell must hold it shut.
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Tue 13 at 11:00']",
+        ),
+      ),
+    ).not.toContain("opacity-100");
+
+    fireEvent.mouseMove(tuesday, { clientX: 11 * 60 + 30 });
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Tue 13 at 11:00']",
+        ),
+      ),
+    ).toContain("opacity-100");
+    expect(
+      classNameTokens(
+        container.querySelector(
+          "button[aria-label='Add event on Mon 12 at 11:00']",
+        ),
+      ),
+    ).not.toContain("opacity-100");
+  });
+
   it("stretches rows and slots to fill the available height", () => {
     const { container } = renderGrid([]);
     // Rows and the grid root flex into the scroller's height; slots fill
