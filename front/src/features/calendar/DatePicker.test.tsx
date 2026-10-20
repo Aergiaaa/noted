@@ -75,6 +75,25 @@ describe("DatePicker", () => {
     expect(document.querySelector("calendar-date")).toBeNull();
   });
 
+  it("closes the panel on Escape without the event reaching window", () => {
+    const { getByLabelText } = render(
+      <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,
+    );
+    const trigger = getByLabelText("Starts");
+    fireEvent.click(trigger);
+    expect(document.querySelector("calendar-date")).toBeTruthy();
+
+    // Modal listens for Esc on window; a leak would close the whole form.
+    const onWindowKey = vi.fn();
+    window.addEventListener("keydown", onWindowKey);
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    window.removeEventListener("keydown", onWindowKey);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector("calendar-date")).toBeNull();
+    expect(onWindowKey).not.toHaveBeenCalled();
+  });
+
   it("renders the open picker in a portal on body, outside the field", () => {
     const { container, getByLabelText, getByTestId } = render(
       <DatePicker label="Starts" value={VALUE} onChange={() => {}} />,

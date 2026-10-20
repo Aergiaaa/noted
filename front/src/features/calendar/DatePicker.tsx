@@ -61,6 +61,14 @@ export default function DatePicker({
       aria-label={label}
       aria-expanded={open}
       onClick={toggle}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          // Close the panel only — Modal's window-level Esc would close
+          // the whole form (TimeInput guards the same way).
+          e.stopPropagation();
+          setOpen(false);
+        }
+      }}
     >
       {formatDate(fromDayKey(date))}
       {open &&
