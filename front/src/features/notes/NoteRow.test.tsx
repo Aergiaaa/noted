@@ -27,6 +27,15 @@ describe("NoteRow", () => {
     expect(onOpen).toHaveBeenCalledWith(target);
   });
 
+  it("opens the note from the Edit button", () => {
+    const onOpen = vi.fn();
+    const target = note();
+    render(<NoteRow note={target} onOpen={onOpen} onTogglePin={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(onOpen).toHaveBeenCalledWith(target);
+  });
+
   it("toggles pin state from the row button", () => {
     const onTogglePin = vi.fn();
     const target = note({ pinned: false });

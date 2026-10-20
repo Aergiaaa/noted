@@ -76,6 +76,14 @@ describe("TaskRow", () => {
     expect(onOpen).toHaveBeenCalledWith(target);
   });
 
+  it("opens the task from the Edit button", () => {
+    const target = task();
+    const { onOpen } = renderRow(target);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(onOpen).toHaveBeenCalledWith(target);
+  });
+
   it("renders the due day on both the mobile line and the desktop cell", () => {
     renderRow(task({ due_date: "2026-10-20" }));
     expect(screen.getAllByText("2026-10-20")).toHaveLength(2);

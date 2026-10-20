@@ -21,14 +21,23 @@ export default function NoteRow({ note, onOpen, onTogglePin }: NoteRowProps) {
         >
           {note.title}
         </button>
-        <button
-          type="button"
-          className={`btn btn-ghost btn-sm ${note.pinned ? "btn-active" : ""}`}
-          aria-pressed={note.pinned}
-          onClick={() => onTogglePin(note)}
-        >
-          {note.pinned ? "Unpin" : "Pin"}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => onOpen(note)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className={`btn btn-ghost btn-sm ${note.pinned ? "btn-active" : ""}`}
+            aria-pressed={note.pinned}
+            onClick={() => onTogglePin(note)}
+          >
+            {note.pinned ? "Unpin" : "Pin"}
+          </button>
+        </div>
       </div>
       <div className="mt-2 max-h-24 overflow-hidden text-base-content/70">
         <NoteBody body={note.body_md} />

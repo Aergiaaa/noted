@@ -35,6 +35,13 @@ export default function TaskRow({
           >
             {done ? "Reopen" : "Complete"}
           </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => onOpen(task)}
+          >
+            Edit
+          </button>
         </div>
       </td>
       <td>
