@@ -1,15 +1,17 @@
 // Local-time week math for the time grid (Monday-start weeks, UI.md).
 
+const DAYS_PER_WEEK = 7;
+
 // Monday 00:00:00.000 local of the week containing date.
 export function startOfWeek(date: Date): Date {
-  const back = (date.getDay() + 6) % 7;
+  const back = (date.getDay() + DAYS_PER_WEEK - 1) % DAYS_PER_WEEK;
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() - back);
 }
 
 // The seven local days Mon..Sun starting at weekStart.
 export function weekDays(weekStart: Date): Date[] {
   return Array.from(
-    { length: 7 },
+    { length: DAYS_PER_WEEK },
     (_, i) =>
       new Date(
         weekStart.getFullYear(),
@@ -24,7 +26,7 @@ export function weekBounds(weekStart: Date): [string, string] {
   const to = new Date(
     weekStart.getFullYear(),
     weekStart.getMonth(),
-    weekStart.getDate() + 6,
+    weekStart.getDate() + DAYS_PER_WEEK - 1,
     23,
     59,
     59,
@@ -38,7 +40,7 @@ export function addWeeks(date: Date, weeks: number): Date {
   return new Date(
     date.getFullYear(),
     date.getMonth(),
-    date.getDate() + weeks * 7,
+    date.getDate() + weeks * DAYS_PER_WEEK,
   );
 }
 

@@ -8,10 +8,11 @@ import {
 } from "../../lib/format";
 import { getDayLayout, type PlacedEvent } from "./weekLayout";
 
-const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-const NOW_TICK_MS = 60000;
-const MIN_PER_DAY = 1440;
 const HOURS_PER_DAY = 24;
+const MIN_PER_HOUR = 60;
+const MIN_PER_DAY = HOURS_PER_DAY * MIN_PER_HOUR;
+const NOW_TICK_MS = 60000;
+const HOURS = Array.from({ length: HOURS_PER_DAY }, (_, hour) => hour);
 
 interface WeekTimeGridProps {
   days: Date[];
@@ -48,7 +49,7 @@ export default function WeekTimeGrid({
 
   const dayLayouts = days.map((day) => getDayLayout(events, day));
   const nowKey = toDayKey(now);
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = now.getHours() * MIN_PER_HOUR + now.getMinutes();
 
   return (
     <div className="flex min-w-300 flex-1 flex-col">
@@ -164,8 +165,8 @@ export default function WeekTimeGrid({
 function isHourCovered(block: PlacedEvent, hour: number): boolean {
   return (
     block.laneCount === 1 &&
-    block.startMin <= hour * 60 &&
-    block.endMin >= (hour + 1) * 60
+    block.startMin <= hour * MIN_PER_HOUR &&
+    block.endMin >= (hour + 1) * MIN_PER_HOUR
   );
 }
 
