@@ -165,7 +165,7 @@ export default function CalendarPage() {
           )}
         </aside>
         <div className="min-w-0 flex-1">
-          <div className="calendar-scroll flex h-[calc(100vh-9rem)] flex-col overflow-auto rounded-lg border border-base-300 bg-base-200">
+          <div className="calendar-scroll flex h-calendar flex-col overflow-auto rounded-lg border border-base-300 bg-base-200">
             <div
               key={toDayKey(weekStart)}
               className={`flex flex-1 flex-col ${cursor.dir === 1 ? "week-slide-fwd" : "week-slide-back"}`}

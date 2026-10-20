@@ -77,13 +77,13 @@ export default function DatePicker({
           <>
             <div
               data-testid="picker-backdrop"
-              className="fixed inset-0 z-[1000]"
+              className="fixed inset-0 z-1000"
               aria-hidden="true"
               onClick={() => setOpen(false)}
             />
             <div
               data-testid="picker-panel"
-              className="fixed z-[1001] w-72 rounded-md border border-base-300 bg-base-200 p-2"
+              className="fixed z-1001 w-72 rounded-md border border-base-300 bg-base-200 p-2"
               style={{ top: pos.top, left: pos.left }}
               onClick={(e) => e.stopPropagation()}
             >

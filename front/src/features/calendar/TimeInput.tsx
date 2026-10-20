@@ -87,13 +87,13 @@ export default function TimeInput({
           <>
             <div
               data-testid="time-menu-backdrop"
-              className="fixed inset-0 z-[1199]"
+              className="fixed inset-0 z-1199"
               aria-hidden="true"
               onMouseDown={() => setOpen(false)}
             />
             <ul
               data-testid="time-menu"
-              className="fixed z-[1200] max-h-44 w-16 overflow-auto rounded-md border border-base-300 bg-base-200 p-1 shadow"
+              className="fixed z-1200 max-h-44 w-16 overflow-auto rounded-md border border-base-300 bg-base-200 p-1 shadow"
               style={{ top: pos.top, left: pos.left }}
               // Keep the input focused: a blur would close the menu before
               // the option's click lands.

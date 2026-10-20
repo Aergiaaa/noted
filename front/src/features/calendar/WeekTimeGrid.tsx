@@ -51,7 +51,7 @@ export default function WeekTimeGrid({
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
   return (
-    <div className="flex min-w-[1200px] flex-1 flex-col">
+    <div className="flex min-w-300 flex-1 flex-col">
       {/* Literal grid-cols: Tailwind can't see interpolated classes. The
           header's 5rem label column matches the rows' w-20, so the 24 hour
           columns line up exactly. */}
@@ -66,7 +66,7 @@ export default function WeekTimeGrid({
         {HOURS.map((hour) => (
           <div
             key={hour}
-            className="py-1 text-center text-[10px] tabular-nums text-base-content/50"
+            className="py-1 text-center text-xs tabular-nums text-base-content/50"
           >
             {formatHourLabel(hour)}
           </div>
@@ -145,7 +145,7 @@ export default function WeekTimeGrid({
               {key === nowKey && (
                 <div
                   data-testid="now-line"
-                  className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-[#f87171]"
+                  className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-now-line"
                   style={{ left: `${(nowMin / MIN_PER_DAY) * 100}%` }}
                   aria-hidden="true"
                 />

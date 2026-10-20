@@ -36,6 +36,13 @@
   --border: 1px;
 }
 
+/* Calendar theme tokens (UI.md): now-line red, calendar full-height.
+   Exposed as bg-now-line / h-calendar instead of arbitrary values. */
+@theme {
+  --color-now-line: #f87171;
+  --height-calendar: calc(100vh - 9rem);
+}
+
 body {
   font-family:
     system-ui,
