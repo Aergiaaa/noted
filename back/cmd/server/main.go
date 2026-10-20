@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"noted/cmd/server/handler"
 	"noted/internal/auth"
 	"noted/internal/database"
+	"noted/internal/database/generated"
+	"noted/internal/service"
 )
 
 // Config holds env-driven settings (.env.example, DEPLOYMENT.md).
@@ -92,8 +95,24 @@ func (a *app) wire(db *sql.DB) {
 	a.auth = auth.New(db, a.conf.TOTPEncKey)
 	a.secure = a.conf.AppEnv == "prod"
 
-	a.handler = handler.New(a.auth, a.secure)
+	queries := generated.New(db)
+	events := service.NewEventService(queries)
+
+	a.handler = handler.New(
+		a.auth,
+		events,
+		a.secure,
+	)
 	a.bootAuth(context.Background())
+	a.bootPurge(context.Background(), events)
+}
+
+// bootPurge removes soft-deleted rows past retention (DOMAIN.md 30d).
+// Failures log instead of blocking boot, like bootAuth.
+func (a *app) bootPurge(ctx context.Context, events *service.EventService) {
+	if _, err := events.Purge(ctx, time.Now()); err != nil {
+		log.Printf("error purging soft-deleted events: %v", err)
+	}
 }
 
 // bootAuth failures log instead of blocking boot — a broken DB fails the

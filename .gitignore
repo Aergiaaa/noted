@@ -14,5 +14,8 @@ docs/
 coverage/
 test-results/
 
+# Bun / JS artifacts (host-side bunx can land these at the root)
+node_modules/
+
 # Go build artifacts (binaries land here via `go build ./...`)
 /back/server

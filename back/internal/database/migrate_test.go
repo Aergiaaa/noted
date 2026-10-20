@@ -26,8 +26,8 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(ms) != 3 {
-		t.Fatalf("len = %d, want 3", len(ms))
+	if len(ms) != 4 {
+		t.Fatalf("len = %d, want 4", len(ms))
 	}
 	if ms[0].version != 1 || ms[0].name != "0001_init.sql" {
 		t.Fatalf("got %+v, want version 1 / 0001_init.sql", ms[0])
@@ -46,6 +46,12 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	}
 	if !strings.Contains(ms[2].body, "auth_method") {
 		t.Fatalf("body missing schema:\n%s", ms[2].body)
+	}
+	if ms[3].version != 4 || ms[3].name != "0004_soft_delete.sql" {
+		t.Fatalf("got %+v, want version 4 / 0004_soft_delete.sql", ms[3])
+	}
+	if !strings.Contains(ms[3].body, "deleted_at") {
+		t.Fatalf("body missing schema:\n%s", ms[3].body)
 	}
 }
 

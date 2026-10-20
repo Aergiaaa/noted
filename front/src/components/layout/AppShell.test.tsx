@@ -58,7 +58,7 @@ async function renderShell(path = "/") {
 describe("AppShell", () => {
   it("renders brand plus all five nav links and the logout button", async () => {
     stubAuthed();
-    await renderShell();
+    const { container } = await renderShell();
 
     expect(screen.getByText("Noted")).toBeDefined();
     for (const label of [
@@ -71,11 +71,12 @@ describe("AppShell", () => {
       expect(screen.getByRole("link", { name: label })).toBeDefined();
     }
     expect(screen.getByRole("button", { name: "Log out" })).toBeDefined();
+    expect(container.querySelector("main")?.className).toContain("max-w-5xl");
   });
 
   it("marks only the current route active (both className branches)", async () => {
     stubAuthed();
-    await renderShell("/calendar");
+    const { container } = await renderShell("/calendar");
 
     expect(screen.getByRole("link", { name: "Calendar" }).className).toContain(
       "btn-active",
@@ -85,6 +86,9 @@ describe("AppShell", () => {
         "btn-active",
       );
     }
+    expect(container.querySelector("main")?.className).not.toContain(
+      "max-w-5xl",
+    );
   });
 
   it("moves the active state on nav click", async () => {

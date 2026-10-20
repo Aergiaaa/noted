@@ -12,7 +12,7 @@ import (
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+RETURNING id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 `
 
 type CreateTaskParams struct {
@@ -50,27 +50,19 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const deleteTask = `-- name: DeleteTask :exec
-DELETE
-FROM tasks
-WHERE id = ?
-`
-
-func (q *Queries) DeleteTask(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteTask, id)
-	return err
-}
-
 const getTask = `-- name: GetTask :one
-SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 FROM tasks
 WHERE id = ?
+  AND deleted_at IS NULL
 `
 
+// Soft-deleted tasks are not linkable (transactions.task_id validation).
 func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 	row := q.db.QueryRowContext(ctx, getTask, id)
 	var i Task
@@ -84,14 +76,58 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
-const listOpenTasksDue = `-- name: ListOpenTasksDue :many
-SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+const listDeletedTasks = `-- name: ListDeletedTasks :many
+SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 FROM tasks
-WHERE status = 'open' AND due_date = ?
+WHERE deleted_at IS NOT NULL
+ORDER BY deleted_at DESC, id
+`
+
+func (q *Queries) ListDeletedTasks(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listDeletedTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Task{}
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Status,
+			&i.DueDate,
+			&i.EventID,
+			&i.NoteID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenTasksDue = `-- name: ListOpenTasksDue :many
+SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
+FROM tasks
+WHERE status = 'open'
+  AND due_date = ?
+  AND deleted_at IS NULL
 ORDER BY created_at
 `
 
@@ -115,6 +151,7 @@ func (q *Queries) ListOpenTasksDue(ctx context.Context, dueDate *string) ([]Task
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompletedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -130,9 +167,11 @@ func (q *Queries) ListOpenTasksDue(ctx context.Context, dueDate *string) ([]Task
 }
 
 const listOpenTasksDueBefore = `-- name: ListOpenTasksDueBefore :many
-SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 FROM tasks
-WHERE status = 'open' AND due_date < ?
+WHERE status = 'open'
+  AND due_date < ?
+  AND deleted_at IS NULL
 ORDER BY due_date
 `
 
@@ -156,6 +195,7 @@ func (q *Queries) ListOpenTasksDueBefore(ctx context.Context, dueDate *string) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompletedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -171,9 +211,10 @@ func (q *Queries) ListOpenTasksDueBefore(ctx context.Context, dueDate *string) (
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+SELECT id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 FROM tasks
-WHERE (?1 IS NULL OR status = ?1)
+WHERE deleted_at IS NULL
+  AND (?1 IS NULL OR status = ?1)
   AND (?2 IS NULL OR due_date = ?2)
 ORDER BY (due_date IS NULL), due_date, created_at
 `
@@ -203,6 +244,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CompletedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -217,6 +259,63 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 	return items, nil
 }
 
+const purgeTasksDeletedBefore = `-- name: PurgeTasksDeletedBefore :execrows
+DELETE
+FROM tasks
+WHERE deleted_at IS NOT NULL
+  AND deleted_at < ?1
+`
+
+func (q *Queries) PurgeTasksDeletedBefore(ctx context.Context, cutoff *string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, purgeTasksDeletedBefore, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const restoreTask = `-- name: RestoreTask :one
+UPDATE tasks
+SET deleted_at = NULL
+WHERE id = ?
+RETURNING id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
+`
+
+func (q *Queries) RestoreTask(ctx context.Context, id string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, restoreTask, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Status,
+		&i.DueDate,
+		&i.EventID,
+		&i.NoteID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const softDeleteTask = `-- name: SoftDeleteTask :exec
+UPDATE tasks
+SET deleted_at = ?1
+WHERE id = ?2
+  AND deleted_at IS NULL
+`
+
+type SoftDeleteTaskParams struct {
+	DeletedAt *string
+	ID        string
+}
+
+func (q *Queries) SoftDeleteTask(ctx context.Context, arg SoftDeleteTaskParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteTask, arg.DeletedAt, arg.ID)
+	return err
+}
+
 const updateTask = `-- name: UpdateTask :one
 UPDATE tasks
 SET title        = ?,
@@ -227,7 +326,7 @@ SET title        = ?,
     updated_at   = ?,
     completed_at = ?
 WHERE id = ?
-RETURNING id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at
+RETURNING id, title, status, due_date, event_id, note_id, created_at, updated_at, completed_at, deleted_at
 `
 
 type UpdateTaskParams struct {
@@ -264,6 +363,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
