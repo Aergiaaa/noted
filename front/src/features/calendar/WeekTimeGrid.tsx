@@ -7,6 +7,7 @@ import {
   toDayKey,
 } from "../../lib/format";
 import { getDayLayout, type PlacedEvent } from "./weekLayout";
+import { eventColorClasses } from "./eventColor";
 
 const HOURS_PER_DAY = 24;
 const MIN_PER_HOUR = 60;
@@ -75,6 +76,7 @@ export default function WeekTimeGrid({
       </div>
       {days.map((day, dayIndex) => {
         const key = toDayKey(day);
+        const layout = dayLayouts[dayIndex];
         return (
           <div
             key={key}
@@ -90,67 +92,86 @@ export default function WeekTimeGrid({
             >
               {formatDayHeader(day)}
             </div>
-            <div
-              data-testid="day-row"
-              className="relative flex flex-1"
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setHoverCell({
-                  dayIndex,
-                  hour: Math.floor(
-                    ((e.clientX - rect.left) / rect.width) * HOURS_PER_DAY,
-                  ),
-                });
-              }}
-              onMouseLeave={() => setHoverCell(null)}
-            >
-              {HOURS.map((hour) => (
-                <button
-                  key={hour}
-                  type="button"
-                  className="h-full flex-1 border-l border-base-300 hover:bg-base-300"
-                  aria-label={`Create event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
-                  onClick={() => onSlotClick(day, hour)}
-                />
-              ))}
-              {dayLayouts[dayIndex].map((block) => (
-                <EventBlock
-                  key={`${block.event.id}-${block.lane}`}
-                  block={block}
-                  onClick={onEventClick}
-                />
-              ))}
-              {HOURS.filter((hour) =>
-                dayLayouts[dayIndex].some((block) =>
-                  isHourCovered(block, hour),
-                ),
-              ).map((hour) => (
-                <button
-                  key={hour}
-                  type="button"
-                  className={`absolute z-20 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 transition-opacity duration-150 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-base-200 hover:text-primary ${
-                    hoverCell?.dayIndex === dayIndex && hoverCell.hour === hour
-                      ? "opacity-100"
-                      : "opacity-0"
-                  }`}
-                  style={{
-                    left: `calc(${((hour + 1) / HOURS_PER_DAY) * 100}% - 24px)`,
-                    top: 4,
-                  }}
-                  aria-label={`Add event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
-                  onClick={() => onSlotClick(day, hour)}
-                >
-                  <span aria-hidden="true">+</span>
-                </button>
-              ))}
-              {key === nowKey && (
+            {/* Column beside the label: the continuation band (when a
+                multi-day event passes through this day) sits above the
+                time grid as part of the row layout, never overlapping
+                blocks, slots, or the now-line. */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              {layout.continuations.length > 0 && (
                 <div
-                  data-testid="now-line"
-                  className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-now-line"
-                  style={{ left: `${(nowMin / MIN_PER_DAY) * 100}%` }}
-                  aria-hidden="true"
-                />
+                  data-testid="continuation-band"
+                  className="flex h-1/3 shrink-0 flex-col gap-0.5 border-b border-base-300 p-0.5"
+                >
+                  {layout.continuations.map((block) => (
+                    <ContinuationStrip
+                      key={`${block.event.id}-continuation`}
+                      block={block}
+                      onClick={onEventClick}
+                    />
+                  ))}
+                </div>
               )}
+              <div
+                data-testid="day-row"
+                className="relative flex flex-1"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHoverCell({
+                    dayIndex,
+                    hour: Math.floor(
+                      ((e.clientX - rect.left) / rect.width) * HOURS_PER_DAY,
+                    ),
+                  });
+                }}
+                onMouseLeave={() => setHoverCell(null)}
+              >
+                {HOURS.map((hour) => (
+                  <button
+                    key={hour}
+                    type="button"
+                    className="h-full flex-1 border-l border-base-300 hover:bg-base-300"
+                    aria-label={`Create event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
+                    onClick={() => onSlotClick(day, hour)}
+                  />
+                ))}
+                {layout.placed.map((block) => (
+                  <EventBlock
+                    key={`${block.event.id}-${block.lane}`}
+                    block={block}
+                    onClick={onEventClick}
+                  />
+                ))}
+                {HOURS.filter((hour) =>
+                  layout.placed.some((block) => isHourCovered(block, hour)),
+                ).map((hour) => (
+                  <button
+                    key={hour}
+                    type="button"
+                    className={`absolute z-20 flex h-5 w-5 items-center justify-center rounded-full bg-base-300/90 text-sm leading-none text-base-content/70 transition-opacity duration-150 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-base-200 hover:text-primary ${
+                      hoverCell?.dayIndex === dayIndex &&
+                      hoverCell.hour === hour
+                        ? "opacity-100"
+                        : "opacity-0"
+                    }`}
+                    style={{
+                      left: `calc(${((hour + 1) / HOURS_PER_DAY) * 100}% - 24px)`,
+                      top: 4,
+                    }}
+                    aria-label={`Add event on ${formatDayHeader(day)} at ${formatHourLabel(hour)}:00`}
+                    onClick={() => onSlotClick(day, hour)}
+                  >
+                    <span aria-hidden="true">+</span>
+                  </button>
+                ))}
+                {key === nowKey && (
+                  <div
+                    data-testid="now-line"
+                    className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-now-line"
+                    style={{ left: `${(nowMin / MIN_PER_DAY) * 100}%` }}
+                    aria-hidden="true"
+                  />
+                )}
+              </div>
             </div>
           </div>
         );
@@ -185,7 +206,7 @@ function EventBlock({ block, onClick }: EventBlockProps) {
   return (
     <button
       type="button"
-      className={`absolute z-10 overflow-hidden rounded border border-primary/40 bg-primary/20 px-1 text-left text-xs hover:bg-primary/30 ${rounding}`}
+      className={`absolute z-10 overflow-hidden rounded border ${eventColorClasses(block.event.id)} px-1 text-left text-xs ${rounding}`}
       style={{
         left: `${left}%`,
         width: `calc(${width}% - 2px)`,
@@ -195,6 +216,23 @@ function EventBlock({ block, onClick }: EventBlockProps) {
         marginTop: 1,
       }}
       aria-label={`${block.event.title} ${formatTime(block.event.starts_at)}`}
+      onClick={() => onClick(block.event)}
+    >
+      <span className="truncate">{block.event.title}</span>
+    </button>
+  );
+}
+
+// Middle day of a multi-day event: a full-width strip in the row's top
+// band (|‾‾‾|), not a time-positioned block. Flex-stretched inside the
+// band so several passing-through events stack without overlap.
+function ContinuationStrip({ block, onClick }: EventBlockProps) {
+  return (
+    <button
+      type="button"
+      data-testid="continuation-strip"
+      className={`relative z-10 min-h-4 flex-1 overflow-hidden rounded border ${eventColorClasses(block.event.id)} px-1 text-left text-xs`}
+      aria-label={`${block.event.title} continues`}
       onClick={() => onClick(block.event)}
     >
       <span className="truncate">{block.event.title}</span>
