@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { api, errorLines, type Task } from "../../lib/api";
 import { sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
@@ -29,8 +29,8 @@ export default function TaskForm({
   // never reach confirmDelete.
   const editId = task?.id ?? "";
 
-  const onSubmit = async (formEvent: FormEvent) => {
-    formEvent.preventDefault();
+  const onSubmit = async (submitEvent: SubmitEvent) => {
+    submitEvent.preventDefault();
     if (sanitizeLine(title) === "") {
       setErrors([TITLE_REQUIRED]);
       return;
