@@ -12,6 +12,10 @@ const UPDATE_FAILED = "Couldn't update the task.";
 
 type StatusFilter = "all" | "open" | "done";
 
+// One form state instead of creating+editing booleans: null closed,
+// create and edit are mutually exclusive so the union can't lie.
+type FormTarget = { kind: "create" } | { kind: "edit"; task: Task };
+
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -22,8 +26,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<Task | null>(null);
+  const [formTarget, setFormTarget] = useState<FormTarget | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,10 +75,8 @@ export default function TasksPage() {
       setError(errorLines(err, UPDATE_FAILED)[0]);
     }
   };
-  const closeForm = () => {
-    setCreating(false);
-    setEditing(null);
-  };
+  const openCreate = () => setFormTarget({ kind: "create" });
+  const openEdit = (task: Task) => setFormTarget({ kind: "edit", task });
 
   if (error !== null) {
     return (
@@ -111,7 +112,7 @@ export default function TasksPage() {
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          onClick={() => setCreating(true)}
+          onClick={openCreate}
         >
           New task
         </button>
@@ -153,7 +154,7 @@ export default function TasksPage() {
             }
             action={{
               label: "Create your first task",
-              onClick: () => setCreating(true),
+              onClick: openCreate,
             }}
           />
         ) : (
@@ -161,15 +162,15 @@ export default function TasksPage() {
             tasks={tasks}
             overdueIds={overdueIds}
             onToggleStatus={(task) => void toggleStatus(task)}
-            onOpen={setEditing}
+            onOpen={openEdit}
           />
         )}
       </div>
 
-      {(creating || editing !== null) && (
+      {formTarget !== null && (
         <TaskForm
-          task={creating ? null : editing}
-          onClose={closeForm}
+          task={formTarget.kind === "edit" ? formTarget.task : null}
+          onClose={() => setFormTarget(null)}
           onSaved={refetch}
           onDeleted={refetch}
         />
