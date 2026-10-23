@@ -142,6 +142,87 @@ describe("WeekTimeGrid", () => {
     expect(blocks[1]?.className).not.toContain("rounded-r-none");
   });
 
+  it("renders a middle day of a multi-day event as a top continuation strip", () => {
+    const e = event(
+      "e1",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 14, 16),
+    );
+    const onEventClick = vi.fn();
+    const { container } = renderGrid([e], () => {}, onEventClick);
+
+    // Only Tuesday (the covered middle day) gets a band; Mon/Wed render
+    // the real start/end blocks with no band above them.
+    const bands = container.querySelectorAll(
+      "[data-testid='continuation-band']",
+    );
+    expect(bands).toHaveLength(1);
+    const strips = bands[0]?.querySelectorAll(
+      "[data-testid='continuation-strip']",
+    );
+    expect(strips).toHaveLength(1);
+    const strip = strips?.[0] as HTMLElement;
+    expect(strip.getAttribute("aria-label")).toBe("Dentist continues");
+    // Full width — no time-positioned left/width — and above the time grid.
+    expect(strip.getAttribute("style")).toBeNull();
+    expect(
+      strip.parentElement?.nextElementSibling?.getAttribute("data-testid"),
+    ).toBe("day-row");
+
+    fireEvent.click(strip);
+    expect(onEventClick).toHaveBeenCalledWith(e);
+
+    // Start and end days still render their clipped time blocks (the
+    // label carries the event's real start time on both edges).
+    expect(
+      container.querySelectorAll("button[aria-label='Dentist 10:00']"),
+    ).toHaveLength(2);
+  });
+
+  it("stacks several continuing events in one band", () => {
+    const trip = event(
+      "e1",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 14, 16),
+    );
+    const conference = event(
+      "e2",
+      localISO(2026, 10, 11, 8),
+      localISO(2026, 10, 15, 18),
+    );
+    const { container } = renderGrid([trip, conference]);
+    const bands = container.querySelectorAll(
+      "[data-testid='continuation-band']",
+    );
+    // Conference starts Sun (before the rendered week), so Monday is
+    // already a continuation day for it; Tue holds both; Wed only the
+    // conference (trip ends Wed 16:00).
+    expect(bands).toHaveLength(3);
+    expect(
+      bands[0]?.querySelectorAll("[data-testid='continuation-strip']"),
+    ).toHaveLength(1);
+    expect(
+      bands[1]?.querySelectorAll("[data-testid='continuation-strip']"),
+    ).toHaveLength(2);
+    expect(
+      bands[2]?.querySelectorAll("[data-testid='continuation-strip']"),
+    ).toHaveLength(1);
+  });
+
+  it("does not cover middle-day hours for a passing-through event", () => {
+    const e = event(
+      "e1",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 14, 10),
+    );
+    const { container } = renderGrid([e]);
+    // Tuesday holds no placed block — the strip lives in the band, so no
+    // hour is covered and no create-affordance appears there.
+    expect(
+      container.querySelectorAll("button[aria-label^='Add event on Tue']"),
+    ).toHaveLength(0);
+  });
+
   it("shows one now-line on today's row", () => {
     const today = new Date();
     const week = weekDays(startOfWeek(today));
@@ -321,17 +402,13 @@ describe("WeekTimeGrid", () => {
     const { container } = renderGrid([]);
     // Rows and the grid root flex into the scroller's height; slots fill
     // the row so blocks scale with it. min-h keeps the week scrollable on
-    // short viewports instead of squashing.
-    expect(
-      classNameTokens(
-        container.querySelector("[data-testid='day-row']")?.parentElement,
-      ),
-    ).toContain("flex-1");
-    expect(
-      classNameTokens(
-        container.querySelector("[data-testid='day-row']")?.parentElement,
-      ),
-    ).toContain("min-h-16");
+    // short viewports instead of squashing. The row lives in a column
+    // beside the day label so a continuation band can sit above it.
+    const row = container.querySelector("[data-testid='day-row']");
+    expect(classNameTokens(row?.parentElement)).toContain("flex-1");
+    expect(classNameTokens(row?.parentElement?.parentElement)).toContain(
+      "min-h-16",
+    );
     const slot = container.querySelector(
       "button[aria-label='Create event on Mon 12 at 09:00']",
     );
