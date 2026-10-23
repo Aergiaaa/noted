@@ -62,6 +62,56 @@ export interface TasksResponse {
   data: Task[];
 }
 
+// Finance (API.md): wallets archive, never delete; money moves as
+// income/expense (wallet_id) or a single transfer row (from/to sides).
+// wal_cash is the default pot seeded by migration 0005 (DATABASE.md) —
+// part of the schema contract, not an arbitrary client choice.
+export const WALLET_SEED_CASH_ID = "wal_cash";
+
+export interface Wallet {
+  id: string;
+  name: string;
+  archived_at: string | null;
+}
+
+export interface WalletsResponse {
+  data: Wallet[];
+}
+
+export interface WalletBalance {
+  wallet_id: string;
+  name: string;
+  balance_cents: number;
+}
+
+export interface BalanceResponse {
+  currency: string;
+  total: { balance_cents: number };
+  wallets: WalletBalance[];
+}
+
+export type TransactionKind = "income" | "expense" | "transfer";
+
+export interface Transaction {
+  id: string;
+  kind: TransactionKind;
+  amount_cents: number;
+  currency: string;
+  occurred_on: string;
+  memo: string | null;
+  wallet_id: string | null;
+  from_wallet_id: string | null;
+  to_wallet_id: string | null;
+  task_id: string | null;
+  event_id: string | null;
+  note_id: string | null;
+}
+
+export interface TransactionsResponse {
+  data: Transaction[];
+  next_cursor: string | null;
+}
+
 // HTTP status codes we branch on (API.md envelope contract).
 export const STATUS_UNAUTHENTICATED = 401;
 export const STATUS_TOO_MANY_REQUESTS = 429;

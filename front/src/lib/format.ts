@@ -1,6 +1,9 @@
+import type { Transaction } from "./api";
+
 // All calendar rendering is browser-local (DOMAIN.md: instants UTC in,
 // local out). Values are pre-formatted strings, so no Intl options means
-// no locale drift between machines.
+// no locale drift between machines. Money is the deliberate exception
+// below — currency symbols and grouping ARE locale work.
 
 const MONTHS = [
   "January",
@@ -84,4 +87,79 @@ export function formatHourLabel(hour: number): string {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+const MONEY_MAX_CENTS = 1e12;
+
+// Full-precision money for headers and tooltips: browser locale when no
+// locale is given; whole amounts drop trailing zeros (Rp 25.000, $50)
+// while real cents always show ($50.55).
+export function formatMoney(
+  cents: number,
+  currency: string,
+  locale?: string,
+): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+// Dense-list money (rows, wallet strip): pinned en-US so amounts read
+// K/M everywhere — an id-ID browser would otherwise say "Rp 123 rb".
+export function formatMoneyCompact(cents: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+    notation: "compact",
+  }).format(cents / 100);
+}
+
+// Decimal major-unit input ("50.55") to wire cents (5055). Returns null
+// for anything invalid (not numeric, <= 0, > 2 decimals, above the
+// 1e12-cents cap) so the caller can show the inline field error.
+export function parseMoneyToCents(input: string): number | null {
+  const trimmed = input.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  const cents = Math.round(parseFloat(trimmed) * 100);
+  if (cents < 1 || cents > MONEY_MAX_CENTS) return null;
+  return cents;
+}
+
+// Split amount entry: primary digits + a 3-digit trailing group —
+// [200][000] = 200,000 major units. An empty group defaults to 000.
+// Whole major units only (no decimals); null for anything invalid so
+// the caller can show the inline field error.
+export function parseSplitAmountToCents(
+  primary: string,
+  group: string,
+): number | null {
+  const trimmedGroup = group.trim();
+  if (!/^\d{0,3}$/.test(trimmedGroup)) return null;
+  const major = `${primary.trim()}${trimmedGroup.padStart(3, "0")}`;
+  return parseMoneyToCents(major);
+}
+
+// Wallet routing for one history row: income → wallet, expense wallet →,
+// transfer from → to. Unknown ids render as themselves rather than a
+// blank cell; a null side renders empty (defensive against malformed rows).
+export function formatTransactionRouting(
+  tx: Pick<
+    Transaction,
+    "kind" | "wallet_id" | "from_wallet_id" | "to_wallet_id"
+  >,
+  walletNames: Map<string, string>,
+): string {
+  const name = (id: string | null): string =>
+    id === null ? "" : (walletNames.get(id) ?? id);
+
+  return tx.kind === "transfer"
+    ? `${name(tx.from_wallet_id)} → ${name(tx.to_wallet_id)}`
+    : tx.kind === "income"
+      ? `→ ${name(tx.wallet_id)}`
+      : `${name(tx.wallet_id)} →`;
 }
