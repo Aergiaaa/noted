@@ -10,6 +10,10 @@ type Handler struct {
 	events *service.EventService
 	notes  *service.NoteService
 	tasks  *service.TaskService
+	// finance spans two concrete services (wallets + transactions); both
+	// share one *Queries and stay separate — no umbrella service (D2).
+	wallets      *service.WalletService
+	transactions *service.TransactionService
 
 	// secure pins the cookie Secure attribute to APP_ENV=prod — plain-HTTP
 	// localhost must still receive the cookie in dev (SECURITY.md).
@@ -18,6 +22,14 @@ type Handler struct {
 
 // New: auth and any single domain service may be nil in tests that never
 // touch those endpoints — every nil is exercised only by its own tests.
-func New(a *auth.Service, events *service.EventService, notes *service.NoteService, tasks *service.TaskService, secure bool) *Handler {
-	return &Handler{auth: a, events: events, notes: notes, tasks: tasks, secure: secure}
+func New(a *auth.Service, events *service.EventService, notes *service.NoteService, tasks *service.TaskService, wallets *service.WalletService, transactions *service.TransactionService, secure bool) *Handler {
+	return &Handler{
+		auth:         a,
+		events:       events,
+		notes:        notes,
+		tasks:        tasks,
+		wallets:      wallets,
+		transactions: transactions,
+		secure:       secure,
+	}
 }

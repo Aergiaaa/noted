@@ -26,7 +26,7 @@ func newTestTasksHandler(t *testing.T) (*Handler, http.Handler, *service.TaskSer
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	svc := service.NewTaskService(generated.New(db))
-	h := New(nil, nil, nil, svc, false)
+	h := New(nil, nil, nil, svc, nil, nil, false)
 	r := chi.NewRouter()
 	r.Get("/api/tasks", h.ListTasks)
 	r.Post("/api/tasks", h.CreateTask)

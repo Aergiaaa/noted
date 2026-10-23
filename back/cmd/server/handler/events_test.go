@@ -29,7 +29,7 @@ func newTestEventsHandler(t *testing.T) (*Handler, http.Handler, *service.EventS
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	svc := service.NewEventService(generated.New(db))
-	h := New(nil, svc, nil, nil, false)
+	h := New(nil, svc, nil, nil, nil, nil, false)
 	r := chi.NewRouter()
 	r.Get("/api/events", h.ListEvents)
 	r.Post("/api/events", h.CreateEvent)
