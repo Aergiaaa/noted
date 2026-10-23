@@ -1,6 +1,7 @@
 import { useFetch } from "../../lib/useFetch";
 import { api, isApiError, type EventsResponse } from "../../lib/api";
 import { formatMonthTitle, formatTime } from "../../lib/format";
+import { eventColorDotClasses } from "./eventColor";
 import EmptyState from "../../components/ui/EmptyState";
 import ErrorState from "../../components/ui/ErrorState";
 import Modal from "../../components/ui/Modal";
@@ -58,7 +59,14 @@ export default function TrashPanel({
                 className="flex items-center justify-between gap-2 py-2"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{event.title}</p>
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <span
+                      data-testid="event-color-dot"
+                      aria-hidden="true"
+                      className={`inline-block h-2 w-2 shrink-0 rounded-full ${eventColorDotClasses(event.id)}`}
+                    />
+                    <span className="truncate">{event.title}</span>
+                  </p>
                   <p className="text-xs text-base-content/60">
                     {formatMonthTitle(new Date(event.starts_at))}{" "}
                     {formatTime(event.starts_at)}

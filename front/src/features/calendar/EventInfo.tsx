@@ -1,5 +1,6 @@
 import type { Event } from "../../lib/api";
 import { formatDateTime, formatTime, toLocalInput } from "../../lib/format";
+import { eventColorDotClasses } from "./eventColor";
 import Modal from "../../components/ui/Modal";
 
 interface EventInfoProps {
@@ -17,7 +18,14 @@ export default function EventInfo({ event, onClose, onEdit }: EventInfoProps) {
 
   return (
     <Modal onClose={onClose}>
-      <h2 className="break-words text-base font-semibold">{event.title}</h2>
+      <div className="flex items-center gap-2">
+        <span
+          data-testid="event-color-dot"
+          aria-hidden="true"
+          className={`inline-block h-2 w-2 shrink-0 rounded-full ${eventColorDotClasses(event.id)}`}
+        />
+        <h2 className="break-words text-base font-semibold">{event.title}</h2>
+      </div>
       <p className="mt-2 text-sm tabular-nums text-base-content/70">
         {formatEventRange(event.starts_at, event.ends_at)}
       </p>

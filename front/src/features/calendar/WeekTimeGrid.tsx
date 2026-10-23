@@ -7,6 +7,7 @@ import {
   toDayKey,
 } from "../../lib/format";
 import { getDayLayout, type PlacedEvent } from "./weekLayout";
+import { eventColorClasses } from "./eventColor";
 
 const HOURS_PER_DAY = 24;
 const MIN_PER_HOUR = 60;
@@ -205,7 +206,7 @@ function EventBlock({ block, onClick }: EventBlockProps) {
   return (
     <button
       type="button"
-      className={`absolute z-10 overflow-hidden rounded border border-primary/40 bg-primary/20 px-1 text-left text-xs hover:bg-primary/30 ${rounding}`}
+      className={`absolute z-10 overflow-hidden rounded border ${eventColorClasses(block.event.id)} px-1 text-left text-xs ${rounding}`}
       style={{
         left: `${left}%`,
         width: `calc(${width}% - 2px)`,
@@ -230,7 +231,7 @@ function ContinuationStrip({ block, onClick }: EventBlockProps) {
     <button
       type="button"
       data-testid="continuation-strip"
-      className="relative z-10 min-h-4 flex-1 overflow-hidden rounded border border-primary/40 bg-primary/20 px-1 text-left text-xs hover:bg-primary/30"
+      className={`relative z-10 min-h-4 flex-1 overflow-hidden rounded border ${eventColorClasses(block.event.id)} px-1 text-left text-xs`}
       aria-label={`${block.event.title} continues`}
       onClick={() => onClick(block.event)}
     >

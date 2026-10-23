@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Event } from "../../lib/api";
 import { startOfWeek, weekDays } from "./week";
+import { eventColorClasses } from "./eventColor";
 import WeekTimeGrid from "./WeekTimeGrid";
 
 afterEach(() => {
@@ -102,6 +103,30 @@ describe("WeekTimeGrid", () => {
     expect(block).not.toBeNull();
     expect(block?.getAttribute("style")).toContain("left: 37.5%");
     expect(block?.getAttribute("style")).toContain("width: calc(4.166");
+  });
+
+  it("colors blocks and continuation strips from the event id hash", () => {
+    const e1 = event(
+      "e1",
+      localISO(2026, 10, 12, 9),
+      localISO(2026, 10, 12, 10),
+    );
+    const through = event(
+      "e2",
+      localISO(2026, 10, 12, 10),
+      localISO(2026, 10, 14, 10),
+    );
+    const { container } = renderGrid([e1, through]);
+
+    const block = container.querySelector("button[aria-label='Dentist 09:00']");
+    for (const cls of eventColorClasses("e1").split(" ")) {
+      expect(classNameTokens(block)).toContain(cls);
+    }
+
+    const strip = container.querySelector("[data-testid='continuation-strip']");
+    for (const cls of eventColorClasses("e2").split(" ")) {
+      expect(classNameTokens(strip)).toContain(cls);
+    }
   });
 
   it("stacks overlapping events into lanes", () => {
