@@ -63,15 +63,26 @@ type Task struct {
 }
 
 type Transaction struct {
-	ID          string
-	Kind        string
-	AmountCents int64
-	Currency    string
-	OccurredOn  string
-	Memo        *string
-	TaskID      *string
-	EventID     *string
-	NoteID      *string
-	CreatedAt   string
-	DeletedAt   *string
+	ID           string
+	Kind         string
+	AmountCents  int64
+	Currency     string
+	OccurredOn   string
+	Memo         *string
+	WalletID     *string
+	FromWalletID *string
+	ToWalletID   *string
+	TaskID       *string
+	EventID      *string
+	NoteID       *string
+	CreatedAt    string
+	DeletedAt    *string
+}
+
+type Wallet struct {
+	ID         string
+	Name       string
+	ArchivedAt *string
+	CreatedAt  string
+	UpdatedAt  string
 }

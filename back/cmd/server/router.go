@@ -49,7 +49,7 @@ func (a *app) newRouter() http.Handler {
 		r.Post("/auth/logout", a.handler.Logout)
 		r.Get("/session", a.handler.Session)
 
-		// Domain routes (finance + dashboard join in F8/F10) live in
+		// Domain routes (dashboard joins in F10) live in
 		// this group, behind the session guard.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireSession(a.auth, a.secure))
@@ -71,6 +71,16 @@ func (a *app) newRouter() http.Handler {
 			r.Post("/tasks", a.handler.CreateTask)
 			r.Patch("/tasks/{id}", a.handler.UpdateTask)
 			r.Delete("/tasks/{id}", a.handler.DeleteTask)
+
+			r.Get("/finance/balance", a.handler.FinanceBalance)
+			r.Get("/finance/wallets", a.handler.ListWallets)
+			r.Post("/finance/wallets", a.handler.CreateWallet)
+			r.Patch("/finance/wallets/{id}", a.handler.UpdateWallet)
+			r.Get("/finance/transactions", a.handler.ListTransactions)
+			r.Post("/finance/transactions", a.handler.CreateTransaction)
+			r.Post("/finance/transfers", a.handler.CreateTransfer)
+			r.Patch("/finance/transactions/{id}", a.handler.UpdateTransaction)
+			r.Delete("/finance/transactions/{id}", a.handler.DeleteTransaction)
 		})
 	})
 

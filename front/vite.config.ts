@@ -20,6 +20,10 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Coverage instrumentation plus a few dozen jsdom files starves
+    // workers on a 4-core box past vitest's 5s default mid-file (flaky
+    // timeouts, not slow tests); 10s still catches a genuinely hung test.
+    testTimeout: 10000,
     coverage: {
       // istanbul, not v8: v8 coverage relies on the Node inspector and
       // reports 0% when vitest runs under the Bun runtime.

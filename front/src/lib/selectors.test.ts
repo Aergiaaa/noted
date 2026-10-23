@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Task } from "./api";
-import { getOverdueTasks } from "./selectors";
+import {
+  getOverdueTasks,
+  pickDefaultWallet,
+  pickTransferTo,
+} from "./selectors";
 
 function task(over: Partial<Task> = {}): Task {
   return {
@@ -36,5 +40,39 @@ describe("getOverdueTasks", () => {
 
   it("drops open tasks without a due date", () => {
     expect(getOverdueTasks([task()], "2026-10-15")).toEqual([]);
+  });
+});
+
+describe("pickDefaultWallet", () => {
+  it("prefers the seeded Cash wallet wherever it sits in the list", () => {
+    const wallets = [
+      { wallet_id: "wal_bank", name: "Bank", balance_cents: 0 },
+      { wallet_id: "wal_cash", name: "Cash", balance_cents: 0 },
+    ];
+    expect(pickDefaultWallet(wallets)).toBe("wal_cash");
+  });
+
+  it("falls back to the first wallet when Cash is archived", () => {
+    const wallets = [{ wallet_id: "wal_bank", name: "Bank", balance_cents: 0 }];
+    expect(pickDefaultWallet(wallets)).toBe("wal_bank");
+  });
+
+  it("answers empty when no wallet is active", () => {
+    expect(pickDefaultWallet([])).toBe("");
+  });
+});
+
+describe("pickTransferTo", () => {
+  it("picks the first wallet that is not the source", () => {
+    const wallets = [
+      { wallet_id: "wal_cash", name: "Cash", balance_cents: 0 },
+      { wallet_id: "wal_bank", name: "Bank", balance_cents: 0 },
+    ];
+    expect(pickTransferTo(wallets, "wal_cash")).toBe("wal_bank");
+  });
+
+  it("falls back to the source when it is the only wallet", () => {
+    const wallets = [{ wallet_id: "wal_cash", name: "Cash", balance_cents: 0 }];
+    expect(pickTransferTo(wallets, "wal_cash")).toBe("wal_cash");
   });
 });

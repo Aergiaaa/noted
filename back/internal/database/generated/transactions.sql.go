@@ -23,6 +23,8 @@ type BalanceSumsRow struct {
 
 // Derived balance: no stored total anywhere (ARCHITECTURE.md D4).
 // Soft-deleted (voided) transactions drop out of the sums on read.
+// Transfers cancel here (income leg in, expense leg out of the total);
+// per-wallet splits live in BalanceSumsByWallet + TransferSumsByWallet.
 func (q *Queries) BalanceSums(ctx context.Context) (BalanceSumsRow, error) {
 	row := q.db.QueryRowContext(ctx, balanceSums)
 	var i BalanceSumsRow
@@ -30,24 +32,69 @@ func (q *Queries) BalanceSums(ctx context.Context) (BalanceSumsRow, error) {
 	return i, err
 }
 
+const balanceSumsByWallet = `-- name: BalanceSumsByWallet :many
+SELECT wallet_id,
+       CAST(COALESCE(SUM(CASE WHEN kind = 'income' THEN amount_cents ELSE 0 END), 0) AS INTEGER)  AS income_cents,
+       CAST(COALESCE(SUM(CASE WHEN kind = 'expense' THEN amount_cents ELSE 0 END), 0) AS INTEGER) AS expense_cents
+FROM transactions
+WHERE deleted_at IS NULL
+  AND wallet_id IS NOT NULL
+GROUP BY wallet_id
+`
+
+type BalanceSumsByWalletRow struct {
+	WalletID     *string
+	IncomeCents  int64
+	ExpenseCents int64
+}
+
+// Per-wallet income/expense (income/expense rows only; transfer deltas
+// come from the two Transfer* queries below).
+func (q *Queries) BalanceSumsByWallet(ctx context.Context) ([]BalanceSumsByWalletRow, error) {
+	rows, err := q.db.QueryContext(ctx, balanceSumsByWallet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BalanceSumsByWalletRow{}
+	for rows.Next() {
+		var i BalanceSumsByWalletRow
+		if err := rows.Scan(&i.WalletID, &i.IncomeCents, &i.ExpenseCents); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createTransaction = `-- name: CreateTransaction :one
-INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id,
-                          note_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, memo,
+                          wallet_id, from_wallet_id, to_wallet_id,
+                          task_id, event_id, note_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, kind, amount_cents, currency, occurred_on, memo, wallet_id, from_wallet_id, to_wallet_id, task_id, event_id, note_id, created_at, deleted_at
 `
 
 type CreateTransactionParams struct {
-	ID          string
-	Kind        string
-	AmountCents int64
-	Currency    string
-	OccurredOn  string
-	Memo        *string
-	TaskID      *string
-	EventID     *string
-	NoteID      *string
-	CreatedAt   string
+	ID           string
+	Kind         string
+	AmountCents  int64
+	Currency     string
+	OccurredOn   string
+	Memo         *string
+	WalletID     *string
+	FromWalletID *string
+	ToWalletID   *string
+	TaskID       *string
+	EventID      *string
+	NoteID       *string
+	CreatedAt    string
 }
 
 func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionParams) (Transaction, error) {
@@ -58,6 +105,9 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		arg.Currency,
 		arg.OccurredOn,
 		arg.Memo,
+		arg.WalletID,
+		arg.FromWalletID,
+		arg.ToWalletID,
 		arg.TaskID,
 		arg.EventID,
 		arg.NoteID,
@@ -71,6 +121,9 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 		&i.Currency,
 		&i.OccurredOn,
 		&i.Memo,
+		&i.WalletID,
+		&i.FromWalletID,
+		&i.ToWalletID,
 		&i.TaskID,
 		&i.EventID,
 		&i.NoteID,
@@ -81,7 +134,7 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 }
 
 const getTransaction = `-- name: GetTransaction :one
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+SELECT id, kind, amount_cents, currency, occurred_on, memo, wallet_id, from_wallet_id, to_wallet_id, task_id, event_id, note_id, created_at, deleted_at
 FROM transactions
 WHERE id = ?
   AND deleted_at IS NULL
@@ -97,6 +150,9 @@ func (q *Queries) GetTransaction(ctx context.Context, id string) (Transaction, e
 		&i.Currency,
 		&i.OccurredOn,
 		&i.Memo,
+		&i.WalletID,
+		&i.FromWalletID,
+		&i.ToWalletID,
 		&i.TaskID,
 		&i.EventID,
 		&i.NoteID,
@@ -106,15 +162,38 @@ func (q *Queries) GetTransaction(ctx context.Context, id string) (Transaction, e
 	return i, err
 }
 
-const listDeletedTransactions = `-- name: ListDeletedTransactions :many
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+const listTransactionsPage = `-- name: ListTransactionsPage :many
+SELECT id, kind, amount_cents, currency, occurred_on, memo, wallet_id, from_wallet_id, to_wallet_id, task_id, event_id, note_id, created_at, deleted_at
 FROM transactions
-WHERE deleted_at IS NOT NULL
-ORDER BY deleted_at DESC, id
+WHERE deleted_at IS NULL
+  AND (?1 IS NULL
+       OR occurred_on < ?1
+       OR (occurred_on = ?1
+           AND id < ?2))
+  AND (?3 IS NULL
+       OR wallet_id = ?3
+       OR from_wallet_id = ?3
+       OR to_wallet_id = ?3)
+ORDER BY occurred_on DESC, id DESC
+LIMIT ?4
 `
 
-func (q *Queries) ListDeletedTransactions(ctx context.Context) ([]Transaction, error) {
-	rows, err := q.db.QueryContext(ctx, listDeletedTransactions)
+type ListTransactionsPageParams struct {
+	CursorOccurredOn interface{}
+	CursorID         *string
+	WalletID         interface{}
+	PageLimit        int64
+}
+
+// Keyset history, newest first; cursor filters are nil on the first page.
+// wallet_id matches either side of a transfer (from/to).
+func (q *Queries) ListTransactionsPage(ctx context.Context, arg ListTransactionsPageParams) ([]Transaction, error) {
+	rows, err := q.db.QueryContext(ctx, listTransactionsPage,
+		arg.CursorOccurredOn,
+		arg.CursorID,
+		arg.WalletID,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +208,9 @@ func (q *Queries) ListDeletedTransactions(ctx context.Context) ([]Transaction, e
 			&i.Currency,
 			&i.OccurredOn,
 			&i.Memo,
+			&i.WalletID,
+			&i.FromWalletID,
+			&i.ToWalletID,
 			&i.TaskID,
 			&i.EventID,
 			&i.NoteID,
@@ -163,128 +245,6 @@ func (q *Queries) PurgeTransactionsDeletedBefore(ctx context.Context, cutoff *st
 	return result.RowsAffected()
 }
 
-const recentTransactions = `-- name: RecentTransactions :many
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
-FROM transactions
-WHERE deleted_at IS NULL
-ORDER BY occurred_on DESC, id DESC
-LIMIT ?
-`
-
-// Cursor-free first page (newest first); cursor paging uses the variant below.
-func (q *Queries) RecentTransactions(ctx context.Context, limit int64) ([]Transaction, error) {
-	rows, err := q.db.QueryContext(ctx, recentTransactions, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Transaction{}
-	for rows.Next() {
-		var i Transaction
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.AmountCents,
-			&i.Currency,
-			&i.OccurredOn,
-			&i.Memo,
-			&i.TaskID,
-			&i.EventID,
-			&i.NoteID,
-			&i.CreatedAt,
-			&i.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const recentTransactionsBefore = `-- name: RecentTransactionsBefore :many
-SELECT id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
-FROM transactions
-WHERE deleted_at IS NULL
-  AND (occurred_on < ?1
-       OR (occurred_on = ?1 AND id < ?2))
-ORDER BY occurred_on DESC, id DESC
-LIMIT ?3
-`
-
-type RecentTransactionsBeforeParams struct {
-	CursorOccurredOn string
-	CursorID         string
-	PageLimit        int64
-}
-
-// Keyset page: rows strictly older than (cursor_occurred_on, cursor_id).
-func (q *Queries) RecentTransactionsBefore(ctx context.Context, arg RecentTransactionsBeforeParams) ([]Transaction, error) {
-	rows, err := q.db.QueryContext(ctx, recentTransactionsBefore, arg.CursorOccurredOn, arg.CursorID, arg.PageLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Transaction{}
-	for rows.Next() {
-		var i Transaction
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.AmountCents,
-			&i.Currency,
-			&i.OccurredOn,
-			&i.Memo,
-			&i.TaskID,
-			&i.EventID,
-			&i.NoteID,
-			&i.CreatedAt,
-			&i.DeletedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const restoreTransaction = `-- name: RestoreTransaction :one
-UPDATE transactions
-SET deleted_at = NULL
-WHERE id = ?
-RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
-`
-
-func (q *Queries) RestoreTransaction(ctx context.Context, id string) (Transaction, error) {
-	row := q.db.QueryRowContext(ctx, restoreTransaction, id)
-	var i Transaction
-	err := row.Scan(
-		&i.ID,
-		&i.Kind,
-		&i.AmountCents,
-		&i.Currency,
-		&i.OccurredOn,
-		&i.Memo,
-		&i.TaskID,
-		&i.EventID,
-		&i.NoteID,
-		&i.CreatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
 const softDeleteTransaction = `-- name: SoftDeleteTransaction :exec
 UPDATE transactions
 SET deleted_at = ?1
@@ -302,35 +262,117 @@ func (q *Queries) SoftDeleteTransaction(ctx context.Context, arg SoftDeleteTrans
 	return err
 }
 
+const transferInSumsByWallet = `-- name: TransferInSumsByWallet :many
+SELECT to_wallet_id AS wallet_id,
+       CAST(COALESCE(SUM(amount_cents), 0) AS INTEGER) AS amount_cents
+FROM transactions
+WHERE deleted_at IS NULL
+  AND kind = 'transfer'
+  AND to_wallet_id IS NOT NULL
+GROUP BY to_wallet_id
+`
+
+type TransferInSumsByWalletRow struct {
+	WalletID    *string
+	AmountCents int64
+}
+
+func (q *Queries) TransferInSumsByWallet(ctx context.Context) ([]TransferInSumsByWalletRow, error) {
+	rows, err := q.db.QueryContext(ctx, transferInSumsByWallet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TransferInSumsByWalletRow{}
+	for rows.Next() {
+		var i TransferInSumsByWalletRow
+		if err := rows.Scan(&i.WalletID, &i.AmountCents); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const transferOutSumsByWallet = `-- name: TransferOutSumsByWallet :many
+SELECT from_wallet_id AS wallet_id,
+       CAST(COALESCE(SUM(amount_cents), 0) AS INTEGER) AS amount_cents
+FROM transactions
+WHERE deleted_at IS NULL
+  AND kind = 'transfer'
+  AND from_wallet_id IS NOT NULL
+GROUP BY from_wallet_id
+`
+
+type TransferOutSumsByWalletRow struct {
+	WalletID    *string
+	AmountCents int64
+}
+
+func (q *Queries) TransferOutSumsByWallet(ctx context.Context) ([]TransferOutSumsByWalletRow, error) {
+	rows, err := q.db.QueryContext(ctx, transferOutSumsByWallet)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TransferOutSumsByWalletRow{}
+	for rows.Next() {
+		var i TransferOutSumsByWalletRow
+		if err := rows.Scan(&i.WalletID, &i.AmountCents); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateTransaction = `-- name: UpdateTransaction :one
 UPDATE transactions
-SET kind        = ?,
-    amount_cents = ?,
-    currency     = ?,
-    occurred_on  = ?,
-    memo         = ?,
-    task_id      = ?,
-    event_id     = ?,
-    note_id      = ?,
-    created_at   = ?
+SET kind           = ?,
+    amount_cents   = ?,
+    currency       = ?,
+    occurred_on    = ?,
+    memo           = ?,
+    wallet_id      = ?,
+    from_wallet_id = ?,
+    to_wallet_id   = ?,
+    task_id        = ?,
+    event_id       = ?,
+    note_id        = ?,
+    created_at     = ?
 WHERE id = ?
-RETURNING id, kind, amount_cents, currency, occurred_on, memo, task_id, event_id, note_id, created_at, deleted_at
+RETURNING id, kind, amount_cents, currency, occurred_on, memo, wallet_id, from_wallet_id, to_wallet_id, task_id, event_id, note_id, created_at, deleted_at
 `
 
 type UpdateTransactionParams struct {
-	Kind        string
-	AmountCents int64
-	Currency    string
-	OccurredOn  string
-	Memo        *string
-	TaskID      *string
-	EventID     *string
-	NoteID      *string
-	CreatedAt   string
-	ID          string
+	Kind         string
+	AmountCents  int64
+	Currency     string
+	OccurredOn   string
+	Memo         *string
+	WalletID     *string
+	FromWalletID *string
+	ToWalletID   *string
+	TaskID       *string
+	EventID      *string
+	NoteID       *string
+	CreatedAt    string
+	ID           string
 }
 
-// Full-column update (balance is recomputed on read, so edits propagate).
+// Full-column update (kind is service-frozen; balance recomputes on read).
 func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionParams) (Transaction, error) {
 	row := q.db.QueryRowContext(ctx, updateTransaction,
 		arg.Kind,
@@ -338,6 +380,9 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		arg.Currency,
 		arg.OccurredOn,
 		arg.Memo,
+		arg.WalletID,
+		arg.FromWalletID,
+		arg.ToWalletID,
 		arg.TaskID,
 		arg.EventID,
 		arg.NoteID,
@@ -352,6 +397,9 @@ func (q *Queries) UpdateTransaction(ctx context.Context, arg UpdateTransactionPa
 		&i.Currency,
 		&i.OccurredOn,
 		&i.Memo,
+		&i.WalletID,
+		&i.FromWalletID,
+		&i.ToWalletID,
 		&i.TaskID,
 		&i.EventID,
 		&i.NoteID,
