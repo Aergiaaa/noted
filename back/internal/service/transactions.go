@@ -125,7 +125,7 @@ func (s *TransactionService) CreateTransfer(ctx context.Context, in TransactionI
 
 func (s *TransactionService) create(ctx context.Context, in TransactionInput) (Transaction, error) {
 	in.Memo = normalizeMemo(in.Memo)
-	if err := s.validate(ctx, in); err != nil {
+	if err := s.validate(ctx, in, linkScope{task: true, event: true, note: true}); err != nil {
 		return Transaction{}, err
 	}
 
@@ -255,7 +255,11 @@ func (s *TransactionService) Update(ctx context.Context, id string, patch Transa
 
 	merged := mergeTransactionPatch(row, patch)
 	merged.Memo = normalizeMemo(merged.Memo)
-	if err := s.validate(ctx, merged); err != nil {
+	if err := s.validate(ctx, merged, linkScope{
+		task:  changedLink(patch.TaskID, row.TaskID),
+		event: changedLink(patch.EventID, row.EventID),
+		note:  changedLink(patch.NoteID, row.NoteID),
+	}); err != nil {
 		return Transaction{}, err
 	}
 
@@ -304,7 +308,7 @@ func (s *TransactionService) Purge(ctx context.Context, now time.Time) (int64, e
 	return s.q.PurgeTransactionsDeletedBefore(ctx, &cutoff)
 }
 
-func (s *TransactionService) validate(ctx context.Context, in TransactionInput) error {
+func (s *TransactionService) validate(ctx context.Context, in TransactionInput, scope linkScope) error {
 	fields := map[string]string{}
 
 	switch {
@@ -325,7 +329,7 @@ func (s *TransactionService) validate(ctx context.Context, in TransactionInput) 
 	if err := s.validateWallets(ctx, in, fields); err != nil {
 		return err
 	}
-	if err := s.validateLinks(ctx, in, fields); err != nil {
+	if err := s.validateLinks(ctx, in, fields, scope); err != nil {
 		return err
 	}
 
@@ -399,23 +403,32 @@ func (s *TransactionService) validateWalletRef(ctx context.Context, fields map[s
 	return nil
 }
 
-func (s *TransactionService) validateLinks(ctx context.Context, in TransactionInput, fields map[string]string) error {
-	if err := s.checkRef(ctx, normalizeID(in.TaskID), func(ctx context.Context, id string) error {
-		_, err := s.q.GetTask(ctx, id)
-		return err
-	}, fields, "task_id", "unknown task"); err != nil {
-		return err
+func (s *TransactionService) validateLinks(ctx context.Context, in TransactionInput, fields map[string]string, scope linkScope) error {
+	if scope.task {
+		if err := s.checkRef(ctx, normalizeID(in.TaskID), func(ctx context.Context, id string) error {
+			_, err := s.q.GetTask(ctx, id)
+			return err
+		}, fields, "task_id", "unknown task"); err != nil {
+			return err
+		}
 	}
-	if err := s.checkRef(ctx, normalizeID(in.EventID), func(ctx context.Context, id string) error {
-		_, err := s.q.GetEvent(ctx, id)
-		return err
-	}, fields, "event_id", "unknown event"); err != nil {
-		return err
+	if scope.event {
+		if err := s.checkRef(ctx, normalizeID(in.EventID), func(ctx context.Context, id string) error {
+			_, err := s.q.GetEvent(ctx, id)
+			return err
+		}, fields, "event_id", "unknown event"); err != nil {
+			return err
+		}
 	}
-	return s.checkRef(ctx, normalizeID(in.NoteID), func(ctx context.Context, id string) error {
-		_, err := s.q.GetNote(ctx, id)
-		return err
-	}, fields, "note_id", "unknown note")
+	if scope.note {
+		if err := s.checkRef(ctx, normalizeID(in.NoteID), func(ctx context.Context, id string) error {
+			_, err := s.q.GetNote(ctx, id)
+			return err
+		}, fields, "note_id", "unknown note"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *TransactionService) checkRef(ctx context.Context, id *string, get func(context.Context, string) error, fields map[string]string, key, message string) error {

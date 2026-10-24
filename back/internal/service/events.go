@@ -95,7 +95,7 @@ func (s *EventService) List(ctx context.Context, from, to time.Time) ([]Event, e
 func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error) {
 	in.Title = sanitizeLine(in.Title)
 	in.Description = sanitizeDescription(in.Description)
-	if err := s.validate(ctx, in); err != nil {
+	if err := s.validate(ctx, in, linkScope{note: true}); err != nil {
 		return Event{}, err
 	}
 
@@ -135,7 +135,9 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 	}
 	merged.Title = sanitizeLine(merged.Title)
 	merged.Description = sanitizeDescription(merged.Description)
-	if err := s.validate(ctx, merged); err != nil {
+	if err := s.validate(ctx, merged, linkScope{
+		note: changedLink(patch.NoteID, row.NoteID),
+	}); err != nil {
 		return Event{}, err
 	}
 
@@ -210,7 +212,7 @@ func (s *EventService) Purge(ctx context.Context, now time.Time) (int64, error) 
 	return s.q.PurgeEventsDeletedBefore(ctx, &cutoff)
 }
 
-func (s *EventService) validate(ctx context.Context, in EventInput) error {
+func (s *EventService) validate(ctx context.Context, in EventInput, scope linkScope) error {
 	fields := map[string]string{}
 	switch {
 	case in.Title == "":
@@ -223,8 +225,10 @@ func (s *EventService) validate(ctx context.Context, in EventInput) error {
 		fields["ends_at"] = "must be after starts_at"
 	}
 
-	if err := s.validateNoteLink(ctx, fields, in.NoteID); err != nil {
-		return err
+	if scope.note {
+		if err := s.validateNoteLink(ctx, fields, in.NoteID); err != nil {
+			return err
+		}
 	}
 
 	if len(fields) > 0 {

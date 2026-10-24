@@ -4,11 +4,15 @@ import { pickDefaultWallet } from "../../lib/selectors";
 import { parseSplitAmountToCents, toDayKey } from "../../lib/format";
 import { sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
+import LinkPicker from "../links/LinkPicker";
+import { useLinkSources } from "../links/useLinkSources";
 
 const SAVE_FAILED = "Couldn't record the transaction.";
 const AMOUNT_INVALID = "Enter a valid amount.";
 const DATE_REQUIRED = "Date is required.";
 const MEMO_MAX_CHAR = 500;
+
+const TRANSACTION_LINK_SOURCES = ["task", "event", "note"] as const;
 
 interface TransactionFormProps {
   wallets: WalletBalance[];
@@ -17,8 +21,8 @@ interface TransactionFormProps {
   onSaved: () => void;
 }
 
-// Record income or expense against one wallet (API.md). Link fields stay
-// hidden until F9 pickers exist (FEATURES.md F7/F8).
+// Record income or expense against one wallet (API.md). Empty link keys
+// stay omitted on create; the pickers set them when the user chooses.
 export default function TransactionForm({
   wallets,
   currency,
@@ -31,8 +35,12 @@ export default function TransactionForm({
   const [amountGroup, setAmountGroup] = useState("");
   const [occurredOn, setOccurredOn] = useState(() => toDayKey(new Date()));
   const [memo, setMemo] = useState("");
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const sources = useLinkSources(TRANSACTION_LINK_SOURCES);
 
   const onSubmit = async (submitEvent: SubmitEvent) => {
     submitEvent.preventDefault();
@@ -55,6 +63,9 @@ export default function TransactionForm({
     };
     const cleanMemo = sanitizeLine(memo);
     if (cleanMemo !== "") body.memo = cleanMemo;
+    if (taskId !== null) body.task_id = taskId;
+    if (eventId !== null) body.event_id = eventId;
+    if (noteId !== null) body.note_id = noteId;
 
     try {
       await api("/finance/transactions", { method: "POST", body });
@@ -151,6 +162,38 @@ export default function TransactionForm({
             onChange={(e) => setMemo(e.target.value)}
           />
         </label>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <LinkPicker
+            label="Task"
+            items={sources.tasks.map((task) => ({
+              id: task.id,
+              title: task.title,
+            }))}
+            value={taskId}
+            onChange={setTaskId}
+            loading={sources.loading}
+          />
+          <LinkPicker
+            label="Event"
+            items={sources.events.map((event) => ({
+              id: event.id,
+              title: event.title,
+            }))}
+            value={eventId}
+            onChange={setEventId}
+            loading={sources.loading}
+          />
+          <LinkPicker
+            label="Note"
+            items={sources.notes.map((note) => ({
+              id: note.id,
+              title: note.title,
+            }))}
+            value={noteId}
+            onChange={setNoteId}
+            loading={sources.loading}
+          />
+        </div>
 
         {errors.length > 0 && (
           <ul className="text-xs text-error" role="alert">

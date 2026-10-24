@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import CalendarPage from "./CalendarPage";
 import DashboardPage from "./DashboardPage";
 import FinancePage from "./FinancePage";
@@ -22,7 +23,9 @@ describe.each([
   ["finance", <FinancePage />, "Finance"],
 ] as const)("%s page", (_name, element, heading) => {
   it(`renders the ${heading} heading`, () => {
-    render(element);
+    // Pages render inside the app's routes; NotesPage's rows need that
+    // router context (NoteBody mention clicks).
+    render(<MemoryRouter>{element}</MemoryRouter>);
     expect(screen.getByRole("heading", { name: heading })).toBeDefined();
   });
 });

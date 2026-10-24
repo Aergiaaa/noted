@@ -92,10 +92,11 @@ describe("TasksPage", () => {
   });
 
   it("filters by status and due day through query params", async () => {
+    // Fresh Response per call: a Response body can only be read once, and
+    // the mount fetches the chip lists between the tasks calls.
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(listResponse([task()]))
-      .mockResolvedValue(listResponse([task()]));
+      .mockImplementation(() => Promise.resolve(listResponse([task()])));
     vi.stubGlobal("fetch", fetchMock);
 
     renderPage();
@@ -106,14 +107,16 @@ describe("TasksPage", () => {
     fireEvent.change(screen.getByLabelText("Status filter"), {
       target: { value: "done" },
     });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/tasks?status=done");
+    // Mount also fetches the chip-title lists (events, notes) — the
+    // status-filtered tasks call is the fourth request.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("/api/tasks?status=done");
 
     fireEvent.change(screen.getByLabelText("Due date filter"), {
       target: { value: "2026-10-20" },
     });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
       "/api/tasks?status=done&due=2026-10-20",
     );
   });
@@ -122,6 +125,8 @@ describe("TasksPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([task()]))
+      .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(listResponse([]))
       .mockResolvedValueOnce(jsonResponse(200, {}))
       .mockResolvedValueOnce(
         listResponse([task({ status: "done", completed_at: "now" })]),
@@ -144,12 +149,12 @@ describe("TasksPage", () => {
         screen.getByRole("button", { name: "Reopen Buy milk" }),
       ).toBeDefined(),
     );
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/tasks/t1");
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+    expect(fetchMock.mock.calls[3]?.[0]).toBe("/api/tasks/t1");
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
       method: "PATCH",
       body: JSON.stringify({ status: "done" }),
     });
-    expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/tasks");
+    expect(fetchMock.mock.calls[4]?.[0]).toBe("/api/tasks");
 
     fireEvent.click(screen.getByRole("button", { name: "Reopen Buy milk" }));
 
@@ -158,8 +163,8 @@ describe("TasksPage", () => {
         screen.getByRole("button", { name: "Complete Buy milk" }),
       ).toBeDefined(),
     );
-    expect(fetchMock.mock.calls[3]?.[0]).toBe("/api/tasks/t1");
-    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+    expect(fetchMock.mock.calls[5]?.[0]).toBe("/api/tasks/t1");
+    expect(fetchMock.mock.calls[5]?.[1]).toMatchObject({
       method: "PATCH",
       body: JSON.stringify({ status: "open" }),
     });
@@ -169,6 +174,8 @@ describe("TasksPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("<html>boom</html>", { status: 200 }))
+      .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(listResponse([]))
       .mockResolvedValueOnce(listResponse([task()]));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -246,6 +253,8 @@ describe("TasksPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([task()]))
+      .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(listResponse([]))
       .mockResolvedValueOnce(
         new Response("<html>boom</html>", { status: 200 }),
       );

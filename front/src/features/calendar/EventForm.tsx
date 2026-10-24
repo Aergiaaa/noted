@@ -1,14 +1,19 @@
-import { useState, type SubmitEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 import { api, errorLines, type Event } from "../../lib/api";
 import { toLocalInput } from "../../lib/format";
 import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
 import DatePicker from "./DatePicker";
 import TimeInput from "./TimeInput";
+import LinkPicker from "../links/LinkPicker";
+import MentionInsert from "../links/MentionInsert";
+import { useLinkSources } from "../links/useLinkSources";
 
 const SAVE_FAILED = "Couldn't save the event.";
 const TITLE_REQUIRED = "Title is required.";
 const ENDS_AFTER_STARTS = "Ends must be after starts.";
+
+const EVENT_LINK_SOURCES = ["note"] as const;
 
 interface EventFormProps {
   event: Event | null;
@@ -33,9 +38,12 @@ export default function EventForm({
     toLocalInput(event?.ends_at ?? plusHour(defaultStart).toISOString()),
   );
   const [description, setDescription] = useState(event?.description ?? "");
+  const [noteId, setNoteId] = useState<string | null>(event?.note_id ?? null);
+  const linkSources = useLinkSources(EVENT_LINK_SOURCES);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // Confirming only ever opens in edit mode; "" is a placeholder that can
   // never reach confirmDelete.
@@ -55,12 +63,18 @@ export default function EventForm({
     setErrors([]);
     setSaving(true);
     const trimmed = sanitizeBody(description);
-    const body = {
+    const core = {
       title: sanitizeLine(title),
       starts_at: new Date(starts).toISOString(),
       ends_at: new Date(ends).toISOString(),
       description: trimmed === "" ? undefined : trimmed,
     };
+    // Create omits an empty note; PATCH always sends it so "" clears
+    // (API.md: absent keeps, "" clears).
+    const body =
+      event === null
+        ? { ...core, ...(noteId !== null ? { note_id: noteId } : {}) }
+        : { ...core, note_id: noteId ?? "" };
 
     try {
       if (event === null) await api("/events", { method: "POST", body });
@@ -175,8 +189,24 @@ export default function EventForm({
             aria-label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            ref={descriptionRef}
           />
         </label>
+        <MentionInsert
+          text={description}
+          onTextChange={setDescription}
+          textareaRef={descriptionRef}
+        />
+        <LinkPicker
+          label="Note"
+          items={linkSources.notes.map((note) => ({
+            id: note.id,
+            title: note.title,
+          }))}
+          value={noteId}
+          onChange={setNoteId}
+          loading={linkSources.loading}
+        />
 
         {errors.length > 0 && (
           <ul className="text-xs text-error" role="alert">

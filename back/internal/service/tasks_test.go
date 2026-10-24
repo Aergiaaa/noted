@@ -486,6 +486,37 @@ func TestTaskService_update_unknownNote_400(t *testing.T) {
 	}
 }
 
+func TestTaskService_update_keepsStoredTrashedEventLink(t *testing.T) {
+	svc, db := newTestTaskService(t)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, svc, TaskInput{Title: "Buy keyboard", EventID: &eventID})
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, eventID); err != nil {
+		t.Fatalf("trash event: %v", err)
+	}
+
+	// TaskForm omits the link keys, so the stored trashed event is kept
+	// (API.md absent = keep) and the title edit must go through.
+	updated, err := svc.Update(context.Background(), task.ID, TaskPatch{Title: ptr("Buy keyboard tomorrow")})
+	if err != nil {
+		t.Fatalf("Update title with stored trashed event link: %v", err)
+	}
+	if updated.EventID == nil || *updated.EventID != eventID {
+		t.Fatalf("event_id = %v, want kept %s", updated.EventID, eventID)
+	}
+}
+
+func TestTaskService_update_replaceWithUnknownEvent_400(t *testing.T) {
+	svc, db := newTestTaskService(t)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, svc, TaskInput{Title: "Buy keyboard", EventID: &eventID})
+
+	_, err := svc.Update(context.Background(), task.ID, TaskPatch{EventID: ptr("e_missing")})
+	if got := fieldsOf(t, err)["event_id"]; got != "unknown event" {
+		t.Fatalf("event_id field = %q, want unknown event", got)
+	}
+}
+
 func TestTaskService_update_emptyTitle_400(t *testing.T) {
 	svc, _ := newTestTaskService(t)
 	task := seedTask(t, svc, TaskInput{Title: "Seed"})

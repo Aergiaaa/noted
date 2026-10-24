@@ -85,7 +85,7 @@ func (s *TaskService) List(ctx context.Context, status, due *string) ([]Task, er
 func (s *TaskService) Create(ctx context.Context, in TaskInput) (Task, error) {
 	in.Title = sanitizeLine(in.Title)
 	in.Status = STATUS_OPEN
-	if err := s.validate(ctx, in); err != nil {
+	if err := s.validate(ctx, in, linkScope{event: true, note: true}); err != nil {
 		return Task{}, err
 	}
 
@@ -120,7 +120,10 @@ func (s *TaskService) Update(ctx context.Context, id string, patch TaskPatch) (T
 
 	merged := mergeTaskPatch(row, patch)
 	merged.Title = sanitizeLine(merged.Title)
-	if err := s.validate(ctx, merged); err != nil {
+	if err := s.validate(ctx, merged, linkScope{
+		event: changedLink(patch.EventID, row.EventID),
+		note:  changedLink(patch.NoteID, row.NoteID),
+	}); err != nil {
 		return Task{}, err
 	}
 
@@ -165,7 +168,7 @@ func (s *TaskService) Purge(ctx context.Context, now time.Time) (int64, error) {
 	return s.q.PurgeTasksDeletedBefore(ctx, &cutoff)
 }
 
-func (s *TaskService) validate(ctx context.Context, in TaskInput) error {
+func (s *TaskService) validate(ctx context.Context, in TaskInput, scope linkScope) error {
 	fields := map[string]string{}
 	switch {
 	case in.Title == "":
@@ -178,11 +181,15 @@ func (s *TaskService) validate(ctx context.Context, in TaskInput) error {
 		fields["status"] = "must be open or done"
 	}
 
-	if err := s.validateEventLink(ctx, fields, in.EventID); err != nil {
-		return err
+	if scope.event {
+		if err := s.validateEventLink(ctx, fields, in.EventID); err != nil {
+			return err
+		}
 	}
-	if err := s.validateNoteLink(ctx, fields, in.NoteID); err != nil {
-		return err
+	if scope.note {
+		if err := s.validateNoteLink(ctx, fields, in.NoteID); err != nil {
+			return err
+		}
 	}
 
 	if len(fields) > 0 {

@@ -338,6 +338,47 @@ func TestEventService_update_invalidPatch_400(t *testing.T) {
 	}
 }
 
+func TestEventService_update_unknownNote_400(t *testing.T) {
+	svc, _ := newTestEventService(t)
+	created, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	_, err = svc.Update(context.Background(), created.ID, EventPatch{NoteID: strPtr("n_missing")})
+	if got := fieldsOf(t, err)["note_id"]; got != "unknown note" {
+		t.Fatalf("note_id field = %q, want unknown note", got)
+	}
+}
+
+func TestEventService_update_keepsTrashedNoteLink(t *testing.T) {
+	svc, db := newTestEventService(t)
+	note := seedNote(t, NewNoteService(generated.New(db)), "Context")
+	created, err := svc.Create(context.Background(), EventInput{
+		Title:    "Dentist",
+		StartsAt: mustTime(t, "2026-10-14T09:00:00Z"),
+		EndsAt:   mustTime(t, "2026-10-14T10:00:00Z"),
+		NoteID:   &note.ID,
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := db.Exec(
+		`UPDATE notes SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, note.ID); err != nil {
+		t.Fatalf("trash note: %v", err)
+	}
+
+	// The form re-sends the stored id unchanged (LinkPicker round-trip);
+	// that is a keep, not a new link, so it must not re-validate.
+	updated, err := svc.Update(context.Background(), created.ID, EventPatch{NoteID: &note.ID})
+	if err != nil {
+		t.Fatalf("Update with stored trashed note link: %v", err)
+	}
+	if updated.NoteID == nil || *updated.NoteID != note.ID {
+		t.Fatalf("note_id = %v, want kept %s", updated.NoteID, note.ID)
+	}
+}
+
 func TestEventService_update_missing_404(t *testing.T) {
 	svc, _ := newTestEventService(t)
 	if _, err := svc.Update(context.Background(), "ghost", EventPatch{}); !errors.Is(err, ErrNotFound) {
@@ -569,6 +610,50 @@ func TestEventService_purge_zeroWhenNothingDue(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("Purge rows = %d, want 0", n)
+	}
+}
+
+func TestEventService_purge_nullsInboundTransactionLink(t *testing.T) {
+	svc, db := newTestEventService(t)
+	created, err := svc.Create(context.Background(), validInput(t))
+	if err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, event_id, created_at)
+		 VALUES ('x1', 'expense', 5000, 'IDR', '2026-09-20', ?, '2026-09-20T00:00:00Z')`,
+		created.ID,
+	); err != nil {
+		t.Fatalf("seed transaction: %v", err)
+	}
+
+	if err := svc.Delete(context.Background(), created.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	var keptID sql.NullString
+	if err := db.QueryRow(`SELECT event_id FROM transactions WHERE id = 'x1'`).Scan(&keptID); err != nil {
+		t.Fatalf("read transaction: %v", err)
+	}
+	if !keptID.Valid {
+		t.Fatal("transaction.event_id nulled by soft-delete, want intact until purge")
+	}
+
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, created.ID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	n, err := svc.Purge(context.Background(), mustTime(t, "2026-10-15T00:00:00Z"))
+	if err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Purge rows = %d, want 1", n)
+	}
+	if err := db.QueryRow(`SELECT event_id FROM transactions WHERE id = 'x1'`).Scan(&keptID); err != nil {
+		t.Fatalf("re-read transaction: %v", err)
+	}
+	if keptID.Valid {
+		t.Fatalf("transaction.event_id = %q, want NULL after purge", keptID.String)
 	}
 }
 

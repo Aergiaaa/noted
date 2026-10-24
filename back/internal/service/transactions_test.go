@@ -171,11 +171,93 @@ func TestTransactionService_create_badLink_400(t *testing.T) {
 	svc, wallets, _ := newTestTransactionService(t)
 	cash := cashWallet(t, wallets)
 
+	cases := []struct {
+		name  string
+		field string
+		want  string
+		apply func(in *TransactionInput)
+	}{
+		{"unknown task", "task_id", "unknown task",
+			func(in *TransactionInput) { in.TaskID = strPtr("t_missing") }},
+		{"unknown event", "event_id", "unknown event",
+			func(in *TransactionInput) { in.EventID = strPtr("e_missing") }},
+		{"unknown note", "note_id", "unknown note",
+			func(in *TransactionInput) { in.NoteID = strPtr("n_missing") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := expenseInput(cash.ID, 50000, "2026-10-20")
+			tc.apply(&in)
+			_, err := svc.Create(context.Background(), in)
+			if got := fieldsOf(t, err)[tc.field]; got != tc.want {
+				t.Fatalf("%s field = %q, want %q", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTransactionService_update_badLink_400(t *testing.T) {
+	svc, wallets, _ := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+
+	created, err := svc.Create(context.Background(), expenseInput(cash.ID, 50000, "2026-10-20"))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cases := []struct {
+		name  string
+		field string
+		want  string
+		patch TransactionPatch
+	}{
+		{"unknown task", "task_id", "unknown task",
+			TransactionPatch{TaskID: strPtr("t_missing")}},
+		{"unknown event", "event_id", "unknown event",
+			TransactionPatch{EventID: strPtr("e_missing")}},
+		{"unknown note", "note_id", "unknown note",
+			TransactionPatch{NoteID: strPtr("n_missing")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.Update(context.Background(), created.ID, tc.patch)
+			if got := fieldsOf(t, err)[tc.field]; got != tc.want {
+				t.Fatalf("%s field = %q, want %q", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTransactionService_update_keepsStoredTrashedEventLink(t *testing.T) {
+	svc, wallets, db := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, NewTaskService(generated.New(db)), TaskInput{Title: "Buy keyboard"})
+
 	in := expenseInput(cash.ID, 50000, "2026-10-20")
-	in.TaskID = strPtr("t_missing")
-	_, err := svc.Create(context.Background(), in)
-	if got := fieldsOf(t, err)["task_id"]; got != "unknown task" {
-		t.Fatalf("task_id field = %q", got)
+	in.EventID = &eventID
+	in.TaskID = &task.ID
+	created, err := svc.Create(context.Background(), in)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, eventID); err != nil {
+		t.Fatalf("trash event: %v", err)
+	}
+
+	// The chip unlink sends one field; the stored trashed event on the
+	// merged row must not re-validate (API.md absent = keep, DOMAIN.md
+	// links stay intact until purge).
+	unlinked, err := svc.Update(context.Background(), created.ID, TransactionPatch{TaskID: strPtr("")})
+	if err != nil {
+		t.Fatalf("Update unlink with stored trashed event link: %v", err)
+	}
+	if unlinked.TaskID != nil {
+		t.Fatalf("task_id = %v, want cleared", unlinked.TaskID)
+	}
+	if unlinked.EventID == nil || *unlinked.EventID != eventID {
+		t.Fatalf("event_id = %v, want kept %s", unlinked.EventID, eventID)
 	}
 }
 
@@ -815,6 +897,23 @@ func TestTransactionService_create_eventRefDbError(t *testing.T) {
 	_, err := svc.Create(context.Background(), in)
 	if err == nil {
 		t.Fatal("Create = nil, want event lookup error")
+	}
+	var validation *ValidationError
+	if errors.As(err, &validation) {
+		t.Fatalf("err = validation %v, want db error", validation.Fields)
+	}
+}
+
+func TestTransactionService_create_noteRefDbError(t *testing.T) {
+	svc, wallets, db := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+	mustExec(t, db, `DROP TABLE notes`)
+
+	in := incomeInput(cash.ID, 1000, "2026-10-20")
+	in.NoteID = strPtr("n_any")
+	_, err := svc.Create(context.Background(), in)
+	if err == nil {
+		t.Fatal("Create = nil, want note lookup error")
 	}
 	var validation *ValidationError
 	if errors.As(err, &validation) {
