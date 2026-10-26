@@ -38,6 +38,12 @@ type app struct {
 	// once in wire so the login cookie and the guard's re-issue can never
 	// disagree.
 	secure bool
+
+	// now is the clock used by the rate limiter; defaults to time.Now in
+	// production and is overridden with a fixed time in tests so the
+	// login rate-limit flake under -race cannot refill tokens between
+	// attempts.
+	now func() time.Time
 }
 
 func (a *app) run(ctx context.Context) error {
@@ -73,7 +79,7 @@ func main() {
 }
 
 func newApp(conf Config) *app {
-	return &app{conf: conf}
+	return &app{conf: conf, now: time.Now}
 }
 
 func newConfigFromEnv() Config {
