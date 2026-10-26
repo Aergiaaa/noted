@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +17,12 @@ import (
 )
 
 const TITLE_MAX_CHAR = 200
+
+// titleTooLong: shared title-ceiling message (events, notes, tasks all
+// cap titles at TITLE_MAX_CHAR).
+func titleTooLong() string {
+	return fmt.Sprintf("must be at most %d characters", TITLE_MAX_CHAR)
+}
 
 // SOFT_DELETE_RETENTION: how long a soft-deleted row waits before purge
 // removes it for real (DOMAIN.md). Boot runs the purge; Delete triggers it
@@ -35,13 +43,14 @@ var ErrNotFound = errors.New("not found")
 
 // EventInput is a fully-resolved event: a create payload, or a PATCH row
 // after the service merged it over the stored one. Times are instants;
-// storage normalizes them to whole-second UTC strings.
+// storage normalizes them to whole-second UTC strings. Optional fields
+// use "" for "no value" — resolved to SQL NULL at the write boundary.
 type EventInput struct {
 	Title       string
 	StartsAt    time.Time
 	EndsAt      time.Time
-	Description *string
-	NoteID      *string
+	Description string
+	NoteID      string
 }
 
 // EventPatch: a nil field keeps the stored value (API.md PATCH partial).
@@ -94,7 +103,7 @@ func (s *EventService) List(ctx context.Context, from, to time.Time) ([]Event, e
 
 func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error) {
 	in.Title = sanitizeLine(in.Title)
-	in.Description = sanitizeDescription(in.Description)
+	in.Description = sanitizeBody(in.Description)
 	if err := s.validate(ctx, in, linkScope{note: true}); err != nil {
 		return Event{}, err
 	}
@@ -105,8 +114,8 @@ func (s *EventService) Create(ctx context.Context, in EventInput) (Event, error)
 		Title:       in.Title,
 		StartsAt:    formatStored(in.StartsAt),
 		EndsAt:      formatStored(in.EndsAt),
-		Description: in.Description,
-		NoteID:      normalizeID(in.NoteID),
+		Description: nullIfEmpty(in.Description),
+		NoteID:      nullIfEmpty(in.NoteID),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	})
@@ -134,7 +143,7 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 		return Event{}, err
 	}
 	merged.Title = sanitizeLine(merged.Title)
-	merged.Description = sanitizeDescription(merged.Description)
+	merged.Description = sanitizeBody(merged.Description)
 	if err := s.validate(ctx, merged, linkScope{
 		note: changedLink(patch.NoteID, row.NoteID),
 	}); err != nil {
@@ -146,8 +155,8 @@ func (s *EventService) Update(ctx context.Context, id string, patch EventPatch) 
 		Title:       merged.Title,
 		StartsAt:    formatStored(merged.StartsAt),
 		EndsAt:      formatStored(merged.EndsAt),
-		Description: merged.Description,
-		NoteID:      normalizeID(merged.NoteID),
+		Description: nullIfEmpty(merged.Description),
+		NoteID:      nullIfEmpty(merged.NoteID),
 		UpdatedAt:   formatStored(time.Now()),
 	})
 	if err != nil {
@@ -171,7 +180,8 @@ func (s *EventService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.Purge(ctx, time.Now())
+	_, purgeErr := s.Purge(ctx, time.Now())
+	logPurge("events", purgeErr)
 
 	return nil
 }
@@ -218,7 +228,7 @@ func (s *EventService) validate(ctx context.Context, in EventInput, scope linkSc
 	case in.Title == "":
 		fields["title"] = "required"
 	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
-		fields["title"] = "must be at most 200 characters"
+		fields["title"] = titleTooLong()
 	}
 
 	if !in.EndsAt.After(in.StartsAt) {
@@ -241,13 +251,12 @@ func (s *EventService) validate(ctx context.Context, in EventInput, scope linkSc
 // validateNoteLink records "unknown note" for a non-empty link id; a
 // storage failure aborts validation with the raw error (writeServiceError
 // maps it to the generic 500).
-func (s *EventService) validateNoteLink(ctx context.Context, fields map[string]string, noteID *string) error {
-	id := normalizeID(noteID)
-	if id == nil {
+func (s *EventService) validateNoteLink(ctx context.Context, fields map[string]string, noteID string) error {
+	if noteID == "" {
 		return nil
 	}
 
-	_, err := s.q.GetNote(ctx, *id)
+	_, err := s.q.GetNote(ctx, noteID)
 	if errors.Is(err, sql.ErrNoRows) {
 		fields["note_id"] = "unknown note"
 		return nil
@@ -275,8 +284,8 @@ func mergePatch(row generated.Event, patch EventPatch) (EventInput, error) {
 		Title:       row.Title,
 		StartsAt:    starts,
 		EndsAt:      ends,
-		Description: row.Description,
-		NoteID:      row.NoteID,
+		Description: derefString(row.Description),
+		NoteID:      derefString(row.NoteID),
 	}
 
 	if patch.Title != nil {
@@ -289,10 +298,10 @@ func mergePatch(row generated.Event, patch EventPatch) (EventInput, error) {
 		in.EndsAt = *patch.EndsAt
 	}
 	if patch.Description != nil {
-		in.Description = patch.Description
+		in.Description = *patch.Description
 	}
 	if patch.NoteID != nil {
-		in.NoteID = patch.NoteID
+		in.NoteID = *patch.NoteID
 	}
 	return in, nil
 }
@@ -308,14 +317,31 @@ func parseStored(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
-// normalizeID: an empty string means "no value" — a cleared link or
-// due_date, matching the nullable-FK shape the frontend sends when it
-// unlinks ("" clears, absent/null keeps).
-func normalizeID(id *string) *string {
-	if id != nil && *id == "" {
+// logPurge: a purge failure never fails the delete (boot retries it), but
+// it must not vanish silently either — surface it to the host log with a
+// stable prefix so an operator can spot a stuck retention window.
+func logPurge(table string, err error) {
+	if err != nil {
+		slog.Warn("purge", "table", table, "err", err)
+	}
+}
+
+// derefString: nil → "", a resolved "no value" for the plain-string
+// service inputs. "" means absent link/date/memo at the boundary.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// nullIfEmpty: the write-boundary half — "" → SQL NULL for the nullable
+// columns sqlc generates as *string.
+func nullIfEmpty(s string) *string {
+	if s == "" {
 		return nil
 	}
-	return id
+	return &s
 }
 
 func fromRow(row generated.Event) Event {

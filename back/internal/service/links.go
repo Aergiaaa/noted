@@ -18,11 +18,8 @@ func changedLink(presented *string, stored *string) bool {
 	return presented != nil && !sameLink(presented, stored)
 }
 
-// sameLink: both values name the same target once "" normalizes to nil.
+// sameLink: both values name the same target once nil and "" collapse to
+// the same "no value".
 func sameLink(a, b *string) bool {
-	x, y := normalizeID(a), normalizeID(b)
-	if x == nil || y == nil {
-		return x == nil && y == nil
-	}
-	return *x == *y
+	return derefString(a) == derefString(b)
 }

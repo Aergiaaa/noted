@@ -225,8 +225,7 @@ func (h *Handler) ListTransactions(w http.ResponseWriter, r *http.Request) {
 			writeFieldError(w, "cursor", "malformed")
 			return
 		}
-		params.CursorOccurredOn = &occurredOn
-		params.CursorID = &id
+		params.Cursor = &service.TransactionCursor{OccurredOn: occurredOn, ID: id}
 	}
 	if walletID := q.Get("wallet_id"); walletID != "" {
 		params.WalletID = &walletID
@@ -258,16 +257,15 @@ func (h *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	walletID := req.WalletID
 	transaction, err := h.transactions.Create(r.Context(), service.TransactionInput{
-		Kind:        req.Kind,
-		WalletID:    &walletID,
+		Kind:        service.Kind(req.Kind),
+		WalletID:    req.WalletID,
 		AmountCents: req.AmountCents,
 		OccurredOn:  req.OccurredOn,
-		Memo:        req.Memo,
-		TaskID:      req.TaskID,
-		EventID:     req.EventID,
-		NoteID:      req.NoteID,
+		Memo:        derefParam(req.Memo),
+		TaskID:      derefParam(req.TaskID),
+		EventID:     derefParam(req.EventID),
+		NoteID:      derefParam(req.NoteID),
 	})
 	if err != nil {
 		writeServiceError(w, err, "create transaction")
@@ -283,13 +281,12 @@ func (h *Handler) CreateTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	from, to := req.FromWalletID, req.ToWalletID
 	transaction, err := h.transactions.CreateTransfer(r.Context(), service.TransactionInput{
-		FromWalletID: &from,
-		ToWalletID:   &to,
+		FromWalletID: req.FromWalletID,
+		ToWalletID:   req.ToWalletID,
 		AmountCents:  req.AmountCents,
 		OccurredOn:   req.OccurredOn,
-		Memo:         req.Memo,
+		Memo:         derefParam(req.Memo),
 	})
 	if err != nil {
 		writeServiceError(w, err, "create transfer")
@@ -366,7 +363,7 @@ func toWalletJSON(w service.Wallet) walletJSON {
 func toTransactionJSON(t service.Transaction) transactionJSON {
 	return transactionJSON{
 		ID:           t.ID,
-		Kind:         t.Kind,
+		Kind:         string(t.Kind),
 		AmountCents:  t.AmountCents,
 		Currency:     t.Currency,
 		OccurredOn:   t.OccurredOn,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,39 +12,45 @@ import (
 	"noted/internal/database/generated"
 )
 
-// Transaction kinds (DOMAIN.md); the DB CHECK mirrors them. kind is
+// Kind names a transaction kind (DOMAIN.md); the DB CHECK mirrors the
+// three values. A named type keeps an arbitrary string from landing in a
+// Transaction without an explicit conversion at the boundary. kind is
 // immutable on PATCH — converting is void + recreate (API.md).
+type Kind string
+
 const (
-	KIND_INCOME   = "income"
-	KIND_EXPENSE  = "expense"
-	KIND_TRANSFER = "transfer"
+	KIND_INCOME   Kind = "income"
+	KIND_EXPENSE  Kind = "expense"
+	KIND_TRANSFER Kind = "transfer"
 )
 
 const (
 	AMOUNT_MIN_CENTS = 1
-	AMOUNT_MAX_CENTS = 1e12
+	AMOUNT_MAX_CENTS = 1_000_000_000_000
 	MEMO_MAX_CHAR    = 500
 )
 
 // TransactionInput is a fully-resolved transaction: a create payload, or
 // a PATCH row after the service merged it over the stored one. Kind
 // arrives forced by Create/CreateTransfer on the create path and is
-// carried from the stored row on updates.
+// carried from the stored row on updates. Optional fields use "" for "no
+// value" (no memo / no wallet side / no link), resolved to SQL NULL at
+// the write boundary.
 type TransactionInput struct {
-	Kind         string
+	Kind         Kind
 	AmountCents  int64
 	OccurredOn   string
-	Memo         *string
-	WalletID     *string // income/expense only
-	FromWalletID *string // transfer only
-	ToWalletID   *string // transfer only
-	TaskID       *string
-	EventID      *string
-	NoteID       *string
+	Memo         string
+	WalletID     string // income/expense only
+	FromWalletID string // transfer only
+	ToWalletID   string // transfer only
+	TaskID       string
+	EventID      string
+	NoteID       string
 }
 
 // TransactionPatch: a nil field keeps the stored value; "" clears memo
-// and the wallet/link fields (normalizeID at write). Kind is not
+// and the wallet/link fields (nulled at write). Kind is not
 // patchable by design.
 type TransactionPatch struct {
 	AmountCents  *int64
@@ -61,7 +68,7 @@ type TransactionPatch struct {
 // UTC strings (already the wire format, like Event/Note).
 type Transaction struct {
 	ID           string
-	Kind         string
+	Kind         Kind
 	AmountCents  int64
 	Currency     string
 	OccurredOn   string
@@ -75,12 +82,19 @@ type Transaction struct {
 	CreatedAt    string
 }
 
-// TransactionListParams: nil cursor fields mean the first page.
+// TransactionListParams: a nil Cursor means the first page; WalletID
+// filters to either side of a transfer.
 type TransactionListParams struct {
-	WalletID         *string
-	CursorOccurredOn *string
-	CursorID         *string
-	Limit            int64
+	WalletID *string
+	Cursor   *TransactionCursor
+	Limit    int64
+}
+
+// TransactionCursor is the opaque keyset pair (occurred_on, id) a page
+// resumes from. Both parts travel together — never two loose pointers.
+type TransactionCursor struct {
+	OccurredOn string
+	ID         string
 }
 
 // Balance is the composed read: total over every live row plus one entry
@@ -119,29 +133,29 @@ func (s *TransactionService) Create(ctx context.Context, in TransactionInput) (T
 
 func (s *TransactionService) CreateTransfer(ctx context.Context, in TransactionInput) (Transaction, error) {
 	in.Kind = KIND_TRANSFER
-	in.WalletID = nil
+	in.WalletID = ""
 	return s.create(ctx, in)
 }
 
 func (s *TransactionService) create(ctx context.Context, in TransactionInput) (Transaction, error) {
-	in.Memo = normalizeMemo(in.Memo)
+	in.Memo = sanitizeLine(in.Memo)
 	if err := s.validate(ctx, in, linkScope{task: true, event: true, note: true}); err != nil {
 		return Transaction{}, err
 	}
 
 	row, err := s.q.CreateTransaction(ctx, generated.CreateTransactionParams{
 		ID:           uuid.NewString(),
-		Kind:         in.Kind,
+		Kind:         string(in.Kind),
 		AmountCents:  in.AmountCents,
 		Currency:     s.currency,
 		OccurredOn:   in.OccurredOn,
-		Memo:         in.Memo,
-		WalletID:     normalizeID(in.WalletID),
-		FromWalletID: normalizeID(in.FromWalletID),
-		ToWalletID:   normalizeID(in.ToWalletID),
-		TaskID:       normalizeID(in.TaskID),
-		EventID:      normalizeID(in.EventID),
-		NoteID:       normalizeID(in.NoteID),
+		Memo:         nullIfEmpty(in.Memo),
+		WalletID:     nullIfEmpty(in.WalletID),
+		FromWalletID: nullIfEmpty(in.FromWalletID),
+		ToWalletID:   nullIfEmpty(in.ToWalletID),
+		TaskID:       nullIfEmpty(in.TaskID),
+		EventID:      nullIfEmpty(in.EventID),
+		NoteID:       nullIfEmpty(in.NoteID),
 		CreatedAt:    formatStored(time.Now()),
 	})
 	if err != nil {
@@ -165,9 +179,15 @@ func (s *TransactionService) Get(ctx context.Context, id string) (Transaction, e
 
 // List: keyset page, newest first; a nil wallet filter shows everything.
 func (s *TransactionService) List(ctx context.Context, p TransactionListParams) ([]Transaction, error) {
+	var cursorOccurredOn, cursorID *string
+	if p.Cursor != nil {
+		cursorOccurredOn = &p.Cursor.OccurredOn
+		cursorID = &p.Cursor.ID
+	}
+
 	rows, err := s.q.ListTransactionsPage(ctx, generated.ListTransactionsPageParams{
-		CursorOccurredOn: p.CursorOccurredOn,
-		CursorID:         p.CursorID,
+		CursorOccurredOn: cursorOccurredOn,
+		CursorID:         cursorID,
 		WalletID:         p.WalletID,
 		PageLimit:        p.Limit,
 	})
@@ -254,7 +274,7 @@ func (s *TransactionService) Update(ctx context.Context, id string, patch Transa
 	}
 
 	merged := mergeTransactionPatch(row, patch)
-	merged.Memo = normalizeMemo(merged.Memo)
+	merged.Memo = sanitizeLine(merged.Memo)
 	if err := s.validate(ctx, merged, linkScope{
 		task:  changedLink(patch.TaskID, row.TaskID),
 		event: changedLink(patch.EventID, row.EventID),
@@ -264,17 +284,17 @@ func (s *TransactionService) Update(ctx context.Context, id string, patch Transa
 	}
 
 	updated, err := s.q.UpdateTransaction(ctx, generated.UpdateTransactionParams{
-		Kind:         merged.Kind,
+		Kind:         string(merged.Kind),
 		AmountCents:  merged.AmountCents,
 		Currency:     s.currency,
 		OccurredOn:   merged.OccurredOn,
-		Memo:         merged.Memo,
-		WalletID:     normalizeID(merged.WalletID),
-		FromWalletID: normalizeID(merged.FromWalletID),
-		ToWalletID:   normalizeID(merged.ToWalletID),
-		TaskID:       normalizeID(merged.TaskID),
-		EventID:      normalizeID(merged.EventID),
-		NoteID:       normalizeID(merged.NoteID),
+		Memo:         nullIfEmpty(merged.Memo),
+		WalletID:     nullIfEmpty(merged.WalletID),
+		FromWalletID: nullIfEmpty(merged.FromWalletID),
+		ToWalletID:   nullIfEmpty(merged.ToWalletID),
+		TaskID:       nullIfEmpty(merged.TaskID),
+		EventID:      nullIfEmpty(merged.EventID),
+		NoteID:       nullIfEmpty(merged.NoteID),
 		CreatedAt:    row.CreatedAt,
 		ID:           id,
 	})
@@ -298,7 +318,8 @@ func (s *TransactionService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.Purge(ctx, time.Now())
+	_, purgeErr := s.Purge(ctx, time.Now())
+	logPurge("transactions", purgeErr)
 
 	return nil
 }
@@ -313,17 +334,17 @@ func (s *TransactionService) validate(ctx context.Context, in TransactionInput, 
 
 	switch {
 	case in.AmountCents < AMOUNT_MIN_CENTS:
-		fields["amount_cents"] = "must be at least 1"
+		fields["amount_cents"] = fmt.Sprintf("must be at least %d", AMOUNT_MIN_CENTS)
 	case in.AmountCents > AMOUNT_MAX_CENTS:
-		fields["amount_cents"] = "must be at most 1000000000000"
+		fields["amount_cents"] = fmt.Sprintf("must be at most %d", AMOUNT_MAX_CENTS)
 	}
 
 	if !validDay(in.OccurredOn) {
 		fields["occurred_on"] = "must be YYYY-MM-DD"
 	}
 
-	if len([]rune(derefMemo(in.Memo))) > MEMO_MAX_CHAR {
-		fields["memo"] = "must be at most 500 characters"
+	if len([]rune(in.Memo)) > MEMO_MAX_CHAR {
+		fields["memo"] = fmt.Sprintf("must be at most %d characters", MEMO_MAX_CHAR)
 	}
 
 	if err := s.validateWallets(ctx, in, fields); err != nil {
@@ -345,20 +366,18 @@ func (s *TransactionService) validate(ctx context.Context, in TransactionInput, 
 // transfer sides; transfers need distinct from/to and no wallet_id.
 func (s *TransactionService) validateWallets(ctx context.Context, in TransactionInput, fields map[string]string) error {
 	if in.Kind == KIND_TRANSFER {
-		if normalizeID(in.FromWalletID) == nil {
+		if in.FromWalletID == "" {
 			fields["from_wallet_id"] = "required"
 		}
 
-		from := derefID(in.FromWalletID)
-		to := normalizeID(in.ToWalletID)
 		switch {
-		case to == nil:
+		case in.ToWalletID == "":
 			fields["to_wallet_id"] = "required"
-		case from != "" && from == *to:
+		case in.FromWalletID != "" && in.FromWalletID == in.ToWalletID:
 			fields["to_wallet_id"] = "must differ from from_wallet_id"
 		}
 
-		if normalizeID(in.WalletID) != nil {
+		if in.WalletID != "" {
 			fields["wallet_id"] = "not used by transfers"
 		}
 
@@ -371,27 +390,29 @@ func (s *TransactionService) validateWallets(ctx context.Context, in Transaction
 		return nil
 	}
 
-	if normalizeID(in.WalletID) == nil {
+	if in.WalletID == "" {
 		fields["wallet_id"] = "required"
 	} else if err := s.validateWalletRef(ctx, fields, "wallet_id", in.WalletID); err != nil {
 		return err
 	}
 
-	if normalizeID(in.FromWalletID) != nil {
+	if in.FromWalletID != "" {
 		fields["from_wallet_id"] = "only transfers use from_wallet_id"
 	}
-	if normalizeID(in.ToWalletID) != nil {
+	if in.ToWalletID != "" {
 		fields["to_wallet_id"] = "only transfers use to_wallet_id"
 	}
 
 	return nil
 }
 
-func (s *TransactionService) validateWalletRef(ctx context.Context, fields map[string]string, key string, id *string) error {
-	if normalizeID(id) == nil {
+// validateWalletRef records "unknown wallet" for a non-empty id; a
+// storage failure aborts validation with the raw error.
+func (s *TransactionService) validateWalletRef(ctx context.Context, fields map[string]string, key, id string) error {
+	if id == "" {
 		return nil
 	}
-	_, err := s.q.GetWallet(ctx, *normalizeID(id))
+	_, err := s.q.GetWallet(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		fields[key] = "unknown wallet"
 		return nil
@@ -405,7 +426,7 @@ func (s *TransactionService) validateWalletRef(ctx context.Context, fields map[s
 
 func (s *TransactionService) validateLinks(ctx context.Context, in TransactionInput, fields map[string]string, scope linkScope) error {
 	if scope.task {
-		if err := s.checkRef(ctx, normalizeID(in.TaskID), func(ctx context.Context, id string) error {
+		if err := s.checkRef(ctx, in.TaskID, func(ctx context.Context, id string) error {
 			_, err := s.q.GetTask(ctx, id)
 			return err
 		}, fields, "task_id", "unknown task"); err != nil {
@@ -413,7 +434,7 @@ func (s *TransactionService) validateLinks(ctx context.Context, in TransactionIn
 		}
 	}
 	if scope.event {
-		if err := s.checkRef(ctx, normalizeID(in.EventID), func(ctx context.Context, id string) error {
+		if err := s.checkRef(ctx, in.EventID, func(ctx context.Context, id string) error {
 			_, err := s.q.GetEvent(ctx, id)
 			return err
 		}, fields, "event_id", "unknown event"); err != nil {
@@ -421,7 +442,7 @@ func (s *TransactionService) validateLinks(ctx context.Context, in TransactionIn
 		}
 	}
 	if scope.note {
-		if err := s.checkRef(ctx, normalizeID(in.NoteID), func(ctx context.Context, id string) error {
+		if err := s.checkRef(ctx, in.NoteID, func(ctx context.Context, id string) error {
 			_, err := s.q.GetNote(ctx, id)
 			return err
 		}, fields, "note_id", "unknown note"); err != nil {
@@ -431,12 +452,13 @@ func (s *TransactionService) validateLinks(ctx context.Context, in TransactionIn
 	return nil
 }
 
-func (s *TransactionService) checkRef(ctx context.Context, id *string, get func(context.Context, string) error, fields map[string]string, key, message string) error {
-	if id == nil {
+// checkRef: an empty id means "no link" and skips the existence probe.
+func (s *TransactionService) checkRef(ctx context.Context, id string, get func(context.Context, string) error, fields map[string]string, key, message string) error {
+	if id == "" {
 		return nil
 	}
 
-	err := get(ctx, *id)
+	err := get(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		fields[key] = message
 		return nil
@@ -450,16 +472,16 @@ func (s *TransactionService) checkRef(ctx context.Context, id *string, get func(
 
 func mergeTransactionPatch(row generated.Transaction, patch TransactionPatch) TransactionInput {
 	in := TransactionInput{
-		Kind:         row.Kind,
+		Kind:         Kind(row.Kind),
 		AmountCents:  row.AmountCents,
 		OccurredOn:   row.OccurredOn,
-		Memo:         row.Memo,
-		WalletID:     row.WalletID,
-		FromWalletID: row.FromWalletID,
-		ToWalletID:   row.ToWalletID,
-		TaskID:       row.TaskID,
-		EventID:      row.EventID,
-		NoteID:       row.NoteID,
+		Memo:         derefString(row.Memo),
+		WalletID:     derefString(row.WalletID),
+		FromWalletID: derefString(row.FromWalletID),
+		ToWalletID:   derefString(row.ToWalletID),
+		TaskID:       derefString(row.TaskID),
+		EventID:      derefString(row.EventID),
+		NoteID:       derefString(row.NoteID),
 	}
 
 	if patch.AmountCents != nil {
@@ -469,53 +491,27 @@ func mergeTransactionPatch(row generated.Transaction, patch TransactionPatch) Tr
 		in.OccurredOn = *patch.OccurredOn
 	}
 	if patch.Memo != nil {
-		in.Memo = patch.Memo
+		in.Memo = *patch.Memo
 	}
 	if patch.WalletID != nil {
-		in.WalletID = patch.WalletID
+		in.WalletID = *patch.WalletID
 	}
 	if patch.FromWalletID != nil {
-		in.FromWalletID = patch.FromWalletID
+		in.FromWalletID = *patch.FromWalletID
 	}
 	if patch.ToWalletID != nil {
-		in.ToWalletID = patch.ToWalletID
+		in.ToWalletID = *patch.ToWalletID
 	}
 	if patch.TaskID != nil {
-		in.TaskID = patch.TaskID
+		in.TaskID = *patch.TaskID
 	}
 	if patch.EventID != nil {
-		in.EventID = patch.EventID
+		in.EventID = *patch.EventID
 	}
 	if patch.NoteID != nil {
-		in.NoteID = patch.NoteID
+		in.NoteID = *patch.NoteID
 	}
 	return in
-}
-
-// normalizeMemo: trim/sanitize and collapse "" to nil (memo is nullable).
-func normalizeMemo(memo *string) *string {
-	if memo == nil {
-		return nil
-	}
-	clean := sanitizeLine(*memo)
-	if clean == "" {
-		return nil
-	}
-	return &clean
-}
-
-func derefMemo(memo *string) string {
-	if memo == nil {
-		return ""
-	}
-	return *memo
-}
-
-func derefID(id *string) string {
-	if id == nil {
-		return ""
-	}
-	return *id
 }
 
 func validDay(s string) bool {
@@ -526,7 +522,7 @@ func validDay(s string) bool {
 func fromTransactionRow(row generated.Transaction) Transaction {
 	return Transaction{
 		ID:           row.ID,
-		Kind:         row.Kind,
+		Kind:         Kind(row.Kind),
 		AmountCents:  row.AmountCents,
 		Currency:     row.Currency,
 		OccurredOn:   row.OccurredOn,

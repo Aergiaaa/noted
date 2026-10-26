@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 
@@ -35,8 +35,13 @@ func recoverHandler(r *http.Request, tw *trackingWriter) {
 		panic(rec) // deliberate abort: net/http swallows it without a stack trace
 	}
 
-	log.Printf("panic rid=%s method=%s uri=%s: %v\n%s",
-		RequestIDFrom(r), r.Method, r.URL.RequestURI(), rec, debug.Stack())
+	slog.Error("panic",
+		"rid", RequestIDFrom(r),
+		"method", r.Method,
+		"uri", r.URL.RequestURI(),
+		"value", rec,
+		"stack", string(debug.Stack()),
+	)
 
 	if tw.written {
 		// Status already went out; the body is truncated, so abort rather

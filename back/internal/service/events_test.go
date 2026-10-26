@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,8 +61,8 @@ func TestEventService_create_persistsNormalizedUTC(t *testing.T) {
 		Title:       " Dentist ",
 		StartsAt:    mustTime(t, "2026-10-14T09:00:00.500Z"),
 		EndsAt:      mustTime(t, "2026-10-14T10:00:00.500Z"),
-		Description: &description,
-		NoteID:      &noteID,
+		Description: description,
+		NoteID:      noteID,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -112,7 +114,7 @@ func TestEventService_create_stripsControlCharacters(t *testing.T) {
 		Title:       "Den\x00t\tist ",
 		StartsAt:    mustTime(t, "2026-10-14T09:00:00Z"),
 		EndsAt:      mustTime(t, "2026-10-14T10:00:00Z"),
-		Description: &description,
+		Description: description,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -139,7 +141,7 @@ func TestEventService_create_controlOnlyTitle_400(t *testing.T) {
 func TestEventService_create_controlOnlyDescription_storedAsNil(t *testing.T) {
 	svc, _ := newTestEventService(t)
 	in := validInput(t)
-	in.Description = func() *string { s := "\x00\x07"; return &s }()
+	in.Description = "\x00\x07"
 
 	created, err := svc.Create(context.Background(), in)
 	if err != nil {
@@ -165,7 +167,7 @@ func TestEventService_create_unknownNote_400(t *testing.T) {
 	svc, _ := newTestEventService(t)
 	missing := "no-such-note"
 	in := validInput(t)
-	in.NoteID = &missing
+	in.NoteID = missing
 
 	_, err := svc.Create(context.Background(), in)
 	if got := fieldsOf(t, err)["note_id"]; got != "unknown note" {
@@ -183,7 +185,7 @@ func TestEventService_create_existingNote_ok(t *testing.T) {
 		t.Fatalf("seed note: %v", err)
 	}
 	in := validInput(t)
-	in.NoteID = ptr("n1")
+	in.NoteID = "n1"
 
 	created, err := svc.Create(context.Background(), in)
 	if err != nil {
@@ -200,7 +202,7 @@ func TestEventService_create_noteTableGone_internalError(t *testing.T) {
 		t.Fatalf("drop notes: %v", err)
 	}
 	in := validInput(t)
-	in.NoteID = ptr("n1")
+	in.NoteID = "n1"
 
 	if _, err := svc.Create(context.Background(), in); err == nil {
 		t.Fatal("Create succeeded, want internal error")
@@ -252,8 +254,8 @@ func TestEventService_update_mergesPartial(t *testing.T) {
 		Title:       "Dentist",
 		StartsAt:    mustTime(t, "2026-10-14T09:00:00Z"),
 		EndsAt:      mustTime(t, "2026-10-14T10:00:00Z"),
-		Description: &description,
-		NoteID:      &noteID,
+		Description: description,
+		NoteID:      noteID,
 	})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
@@ -358,7 +360,7 @@ func TestEventService_update_keepsTrashedNoteLink(t *testing.T) {
 		Title:    "Dentist",
 		StartsAt: mustTime(t, "2026-10-14T09:00:00Z"),
 		EndsAt:   mustTime(t, "2026-10-14T10:00:00Z"),
-		NoteID:   &note.ID,
+		NoteID:   note.ID,
 	})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
@@ -718,3 +720,22 @@ func TestEventService_update_corruptEndsTime_internalError(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// logPurge is silent on success and surfaces the error to the host log
+// otherwise. It swaps the default slog logger, so it stays serial (TESTING.md).
+func TestLogPurge_writesOnlyOnError(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
+
+	logPurge("events", nil)
+	if buf.Len() != 0 {
+		t.Fatalf("logPurge(nil) logged %q, want silence", buf.String())
+	}
+
+	logPurge("events", errors.New("disk full"))
+	if !strings.Contains(buf.String(), `table=events`) || !strings.Contains(buf.String(), `err="disk full"`) {
+		t.Fatalf("logPurge(err) logged %q, want purge prefix + message", buf.String())
+	}
+}

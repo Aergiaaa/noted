@@ -97,9 +97,9 @@ func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	task, err := h.tasks.Create(r.Context(), service.TaskInput{
 		Title:   req.Title,
-		DueDate: req.DueDate,
-		EventID: req.EventID,
-		NoteID:  req.NoteID,
+		DueDate: derefParam(req.DueDate),
+		EventID: derefParam(req.EventID),
+		NoteID:  derefParam(req.NoteID),
 	})
 	if err != nil {
 		writeServiceError(w, err, "create task")

@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -149,9 +149,9 @@ func TestRouter_mutationWithAppOrigin_reachesRouter(t *testing.T) {
 
 func TestRouter_accessLogLineEmitted(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestRouter_accessLogLineEmitted(t *testing.T) {
 
 	line := buf.String()
 	rid := rec.Header().Get("X-Request-ID")
-	for _, want := range []string{"request ", "rid=" + rid, "method=GET", "uri=/healthz", "status=200"} {
+	for _, want := range []string{"msg=request", "rid=" + rid, "method=GET", "uri=/healthz", "status=200"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("log %q missing %q", line, want)
 		}

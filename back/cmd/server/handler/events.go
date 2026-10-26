@@ -124,8 +124,8 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		Title:       req.Title,
 		StartsAt:    starts,
 		EndsAt:      ends,
-		Description: req.Description,
-		NoteID:      req.NoteID,
+		Description: derefParam(req.Description),
+		NoteID:      derefParam(req.NoteID),
 	})
 	if err != nil {
 		writeServiceError(w, err, "create event")

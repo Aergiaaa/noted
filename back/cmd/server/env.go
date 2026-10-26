@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 )
 
@@ -17,6 +17,6 @@ func getEnv(key, fallback string) string {
 // prod's read-only rootfs rejects it (EROFS) into a crash loop.
 func warnStaleDataPath() {
 	if os.Getenv("DATA_PATH") != "" {
-		log.Print("DATA_PATH was renamed to DB_PATH; DATA_PATH is ignored")
+	slog.Warn("DATA_PATH renamed", "msg", "DATA_PATH was renamed to DB_PATH; DATA_PATH is ignored")
 	}
 }

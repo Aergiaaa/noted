@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -36,7 +36,7 @@ func (a *app) serve(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	log.Printf("listening on %s", a.conf.Addr)
+	slog.Info("listening", "addr", a.conf.Addr)
 
 	errCh := make(chan error, 1)
 	go listenAndServeWithErrCh(s, errCh)
@@ -55,7 +55,7 @@ func listenCtxAndCh(server *http.Server, ctx context.Context, errCh chan error) 
 			return err
 		}
 
-		log.Print("graceful shutdown complete")
+		slog.Info("graceful shutdown complete")
 		return <-errCh
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -140,7 +141,8 @@ func (s *NoteService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.Purge(ctx, time.Now())
+	_, purgeErr := s.Purge(ctx, time.Now())
+	logPurge("notes", purgeErr)
 
 	return nil
 }
@@ -158,11 +160,11 @@ func validateNote(in NoteInput) error {
 	case in.Title == "":
 		fields["title"] = "required"
 	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
-		fields["title"] = "must be at most 200 characters"
+		fields["title"] = titleTooLong()
 	}
 
 	if len([]rune(in.BodyMD)) > BODY_MAX_CHAR {
-		fields["body_md"] = "must be at most 100000 characters"
+		fields["body_md"] = fmt.Sprintf("must be at most %d characters", BODY_MAX_CHAR)
 	}
 
 	if len(fields) > 0 {

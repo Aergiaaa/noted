@@ -20,18 +20,20 @@ const (
 // TaskInput is a fully-resolved task: a create payload, or a PATCH row
 // after the service merged it over the stored one. Status/CompletedAt
 // carry the merged-update path only — Create always starts a task open
-// (API.md POST has no status field).
+// (API.md POST has no status field). Optional fields use "" for "no
+// value" (no due date / no link / not completed); CompletedAt is set only
+// on the merged-update path.
 type TaskInput struct {
 	Title       string
 	Status      string
-	DueDate     *string
-	EventID     *string
-	NoteID      *string
-	CompletedAt *string
+	DueDate     string
+	EventID     string
+	NoteID      string
+	CompletedAt string
 }
 
 // TaskPatch: a nil field keeps the stored value; "" clears due_date and
-// links (the form PATCHes every field, "" = unlink — normalizeID at write).
+// links (the form PATCHes every field, "" = unlink — nulled at write).
 type TaskPatch struct {
 	Title   *string
 	DueDate *string
@@ -94,9 +96,9 @@ func (s *TaskService) Create(ctx context.Context, in TaskInput) (Task, error) {
 		ID:        uuid.NewString(),
 		Title:     in.Title,
 		Status:    in.Status,
-		DueDate:   normalizeID(in.DueDate),
-		EventID:   normalizeID(in.EventID),
-		NoteID:    normalizeID(in.NoteID),
+		DueDate:   nullIfEmpty(in.DueDate),
+		EventID:   nullIfEmpty(in.EventID),
+		NoteID:    nullIfEmpty(in.NoteID),
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -130,12 +132,12 @@ func (s *TaskService) Update(ctx context.Context, id string, patch TaskPatch) (T
 	updated, err := s.q.UpdateTask(ctx, generated.UpdateTaskParams{
 		Title:       merged.Title,
 		Status:      merged.Status,
-		DueDate:     normalizeID(merged.DueDate),
-		EventID:     normalizeID(merged.EventID),
-		NoteID:      normalizeID(merged.NoteID),
+		DueDate:     nullIfEmpty(merged.DueDate),
+		EventID:     nullIfEmpty(merged.EventID),
+		NoteID:      nullIfEmpty(merged.NoteID),
 		UpdatedAt:   formatStored(time.Now()),
 		ID:          id,
-		CompletedAt: merged.CompletedAt,
+		CompletedAt: nullIfEmpty(merged.CompletedAt),
 	})
 	if err != nil {
 		return Task{}, err
@@ -156,7 +158,8 @@ func (s *TaskService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.Purge(ctx, time.Now())
+	_, purgeErr := s.Purge(ctx, time.Now())
+	logPurge("tasks", purgeErr)
 
 	return nil
 }
@@ -174,7 +177,7 @@ func (s *TaskService) validate(ctx context.Context, in TaskInput, scope linkScop
 	case in.Title == "":
 		fields["title"] = "required"
 	case len([]rune(in.Title)) > TITLE_MAX_CHAR:
-		fields["title"] = "must be at most 200 characters"
+		fields["title"] = titleTooLong()
 	}
 
 	if in.Status != STATUS_OPEN && in.Status != STATUS_DONE {
@@ -202,13 +205,12 @@ func (s *TaskService) validate(ctx context.Context, in TaskInput, scope linkScop
 // validateEventLink records "unknown event" for a non-empty link id; a
 // storage failure aborts validation with the raw error (writeServiceError
 // maps it to the generic 500).
-func (s *TaskService) validateEventLink(ctx context.Context, fields map[string]string, eventID *string) error {
-	id := normalizeID(eventID)
-	if id == nil {
+func (s *TaskService) validateEventLink(ctx context.Context, fields map[string]string, eventID string) error {
+	if eventID == "" {
 		return nil
 	}
 
-	_, err := s.q.GetEvent(ctx, *id)
+	_, err := s.q.GetEvent(ctx, eventID)
 	if errors.Is(err, sql.ErrNoRows) {
 		fields["event_id"] = "unknown event"
 		return nil
@@ -220,13 +222,12 @@ func (s *TaskService) validateEventLink(ctx context.Context, fields map[string]s
 	return nil
 }
 
-func (s *TaskService) validateNoteLink(ctx context.Context, fields map[string]string, noteID *string) error {
-	id := normalizeID(noteID)
-	if id == nil {
+func (s *TaskService) validateNoteLink(ctx context.Context, fields map[string]string, noteID string) error {
+	if noteID == "" {
 		return nil
 	}
 
-	_, err := s.q.GetNote(ctx, *id)
+	_, err := s.q.GetNote(ctx, noteID)
 	if errors.Is(err, sql.ErrNoRows) {
 		fields["note_id"] = "unknown note"
 		return nil
@@ -244,23 +245,23 @@ func mergeTaskPatch(row generated.Task, patch TaskPatch) TaskInput {
 	in := TaskInput{
 		Title:       row.Title,
 		Status:      row.Status,
-		DueDate:     row.DueDate,
-		EventID:     row.EventID,
-		NoteID:      row.NoteID,
-		CompletedAt: row.CompletedAt,
+		DueDate:     derefString(row.DueDate),
+		EventID:     derefString(row.EventID),
+		NoteID:      derefString(row.NoteID),
+		CompletedAt: derefString(row.CompletedAt),
 	}
 
 	if patch.Title != nil {
 		in.Title = *patch.Title
 	}
 	if patch.DueDate != nil {
-		in.DueDate = patch.DueDate
+		in.DueDate = *patch.DueDate
 	}
 	if patch.EventID != nil {
-		in.EventID = patch.EventID
+		in.EventID = *patch.EventID
 	}
 	if patch.NoteID != nil {
-		in.NoteID = patch.NoteID
+		in.NoteID = *patch.NoteID
 	}
 	if patch.Status != nil {
 		in.Status = *patch.Status
@@ -269,15 +270,15 @@ func mergeTaskPatch(row generated.Task, patch TaskPatch) TaskInput {
 	return in
 }
 
-// completedAtFor: done stamps now, open clears. A bogus status lands here
-// as nil first and is rejected by validate before any write, so the
-// stamping stays unreachable for values outside the STATUS enum.
-func completedAtFor(status string) *string {
+// completedAtFor: done stamps now, open clears ("" = no completed_at).
+// A bogus status lands here as "" first and is rejected by validate
+// before any write, so the stamping stays unreachable for values outside
+// the STATUS enum.
+func completedAtFor(status string) string {
 	if status == STATUS_DONE {
-		now := formatStored(time.Now())
-		return &now
+		return formatStored(time.Now())
 	}
-	return nil
+	return ""
 }
 
 // derefFilter: sqlc narg params bind nil (no filter) or the plain value.

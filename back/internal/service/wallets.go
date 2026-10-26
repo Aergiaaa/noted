@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,7 +148,7 @@ func validateWalletName(name string) error {
 	case name == "":
 		fields["name"] = "required"
 	case len([]rune(name)) > WALLET_NAME_MAX_CHAR:
-		fields["name"] = "must be at most 50 characters"
+		fields["name"] = fmt.Sprintf("must be at most %d characters", WALLET_NAME_MAX_CHAR)
 	}
 
 	if len(fields) > 0 {

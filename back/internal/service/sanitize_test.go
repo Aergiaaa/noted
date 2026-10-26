@@ -43,19 +43,3 @@ func TestSanitizeBody_normalizesCRAndKeepsBreaks(t *testing.T) {
 		})
 	}
 }
-
-func TestSanitizeDescription_nilInNilOutAndEmptyBecomesNil(t *testing.T) {
-	t.Parallel()
-	if got := sanitizeDescription(nil); got != nil {
-		t.Errorf("sanitizeDescription(nil) = %v, want nil", got)
-	}
-	controlOnly := "\x00\x07"
-	if got := sanitizeDescription(&controlOnly); got != nil {
-		t.Errorf("sanitizeDescription(control-only) = %v, want nil", got)
-	}
-	dirty := "clean\x07 me\r\nnext"
-	got := sanitizeDescription(&dirty)
-	if got == nil || *got != "clean me\nnext" {
-		t.Errorf("sanitizeDescription(%q) = %v, want \"clean me\\nnext\"", dirty, got)
-	}
-}

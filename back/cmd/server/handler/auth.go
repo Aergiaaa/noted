@@ -2,7 +2,7 @@ package handler
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"noted/internal/auth"
@@ -36,7 +36,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrInvalidCode):
 		WriteError(w, http.StatusUnauthorized, "invalid code", nil)
 	case err != nil:
-		log.Printf("handler: login: %v", err)
+		slog.Error("handler: login", "err", err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 	default:
 		auth.WriteSessionCookie(w, token, h.secure)
@@ -67,7 +67,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		token = c.Value
 	}
 	if err := h.auth.Logout(r.Context(), token); err != nil {
-		log.Printf("handler: logout: %v", err)
+		slog.Error("handler: logout", "err", err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 		return
 	}
@@ -93,7 +93,7 @@ func (h *Handler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrUnauthenticated):
 		WriteError(w, http.StatusUnauthorized, "", nil)
 	case err != nil:
-		log.Printf("handler: recovery codes: %v", err)
+		slog.Error("handler: recovery codes", "err", err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 	default:
 		WriteJSON(w, http.StatusOK, map[string][]string{"recovery_codes": codes})
