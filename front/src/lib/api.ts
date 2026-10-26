@@ -1,6 +1,7 @@
 export interface ApiOptions {
   method?: string;
   body?: unknown;
+  signal?: AbortSignal;
 }
 
 // Plain data, not a class: thrown as-is and narrowed with isApiError
@@ -127,10 +128,11 @@ export async function api<T = unknown>(
   path: string,
   options: ApiOptions = {},
 ): Promise<T> {
-  const { method = "GET", body } = options;
+  const { method = "GET", body, signal } = options;
   const init: RequestInit = {
     method,
     credentials: "include",
+    signal,
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   };
