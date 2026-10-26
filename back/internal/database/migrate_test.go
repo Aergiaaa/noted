@@ -26,8 +26,8 @@ func TestLoadMigrations_embeddedInitFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations: %v", err)
 	}
-	if len(ms) != 4 {
-		t.Fatalf("len = %d, want 4", len(ms))
+	if len(ms) != 5 {
+		t.Fatalf("len = %d, want 5", len(ms))
 	}
 	if ms[0].version != 1 || ms[0].name != "0001_init.sql" {
 		t.Fatalf("got %+v, want version 1 / 0001_init.sql", ms[0])

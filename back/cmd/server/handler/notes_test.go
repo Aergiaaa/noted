@@ -26,7 +26,7 @@ func newTestNotesHandler(t *testing.T) (*Handler, http.Handler, *service.NoteSer
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	svc := service.NewNoteService(generated.New(db))
-	h := New(nil, nil, svc, nil, false)
+	h := New(nil, nil, svc, nil, nil, nil, false)
 	r := chi.NewRouter()
 	r.Get("/api/notes", h.ListNotes)
 	r.Post("/api/notes", h.CreateNote)

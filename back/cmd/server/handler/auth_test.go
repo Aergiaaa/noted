@@ -35,7 +35,7 @@ func newTestAuthHandler(t *testing.T, secure bool) (*Handler, *auth.Service, *sq
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	svc := auth.New(db, testEncKey)
-	return New(svc, nil, nil, nil, secure), svc, db
+	return New(svc, nil, nil, nil, nil, nil, secure), svc, db
 }
 
 // enrollTestHost commits an enrollment (10 bcrypt hashes — slow but real)

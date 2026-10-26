@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import TrashPanel from "./TrashPanel";
 import type { Event } from "../../lib/api";
+import { eventColorDotClasses } from "./eventColor";
 
 afterEach(() => {
   cleanup();
@@ -78,6 +79,15 @@ describe("TrashPanel", () => {
       ([, init]) => (init as RequestInit | undefined)?.method === "POST",
     );
     expect(restoreCall?.[0]).toBe("/api/events/e9/restore");
+  });
+
+  it("marks each row with the event's hashed color dot", async () => {
+    panel();
+
+    await waitForListedDentist();
+    expect(screen.getByTestId("event-color-dot").className).toContain(
+      eventColorDotClasses("e9"),
+    );
   });
 
   it("surfaces a server restore error through onRestoreError", async () => {

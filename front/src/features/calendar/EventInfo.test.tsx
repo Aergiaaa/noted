@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Event } from "../../lib/api";
 import { formatDateTime, toLocalInput } from "../../lib/format";
+import { eventColorDotClasses } from "./eventColor";
 import EventInfo from "./EventInfo";
 
 afterEach(() => cleanup());
@@ -31,6 +32,15 @@ describe("EventInfo", () => {
     expect(
       screen.getByText(`${fullWhen(event.starts_at)} – 10:00`),
     ).toBeDefined();
+  });
+
+  it("marks the card with the event's hashed color dot", () => {
+    render(
+      <EventInfo event={makeEvent()} onClose={() => {}} onEdit={() => {}} />,
+    );
+
+    const dot = screen.getByTestId("event-color-dot");
+    expect(dot.className).toContain(eventColorDotClasses("e1"));
   });
 
   it("spells out both dates when the event crosses midnight", () => {

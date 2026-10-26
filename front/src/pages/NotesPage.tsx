@@ -9,13 +9,16 @@ const LOAD_FAILED = "Couldn't load notes.";
 const UPDATE_FAILED = "Couldn't update the note.";
 const EMPTY_MESSAGE = "No notes yet.";
 
+// One form state instead of creating+editing booleans: null closed,
+// create and edit are mutually exclusive so the union can't lie.
+type FormTarget = { kind: "create" } | { kind: "edit"; note: Note };
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
-  const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<Note | null>(null);
+  const [formTarget, setFormTarget] = useState<FormTarget | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +60,8 @@ export default function NotesPage() {
       setError(errorLines(err, UPDATE_FAILED)[0]);
     }
   };
-  const closeForm = () => {
-    setCreating(false);
-    setEditing(null);
-  };
+  const openCreate = () => setFormTarget({ kind: "create" });
+  const openEdit = (note: Note) => setFormTarget({ kind: "edit", note });
 
   if (error !== null) {
     return (
@@ -91,7 +92,7 @@ export default function NotesPage() {
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          onClick={() => setCreating(true)}
+          onClick={openCreate}
         >
           New note
         </button>
@@ -103,22 +104,22 @@ export default function NotesPage() {
             message={EMPTY_MESSAGE}
             action={{
               label: "Create your first note",
-              onClick: () => setCreating(true),
+              onClick: openCreate,
             }}
           />
         ) : (
           <NoteList
             notes={notes}
-            onOpen={setEditing}
+            onOpen={openEdit}
             onTogglePin={(note) => void togglePin(note)}
           />
         )}
       </div>
 
-      {(creating || editing !== null) && (
+      {formTarget !== null && (
         <NoteForm
-          note={creating ? null : editing}
-          onClose={closeForm}
+          note={formTarget.kind === "edit" ? formTarget.note : null}
+          onClose={() => setFormTarget(null)}
           onSaved={refetch}
           onDeleted={refetch}
         />
