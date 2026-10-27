@@ -27,10 +27,12 @@ export default function NoteBody({ body, className }: NoteBodyProps) {
     () => DOMPurify.sanitize(marked.parse(body, { async: false })),
     [body],
   );
+
   const mentionKinds = useMemo(
     () => [...new Set(findMentions(body).map((token) => token.type))],
     [body],
   );
+
   const sources = useLinkSources(mentionKinds);
   const titles = useMemo(() => createLinkTitleMap(sources), [sources]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,23 +40,30 @@ export default function NoteBody({ body, className }: NoteBodyProps) {
 
   useEffect(() => {
     if (sources.loading || mentionKinds.length === 0) return;
+
     const walker = document.createTreeWalker(
       containerRef.current as HTMLDivElement,
       NodeFilter.SHOW_TEXT,
     );
     const textNodes: Text[] = [];
+
     while (walker.nextNode()) {
       textNodes.push(walker.currentNode as Text);
     }
+
     for (const node of textNodes) {
       const segments = resolveMentions(node.data, titles);
+
       if (segments.length === 1 && segments[0].kind === "text") continue;
+
       const fragment = document.createDocumentFragment();
+
       for (const segment of segments) {
         if (segment.kind === "text") {
           fragment.append(segment.text);
           continue;
         }
+
         if (segment.title !== null) {
           const anchor = document.createElement("a");
           anchor.href = mentionRoute(segment.type, segment.id);
@@ -69,6 +78,7 @@ export default function NoteBody({ body, className }: NoteBodyProps) {
           fragment.append(muted);
         }
       }
+
       node.replaceWith(fragment);
     }
   }, [sources.loading, mentionKinds, titles, html]);

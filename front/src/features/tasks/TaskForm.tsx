@@ -53,6 +53,7 @@ export default function TaskForm({
       ...(eventId !== null ? { event_id: eventId } : {}),
       ...(noteId !== null ? { note_id: noteId } : {}),
     };
+
     const patch = {
       title: cleanTitle,
       due_date: due,
@@ -69,6 +70,7 @@ export default function TaskForm({
       } else {
         await api(`/tasks/${task.id}`, { method: "PATCH", body: patch });
       }
+
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -80,6 +82,7 @@ export default function TaskForm({
 
   const confirmDelete = async (id: string) => {
     setSaving(true);
+
     try {
       await api(`/tasks/${id}`, { method: "DELETE" });
       onDeleted?.(id);

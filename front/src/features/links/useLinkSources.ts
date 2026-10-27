@@ -37,15 +37,19 @@ export function useLinkSources(kinds: readonly LinkKind[]): LinkSources {
 
   useEffect(() => {
     if (key === "") return;
+
     const wanted = new Set(key.split(",") as LinkKind[]);
     let cancelled = false;
+
     const loaded: LinkSources = {
       tasks: [],
       events: [],
       notes: [],
       loading: false,
     };
+
     const jobs: Promise<void>[] = [];
+
     if (wanted.has("task")) {
       jobs.push(
         api<TasksResponse>("/tasks").then((res) => {
@@ -53,6 +57,7 @@ export function useLinkSources(kinds: readonly LinkKind[]): LinkSources {
         }),
       );
     }
+
     if (wanted.has("event")) {
       jobs.push(
         api<EventsResponse>(EVENTS_WIDE_PATH).then((res) => {
@@ -60,6 +65,7 @@ export function useLinkSources(kinds: readonly LinkKind[]): LinkSources {
         }),
       );
     }
+
     if (wanted.has("note")) {
       jobs.push(
         api<NotesResponse>("/notes").then((res) => {
@@ -67,6 +73,7 @@ export function useLinkSources(kinds: readonly LinkKind[]): LinkSources {
         }),
       );
     }
+
     Promise.all(jobs)
       .then(() => {
         if (!cancelled) setSources(loaded);
