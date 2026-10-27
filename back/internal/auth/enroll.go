@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -94,6 +95,53 @@ func (s *Service) RegenerateRecovery(ctx context.Context) ([]string, error) {
 	}
 
 	return codes, tx.Commit()
+}
+
+// RotateEncKey re-encrypts the stored TOTP secret with a new random key.
+// The current key (from TOTP_ENC_KEY at service construction) decrypts the
+// existing sealed secret; the new key seals it. The service's encKey is
+// updated so the running instance can decrypt with the new key too. The
+// operator must update TOTP_ENC_KEY in the environment and restart for
+// the change to persist across restarts — loss of the key means loss of
+// the enrollment (SECURITY.md). Returns the new base64 key for the
+// operator to record.
+func (s *Service) RotateEncKey(ctx context.Context) (string, error) {
+	// Generate the new key: 32 random bytes, base64-encoded.
+	newKeyBytes := randomBytes(32)
+	newKey := base64.StdEncoding.EncodeToString(newKeyBytes)
+
+	row, err := s.q.GetEnrollment(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotEnrolled
+	}
+	if err != nil {
+		return "", fmt.Errorf("get enrollment: %w", err)
+	}
+
+	// Decrypt with the current key.
+	secret, err := s.open(row.TotpSecret)
+	if err != nil {
+		return "", fmt.Errorf("decrypt with current key: %w", err)
+	}
+
+	// Swap to the new key, seal, and persist. On failure, restore the old
+	// key so the service can still decrypt with it. seal cannot fail here:
+	// newKey is base64 of 32 random bytes, so parseKey/aes.NewCipher/
+	// NewGCM all succeed.
+	oldKey := s.encKey
+	s.encKey = newKey
+	sealed, _ := s.seal(secret)
+
+	now := formatTime(s.now())
+	if err := s.q.UpdateEnrollment(ctx, generated.UpdateEnrollmentParams{
+		TotpSecret: sealed,
+		UpdatedAt:  now,
+	}); err != nil {
+		s.encKey = oldKey
+		return "", fmt.Errorf("update enrollment: %w", err)
+	}
+
+	return newKey, nil
 }
 
 // RotateRecovery gates the pool rotation on a TOTP-minted session: a

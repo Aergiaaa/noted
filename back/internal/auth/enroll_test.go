@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -245,6 +246,97 @@ func TestRotateRecovery_unknownToken_unauthenticated(t *testing.T) {
 	s, _ := newTestService(t, testEncKey(1))
 	if _, err := s.RotateRecovery(context.Background(), "no-such-token"); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatalf("RotateRecovery = %v, want ErrUnauthenticated", err)
+	}
+}
+
+func TestRotateEncKey_reencryptsAndTOTPStillWorks(t *testing.T) {
+	s, _ := newTestService(t, testEncKey(1))
+	secret, _ := enroll(t, s)
+
+	newKey, err := s.RotateEncKey(context.Background())
+	if err != nil {
+		t.Fatalf("RotateEncKey: %v", err)
+	}
+
+	// New key must be valid base64 of 32 bytes.
+	raw, err := base64.StdEncoding.DecodeString(newKey)
+	if err != nil {
+		t.Fatalf("new key decode: %v", err)
+	}
+	if len(raw) != 32 {
+		t.Fatalf("new key = %d bytes, want 32", len(raw))
+	}
+	if newKey == testEncKey(1) {
+		t.Fatal("new key equals old key")
+	}
+
+	// A live TOTP code must still validate against the re-sealed secret.
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	if ok, _, err := s.ValidateCode(context.Background(), code); err != nil || !ok {
+		t.Fatalf("ValidateCode after rotation = %v, %v; want true, nil", ok, err)
+	}
+
+	// The old key can no longer decrypt: a service built with it must fail
+	// to open the stored secret (same DB, different key).
+	oldSvc := New(s.db, testEncKey(1))
+	row, err := oldSvc.q.GetEnrollment(context.Background())
+	if err != nil {
+		t.Fatalf("GetEnrollment: %v", err)
+	}
+	if _, err := oldSvc.open(row.TotpSecret); err == nil {
+		t.Fatal("old key still decrypts after rotation")
+	}
+}
+
+func TestRotateEncKey_requiresEnrollment(t *testing.T) {
+	s, _ := newTestService(t, testEncKey(1))
+	if _, err := s.RotateEncKey(context.Background()); !errors.Is(err, ErrNotEnrolled) {
+		t.Fatalf("RotateEncKey = %v, want ErrNotEnrolled", err)
+	}
+}
+
+func TestRotateEncKey_dbError_wraps(t *testing.T) {
+	s, db := newTestService(t, testEncKey(1))
+	enroll(t, s)
+	_ = db.Close()
+	if _, err := s.RotateEncKey(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "get enrollment") {
+		t.Fatalf("RotateEncKey closed db = %v, want wrapped get enrollment error", err)
+	}
+}
+
+func TestRotateEncKey_decryptFailure_wraps(t *testing.T) {
+	s, db := newTestService(t, testEncKey(1))
+	enroll(t, s)
+	// Corrupt the stored secret so s.open fails on RotateEncKey.
+	if _, err := db.Exec(`UPDATE enrollment SET totp_secret = 'garbage'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RotateEncKey(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "decrypt with current key") {
+		t.Fatalf("RotateEncKey corrupt secret = %v, want wrapped decrypt error", err)
+	}
+}
+
+func TestRotateEncKey_updateFailure_wraps(t *testing.T) {
+	s, db := newTestService(t, testEncKey(1))
+	enroll(t, s)
+	// A BEFORE UPDATE trigger makes UpdateEnrollment fail after GetEnrollment
+	// already succeeded, hitting the update error path.
+	if _, err := db.Exec(`CREATE TRIGGER block_update BEFORE UPDATE ON enrollment
+		BEGIN SELECT RAISE(ABORT, 'blocked'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RotateEncKey(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "update enrollment") {
+		t.Fatalf("RotateEncKey update failure = %v, want wrapped update error", err)
+	}
+	// Rolled back: old key still works (wrong code → ok=false, not an error).
+	if ok, _, err := s.ValidateCode(context.Background(), "000000"); err != nil || ok {
+		t.Fatalf("ValidateCode after failed rotation = %v, %v; want false, nil", ok, err)
 	}
 }
 

@@ -15,3 +15,10 @@ ON CONFLICT (id) DO NOTHING;
 DELETE
 FROM enrollment
 WHERE id = 1;
+
+-- name: UpdateEnrollment :exec
+-- Re-seal the TOTP secret with a new key (key rotation).
+UPDATE enrollment
+SET totp_secret = ?,
+    updated_at  = ?
+WHERE id = 1;
