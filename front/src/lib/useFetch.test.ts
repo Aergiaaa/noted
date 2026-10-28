@@ -1,28 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useFetch } from "./useFetch";
+import { api } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+vi.mock("./api", () => ({
+  api: vi.fn(),
+  isApiError: (err: unknown) =>
+    typeof err === "object" && err !== null && "status" in err,
+}));
 
 describe("useFetch", () => {
   it("starts loading and lands data from the server", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(200, { data: [1, 2] })),
-    );
+    vi.mocked(api).mockResolvedValue({ data: [1, 2] });
 
-    const { result } = renderHook(() =>
-      useFetch<{ data: number[] }>("/things", "failed"),
-    );
+    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
 
     expect(result.current.loading).toBe(true);
     expect(result.current.data).toBeNull();
@@ -34,14 +29,11 @@ describe("useFetch", () => {
   });
 
   it("surfaces the server message on an ApiError", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(400, {
-          error: { code: "validation_error", message: "bad input" },
-        }),
-      ),
-    );
+    vi.mocked(api).mockRejectedValue({
+      status: 400,
+      code: "validation_error",
+      message: "bad input",
+    });
 
     const { result } = renderHook(() => useFetch("/things", "failed"));
 
@@ -50,12 +42,7 @@ describe("useFetch", () => {
   });
 
   it("falls back when the failure is not an ApiError", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(new Response("<html>nope</html>", { status: 200 })),
-    );
+    vi.mocked(api).mockRejectedValue(new TypeError("parse failed"));
 
     const { result } = renderHook(() => useFetch("/things", "failed"));
 
@@ -63,35 +50,63 @@ describe("useFetch", () => {
   });
 
   it("ignores a fetch that settles after unmount", async () => {
-    let resolve!: (r: Response) => void;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(
-        () =>
-          new Promise<Response>((res) => {
-            resolve = res;
-          }),
-      ),
+    let resolve!: (data: unknown) => void;
+    vi.mocked(api).mockImplementation(
+      () =>
+        new Promise((res) => {
+          resolve = res;
+        }),
     );
 
     const { unmount } = renderHook(() => useFetch("/things", "failed"));
     unmount();
 
     await act(async () => {
-      resolve(jsonResponse(200, { ok: true }));
+      resolve({ ok: true });
     });
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+  });
+
+  it("silently ignores AbortError when fetch is cancelled", async () => {
+    vi.mocked(api).mockImplementation(
+      () => new Promise((_, reject) => {
+        reject(new DOMException("Aborted", "AbortError"));
+      }),
+    );
+
+    const { unmount } = renderHook(() => useFetch("/things", "failed"));
+    unmount();
+
+    await act(async () => { await Promise.resolve(); });
+
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not flip loading flag for an aborted fetch", async () => {
+    vi.mocked(api).mockImplementation(
+      () => new Promise((_, reject) => {
+        reject(new DOMException("Aborted", "AbortError"));
+      }),
+    );
+
+    const { result, unmount } = renderHook(() => useFetch("/things", "failed"));
+    expect(result.current.loading).toBe(true);
+
+    unmount();
+
+    await act(async () => { await Promise.resolve(); });
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.data).toBeNull();
   });
 
   it("refetches without flipping the loading flag and keeps previous data", async () => {
     let listCalls = 0;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(() => {
-        listCalls += 1;
-        return Promise.resolve(jsonResponse(200, { data: [listCalls] }));
-      }),
-    );
+    vi.mocked(api).mockImplementation(() => {
+      listCalls += 1;
+      return Promise.resolve({ data: [listCalls] });
+    });
 
     const { result } = renderHook(() =>
       useFetch<{ data: number[] }>("/things", "failed"),
@@ -109,21 +124,15 @@ describe("useFetch", () => {
   });
 
   it("clears a stale error when refetching", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
-          jsonResponse(400, {
-            error: { code: "validation_error", message: "boom" },
-          }),
-        )
-        .mockResolvedValue(jsonResponse(200, { ok: true })),
-    );
+    vi.mocked(api)
+      .mockRejectedValueOnce({
+        status: 400,
+        code: "validation_error",
+        message: "boom",
+      })
+      .mockResolvedValue({ ok: true });
 
-    const { result } = renderHook(() =>
-      useFetch<{ ok: boolean }>("/things", "failed"),
-    );
+    const { result } = renderHook(() => useFetch<{ ok: boolean }>("/things", "failed"));
     await waitFor(() => expect(result.current.error).toBe("boom"));
 
     act(() => {
@@ -134,17 +143,16 @@ describe("useFetch", () => {
   });
 
   it("shows the skeleton again on retry", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockRejectedValueOnce(new TypeError("offline"))
-        .mockResolvedValue(jsonResponse(200, { ok: true })),
-    );
+    // Network errors from api() are wrapped with status=0 and code="network_error"
+    vi.mocked(api)
+      .mockRejectedValueOnce({
+        status: 0,
+        code: "network_error",
+        message: "network request failed",
+      })
+      .mockResolvedValue({ ok: true });
 
-    const { result } = renderHook(() =>
-      useFetch<{ ok: boolean }>("/things", "failed"),
-    );
+    const { result } = renderHook(() => useFetch<{ ok: boolean }>("/things", "failed"));
     await waitFor(() =>
       expect(result.current.error).toBe("network request failed"),
     );
@@ -159,17 +167,14 @@ describe("useFetch", () => {
   });
 
   it("keeps previous data and clears the error when the path changes", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((url: string) =>
-        Promise.resolve(
-          url.includes("second")
-            ? jsonResponse(200, { data: ["b"] })
-            : jsonResponse(400, {
-                error: { code: "validation_error", message: "boom" },
-              }),
-        ),
-      ),
+    vi.mocked(api).mockImplementation((url: string) =>
+      url.includes("second")
+        ? Promise.resolve({ data: ["b"] })
+        : Promise.reject({
+            status: 400,
+            code: "validation_error",
+            message: "boom",
+          }),
     );
 
     const { result, rerender } = renderHook(
@@ -185,12 +190,7 @@ describe("useFetch", () => {
   });
 
   it("re-runs the effect when fallbackError changes", async () => {
-    // A 200 with a non-JSON body throws a SyntaxError, not an ApiError:
-    // the only way to reach the fallback message.
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response("<html>nope</html>", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.mocked(api).mockRejectedValue(new TypeError("parse failed"));
 
     const { result, rerender } = renderHook(
       ({ fallback }: { fallback: string }) => useFetch("/things", fallback),
@@ -199,7 +199,7 @@ describe("useFetch", () => {
     await waitFor(() => expect(result.current.error).toBe("first failed"));
 
     rerender({ fallback: "second failed" });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(vi.mocked(api)).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.error).toBe("second failed"));
   });
 });
