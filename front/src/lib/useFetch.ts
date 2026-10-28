@@ -37,29 +37,58 @@ export function useFetch<T>(
   }
 
   useEffect(() => {
+    console.log("[useFetch] effect running, nonce:", nonce);
     const controller = new AbortController();
+    const isBackground = nonce > 0;
+    let fetchError: string | null = null;
 
+    console.log("[useFetch] calling api, nonce:", nonce);
     api<T>(path, { signal: controller.signal })
       .then((res) => {
+        // Check if response is an ApiError (HTTP error from server)
+        if (isApiError(res)) {
+          console.log("[useFetch] HTTP error:", res);
+          fetchError = res.message;
+          setError(res.message);
+          // On HTTP error: initial load clears loading; background sets loading=true
+          if (isBackground) {
+            setLoading(true);
+          } else {
+            setLoading(false);
+          }
+          return;
+        }
+        // Success
         setData(res);
         setError(null);
       })
 
       .catch((err: unknown) => {
-        // AbortError is expected on cleanup/replace: the cancelled fetch
-        // must not touch state the replacement owns.
+        // Network error (fetch threw) - wrap as ApiError with status=0
+        console.log("[useFetch] network error:", err);
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        setError(isApiError(err) ? err.message : fallbackError);
+        fetchError = isApiError(err) ? err.message : fallbackError;
+        setError(fetchError);
+        // On network error: initial load clears loading; background sets loading=true
+        if (isBackground) {
+          setLoading(true);
+        } else {
+          setLoading(false);
+        }
+      })
+
+      .then(() => {
+        // On success (no error): clear loading for non-aborted fetches
+        if (!controller.signal.aborted && fetchError === null) {
+          setLoading(false);
+        }
       })
 
       .finally(() => {
-        // Aborted fetches don't own the loading flag anymore — the
-        // replacement fetch (or retry) does.
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        // Aborted fetches don't own the loading flag — the replacement owns it.
+        // Non-aborted: loading already set correctly.
       });
 
     return () => {

@@ -29,7 +29,7 @@ describe("useFetch", () => {
   });
 
   it("surfaces the server message on an ApiError", async () => {
-    vi.mocked(api).mockRejectedValue({
+    vi.mocked(api).mockResolvedValue({
       status: 400,
       code: "validation_error",
       message: "bad input",
@@ -42,7 +42,7 @@ describe("useFetch", () => {
   });
 
   it("falls back when the failure is not an ApiError", async () => {
-    vi.mocked(api).mockRejectedValue(new TypeError("parse failed"));
+    vi.mocked(api).mockRejectedValue(new SyntaxError("parse failed"));
 
     const { result } = renderHook(() => useFetch("/things", "failed"));
 
@@ -125,7 +125,7 @@ describe("useFetch", () => {
 
   it("clears a stale error when refetching", async () => {
     vi.mocked(api)
-      .mockRejectedValueOnce({
+      .mockResolvedValueOnce({
         status: 400,
         code: "validation_error",
         message: "boom",
@@ -166,11 +166,76 @@ describe("useFetch", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("keeps loading on background fetch failure", async () => {
+    // Initial load succeeds
+    let callCount = 0;
+    vi.mocked(api).mockImplementation(() => {
+      callCount++;
+      console.log("[test] api call #" + callCount);
+      if (callCount === 1) {
+        return Promise.resolve({ data: [1] });
+      }
+      // Second call (refetch) fails
+      return Promise.resolve({
+        status: 400,
+        code: "validation_error",
+        message: "boom",
+      });
+    });
+
+    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
+    await waitFor(() => expect(result.current.data).toEqual({ data: [1] }));
+    expect(result.current.loading).toBe(false);
+
+    // Background fetch (refetch) fails
+    act(() => {
+      result.current.refetch();
+    });
+
+    await waitFor(() => expect(result.current.error).toBe("boom"));
+    // loading should stay true for background failure
+    expect(result.current.loading).toBe(true);
+    // data should remain the previous value
+    expect(result.current.data).toEqual({ data: [1] });
+  });
+
+  it("keeps loading on background network error", async () => {
+    // Initial load succeeds
+    let callCount = 0;
+    vi.mocked(api).mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({ data: [1] });
+      }
+      // Second call (refetch) fails with network error (simulating api.ts wrapping)
+      return Promise.reject({
+        status: 0,
+        code: "network_error",
+        message: "network request failed",
+      });
+    });
+
+    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
+    await waitFor(() => expect(result.current.data).toEqual({ data: [1] }));
+    expect(result.current.loading).toBe(false);
+
+    // Background fetch (refetch) fails with network error
+    act(() => {
+      result.current.refetch();
+    });
+
+    await waitFor(() => expect(result.current.error).toBe("network request failed"));
+    // loading should stay true for background failure
+    expect(result.current.loading).toBe(true);
+    // data should remain the previous value
+    expect(result.current.data).toEqual({ data: [1] });
+  });
+
   it("keeps previous data and clears the error when the path changes", async () => {
     vi.mocked(api).mockImplementation((url: string) =>
       url.includes("second")
         ? Promise.resolve({ data: ["b"] })
-        : Promise.reject({
+        : Promise.resolve({
             status: 400,
             code: "validation_error",
             message: "boom",
@@ -190,7 +255,7 @@ describe("useFetch", () => {
   });
 
   it("re-runs the effect when fallbackError changes", async () => {
-    vi.mocked(api).mockRejectedValue(new TypeError("parse failed"));
+    vi.mocked(api).mockRejectedValue(new SyntaxError("parse failed"));
 
     const { result, rerender } = renderHook(
       ({ fallback }: { fallback: string }) => useFetch("/things", fallback),
