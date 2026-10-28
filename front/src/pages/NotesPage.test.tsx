@@ -3,10 +3,12 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as baseRender,
   screen,
   waitFor,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import type { ReactElement } from "react";
 import NotesPage from "./NotesPage";
 import type { Note } from "../lib/api";
 
@@ -15,6 +17,12 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+// Rows embed NoteBody, which needs a router context for mention clicks —
+// the page always renders inside routes in the app.
+function render(ui: ReactElement) {
+  return baseRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function jsonResponse(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {

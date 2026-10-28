@@ -3,7 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"noted/internal/service"
@@ -94,7 +94,7 @@ func writeServiceError(w http.ResponseWriter, err error, op string) {
 	case errors.Is(err, service.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "", nil)
 	default:
-		log.Printf("handler: %s: %v", op, err)
+		slog.Error("handler", "op", op, "err", err)
 		WriteError(w, http.StatusInternalServerError, "", nil)
 	}
 }

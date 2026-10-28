@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Task } from "./api";
+import type { Event, Note, Task } from "./api";
 import {
+  createLinkTitleResolver,
   getOverdueTasks,
   pickDefaultWallet,
   pickTransferTo,
@@ -74,5 +75,29 @@ describe("pickTransferTo", () => {
   it("falls back to the source when it is the only wallet", () => {
     const wallets = [{ wallet_id: "wal_cash", name: "Cash", balance_cents: 0 }];
     expect(pickTransferTo(wallets, "wal_cash")).toBe("wal_cash");
+  });
+});
+
+describe("createLinkTitleResolver", () => {
+  it("resolves titles per kind from the provided lists", () => {
+    const resolve = createLinkTitleResolver({
+      tasks: [{ ...task(), id: "t1", title: "Buy keyboard" }],
+      events: [
+        { id: "e9", title: "Dentist", starts_at: "", ends_at: "" } as Event,
+      ],
+      notes: [
+        { id: "n9", title: "Groceries", body_md: "", pinned: false } as Note,
+      ],
+    });
+    expect(resolve("task", "t1")).toBe("Buy keyboard");
+    expect(resolve("event", "e9")).toBe("Dentist");
+    expect(resolve("note", "n9")).toBe("Groceries");
+  });
+
+  it("returns undefined for unknown ids and missing lists", () => {
+    const resolve = createLinkTitleResolver({});
+    expect(resolve("event", "gone")).toBeUndefined();
+    expect(resolve("note", "gone")).toBeUndefined();
+    expect(resolve("task", "gone")).toBeUndefined();
   });
 });

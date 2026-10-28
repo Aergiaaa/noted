@@ -13,11 +13,14 @@ export interface FetchState<T> {
 // latest fetch, path changes clear the error but keep previous data (the
 // grid must stay mounted so the week-slide animation can play behind the
 // swap — no skeleton flash), refetch re-runs silently, retry flips the
-// skeleton back on. Loading only ever clears in the non-cancelled finally:
-// a stale (cancelled) request never touches the flag the replacing fetch
-// owns, and navigation never re-shows the skeleton. A fetch hook is
-// orchestration, which PLAYBOOK §4 allows — only trivial boolean hooks are
-// banned.
+// skeleton back on. An AbortController cancels the previous fetch when the
+// effect re-runs or unmounts, so a stale response never overwrites a newer
+// one. Aborted requests are silent — they don't set error or flip loading,
+// because the replacement fetch owns that state. Loading clears when any
+// non-aborted fetch settles (success or failure); the page decides what to
+// render (ErrorState only when data is null, grid otherwise — keep-previous).
+// A fetch hook is orchestration, which PLAYBOOK §4 allows — only trivial
+// boolean hooks are banned.
 export function useFetch<T>(
   path: string,
   fallbackError: string,
@@ -36,26 +39,26 @@ export function useFetch<T>(
   }
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
-    api<T>(path)
+    api<T>(path, { signal: controller.signal })
       .then((res) => {
-        if (!cancelled) {
-          setData(res);
-          setError(null);
-        }
+        setData(res);
+        setError(null);
+        setLoading(false);
       })
 
       .catch((err: unknown) => {
-        if (!cancelled) setError(isApiError(err) ? err.message : fallbackError);
-      })
+        if (controller.signal.aborted) {
+          return;
+        }
 
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setError(isApiError(err) ? err.message : fallbackError);
+        setLoading(false);
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [path, nonce, fallbackError]);
 

@@ -16,11 +16,18 @@ import TransferForm from "../features/finance/TransferForm";
 import MoneyBadge from "../features/finance/MoneyBadge";
 import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
+import type { LinkField } from "../features/links/LinkChip";
+import { useLinkSources } from "../features/links/useLinkSources";
+import { createLinkTitleResolver } from "../lib/selectors";
 
 const LOAD_FAILED = "Couldn't load finance.";
 const VOID_FAILED = "Couldn't void the transaction.";
+const UNLINK_FAILED = "Couldn't unlink the transaction.";
 const EMPTY_MESSAGE = "No transactions yet.";
 const CREATE_CTA = "Record your first transaction";
+
+// Chip titles resolve from these lists (F9) — fetched once per mount.
+const TX_CHIP_SOURCES = ["task", "event", "note"] as const;
 
 // Account = the two always-settled-together reads (balance + full wallet
 // list); history = one transactions page + its cursor. Both start null —
@@ -104,6 +111,15 @@ export default function FinancePage() {
     };
   }, [nonce, walletFilter]);
 
+  // Declared after the history effect so mount call order stays
+  // balance → wallets → transactions → task/event/note (test routers
+  // match on URL, but the sequence keeps the strict call-list assert).
+  const linkSources = useLinkSources(TX_CHIP_SOURCES);
+  const linkTitle = useMemo(
+    () => createLinkTitleResolver(linkSources),
+    [linkSources],
+  );
+
   const walletNames = useMemo(
     () =>
       new Map(
@@ -155,6 +171,20 @@ export default function FinancePage() {
       refetch();
     } catch (err: unknown) {
       setHistoryError(errorLines(err, VOID_FAILED)[0]);
+    }
+  };
+
+  // Unlink one FK field: "" clears it (API.md PATCH semantics), then the
+  // history refetches so the chip disappears with the stored link.
+  const unlinkTransaction = async (id: string, field: LinkField) => {
+    try {
+      await api(`/finance/transactions/${id}`, {
+        method: "PATCH",
+        body: { [field]: "" },
+      });
+      refetch();
+    } catch (err: unknown) {
+      setHistoryError(errorLines(err, UNLINK_FAILED)[0]);
     }
   };
 
@@ -241,6 +271,8 @@ export default function FinancePage() {
               onVoid={(id) => void voidTransaction(id)}
               cursor={history.cursor}
               onLoadMore={(c) => void loadMore(c)}
+              linkTitle={linkTitle}
+              onUnlink={(id, field) => void unlinkTransaction(id, field)}
             />
           )}
         </div>

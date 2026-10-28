@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -29,7 +29,7 @@ func (s *Service) Login(ctx context.Context, code string) (string, error) {
 func (s *Service) loginTOTP(ctx context.Context, code string) (string, error) {
 	ok, counter, err := s.ValidateCode(ctx, code)
 	if err != nil {
-		log.Printf("auth: internal: totp verify: %v", err)
+		slog.Warn("auth: internal: totp verify", "err", err)
 		return "", ErrInvalidCode
 	}
 
@@ -78,7 +78,7 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 
 	rows, err := s.q.ListUnusedRecoveryCodes(ctx)
 	if err != nil {
-		log.Printf("auth: internal: recovery list: %v", err)
+		slog.Warn("auth: internal: recovery list", "err", err)
 		return "", ErrInvalidCode
 	}
 
@@ -93,7 +93,7 @@ func (s *Service) loginRecovery(ctx context.Context, code string) (string, error
 			ID:     r.ID,
 		})
 		if err != nil {
-			log.Printf("auth: internal: recovery consume: %v", err)
+			slog.Warn("auth: internal: recovery consume", "err", err)
 			return "", ErrInvalidCode
 		}
 

@@ -1,7 +1,18 @@
+import { useMemo } from "react";
+import { Link } from "react-router";
 import type { Event } from "../../lib/api";
 import { formatDateTime, formatTime, toLocalInput } from "../../lib/format";
+import {
+  findMentions,
+  mentionRoute,
+  resolveMentions,
+  type MentionSegment,
+} from "../../lib/mentions";
+import { createLinkTitleMap } from "../../lib/selectors";
 import { eventColorDotClasses } from "./eventColor";
 import Modal from "../../components/ui/Modal";
+import LinkChip from "../links/LinkChip";
+import { useLinkSources, type LinkSources } from "../links/useLinkSources";
 
 interface EventInfoProps {
   event: Event;
@@ -15,6 +26,14 @@ interface EventInfoProps {
 // backdrop close come from Modal's focus trap.
 export default function EventInfo({ event, onClose, onEdit }: EventInfoProps) {
   const description = event.description?.trim();
+  // Lazy: fetches only when the description actually holds tokens (F9).
+  const mentionKinds = useMemo(
+    () => [
+      ...new Set(findMentions(description ?? "").map((token) => token.type)),
+    ],
+    [description],
+  );
+  const sources = useLinkSources(mentionKinds);
 
   return (
     <Modal onClose={onClose}>
@@ -34,11 +53,20 @@ export default function EventInfo({ event, onClose, onEdit }: EventInfoProps) {
           Description
         </span>
         {description ? (
-          <p className="mt-1 whitespace-pre-wrap text-sm">{description}</p>
+          <DescriptionText description={description} sources={sources} />
         ) : (
           <p className="mt-1 text-sm text-base-content/50">No description.</p>
         )}
       </div>
+      {/* Event.note_id is optional-typed (api.ts) — loose null check
+          narrows both null and undefined. */}
+      {event.note_id != null && (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {/* Generic label: the calendar page has no notes list to title
+              from (F9 "otherwise" branch) — the link still lands. */}
+          <LinkChip kind="note" id={event.note_id} />
+        </div>
+      )}
       <div className="mt-4 flex justify-end gap-2">
         <button
           type="button"
@@ -56,6 +84,44 @@ export default function EventInfo({ event, onClose, onEdit }: EventInfoProps) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+// Prose with mention tokens resolved to chips. While the title lists are
+// still loading the tokens stay plain raw text — they become chips or
+// (dead id) muted raw text once known, same as NoteBody's two-phase walk.
+function DescriptionText({
+  description,
+  sources,
+}: {
+  description: string;
+  sources: LinkSources;
+}) {
+  const titles = createLinkTitleMap(sources);
+  if (sources.loading) {
+    return <p className="mt-1 whitespace-pre-wrap text-sm">{description}</p>;
+  }
+  return (
+    <p className="mt-1 whitespace-pre-wrap text-sm">
+      {resolveMentions(description, titles).map((segment, index) => (
+        <MentionSegmentView key={index} segment={segment} />
+      ))}
+    </p>
+  );
+}
+
+function MentionSegmentView({ segment }: { segment: MentionSegment }) {
+  if (segment.kind === "text") return <>{segment.text}</>;
+  if (segment.title === null) {
+    return <span className="text-base-content/40">{segment.raw}</span>;
+  }
+  return (
+    <Link
+      className="badge badge-info badge-sm"
+      to={mentionRoute(segment.type, segment.id)}
+    >
+      {segment.title}
+    </Link>
   );
 }
 

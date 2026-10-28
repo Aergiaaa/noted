@@ -20,19 +20,6 @@ func sanitizeBody(s string) string {
 	return strings.TrimSpace(strings.Map(dropControlKeepBreaks, s))
 }
 
-// sanitizeDescription: nil in, nil out; a body that reduces to "" (only
-// controls/whitespace) becomes "no description" rather than "".
-func sanitizeDescription(d *string) *string {
-	if d == nil {
-		return nil
-	}
-	clean := sanitizeBody(*d)
-	if clean == "" {
-		return nil
-	}
-	return &clean
-}
-
 func dropControl(r rune) rune {
 	if unicode.IsControl(r) {
 		return -1

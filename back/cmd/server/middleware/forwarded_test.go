@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -46,25 +46,25 @@ func TestParseTrustedProxies_ipsAndCIDRs_matched(t *testing.T) {
 
 func TestParseTrustedProxies_invalidEntry_skippedWithWarning(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	trusted := parseTrustedProxies("not-an-ip," + TEST_PROXY_PEER)
 
 	if !isTrusted(net.ParseIP(TEST_PROXY_PEER), trusted) {
 		t.Error("valid entry next to invalid one was dropped")
 	}
-	if got := buf.String(); !strings.Contains(got, `TRUSTED_PROXIES: invalid IP "not-an-ip"`) {
+	if got := buf.String(); !strings.Contains(got, `entry=not-an-ip`) {
 		t.Fatalf("log = %q, want invalid-IP warning naming the entry", got)
 	}
 }
 
 func TestParseTrustedProxies_invalidCIDR_skippedWithUnderlyingCause(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	trusted := parseTrustedProxies("999.0.0.0/8")
 
@@ -72,7 +72,7 @@ func TestParseTrustedProxies_invalidCIDR_skippedWithUnderlyingCause(t *testing.T
 		t.Fatalf("len = %d, want 0", len(trusted))
 	}
 	got := buf.String()
-	for _, want := range []string{`invalid CIDR "999.0.0.0/8"`, "invalid CIDR address"} {
+	for _, want := range []string{`entry=999.0.0.0/8`, "invalid CIDR address"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("log = %q, missing %q", got, want)
 		}

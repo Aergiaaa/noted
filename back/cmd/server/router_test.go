@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -100,6 +100,40 @@ func TestRouter_responseHasRequestIDAndSecurityHeaders(t *testing.T) {
 	}
 }
 
+// TestRouter_chainOrder_forwardedBeforeSecurityHeaders verifies that
+// Forwarded runs before SecurityHeaders: HSTS is only emitted when a
+// trusted proxy said the request arrived over HTTPS. If SecurityHeaders
+// ran first, IsSecure would always be false and HSTS would never appear.
+func TestRouter_chainOrder_forwardedBeforeSecurityHeaders(t *testing.T) {
+	// Trusted proxy terminates TLS: X-Forwarded-Proto: https → HSTS set.
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:54321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	app := newTestApp(t, Config{
+		AppOrigin:      "http://localhost:5173",
+		TrustedProxies: "127.0.0.1, 203.0.113.9",
+	})
+	app.newRouter().ServeHTTP(rec, req)
+
+	if hsts := rec.Header().Get("Strict-Transport-Security"); hsts == "" {
+		t.Fatal("HSTS missing: Forwarded must run before SecurityHeaders " +
+			"so IsSecure sees the trusted proxy's HTTPS verdict")
+	}
+
+	// No trusted proxy headers: plain HTTP, no HSTS.
+	req2 := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req2.RemoteAddr = "127.0.0.1:54321"
+	rec2 := httptest.NewRecorder()
+	app.newRouter().ServeHTTP(rec2, req2)
+
+	if hsts := rec2.Header().Get("Strict-Transport-Security"); hsts != "" {
+		t.Fatalf("HSTS = %q, want unset on plain HTTP without trusted proxy", hsts)
+	}
+}
+
 func TestRouter_echoesSuppliedRequestID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	req.Header.Set("X-Request-ID", "trace-me-42")
@@ -149,9 +183,9 @@ func TestRouter_mutationWithAppOrigin_reachesRouter(t *testing.T) {
 
 func TestRouter_accessLogLineEmitted(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -159,7 +193,7 @@ func TestRouter_accessLogLineEmitted(t *testing.T) {
 
 	line := buf.String()
 	rid := rec.Header().Get("X-Request-ID")
-	for _, want := range []string{"request ", "rid=" + rid, "method=GET", "uri=/healthz", "status=200"} {
+	for _, want := range []string{"msg=request", "rid=" + rid, "method=GET", "uri=/healthz", "status=200"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("log %q missing %q", line, want)
 		}

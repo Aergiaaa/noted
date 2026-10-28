@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -38,6 +39,12 @@ type app struct {
 	// once in wire so the login cookie and the guard's re-issue can never
 	// disagree.
 	secure bool
+
+	// now is the clock used by the rate limiter; defaults to time.Now in
+	// production and is overridden with a fixed time in tests so the
+	// login rate-limit flake under -race cannot refill tokens between
+	// attempts.
+	now func() time.Time
 }
 
 func (a *app) run(ctx context.Context) error {
@@ -73,7 +80,7 @@ func main() {
 }
 
 func newApp(conf Config) *app {
-	return &app{conf: conf}
+	return &app{conf: conf, now: time.Now}
 }
 
 func newConfigFromEnv() Config {
@@ -120,16 +127,16 @@ func (a *app) wire(db *sql.DB) {
 // every domain table. Failures log instead of blocking boot, like bootAuth.
 func (a *app) bootPurge(ctx context.Context, events *service.EventService, notes *service.NoteService, tasks *service.TaskService, transactions *service.TransactionService) {
 	if _, err := events.Purge(ctx, time.Now()); err != nil {
-		log.Printf("error purging soft-deleted events: %v", err)
+		slog.Warn("purge events", "err", err)
 	}
 	if _, err := notes.Purge(ctx, time.Now()); err != nil {
-		log.Printf("error purging soft-deleted notes: %v", err)
+		slog.Warn("purge notes", "err", err)
 	}
 	if _, err := tasks.Purge(ctx, time.Now()); err != nil {
-		log.Printf("error purging soft-deleted tasks: %v", err)
+		slog.Warn("purge tasks", "err", err)
 	}
 	if _, err := transactions.Purge(ctx, time.Now()); err != nil {
-		log.Printf("error purging soft-deleted transactions: %v", err)
+		slog.Warn("purge transactions", "err", err)
 	}
 }
 
@@ -137,14 +144,14 @@ func (a *app) bootPurge(ctx context.Context, events *service.EventService, notes
 // first request loudly anyway. The not-enrolled warning fires once per boot.
 func (a *app) bootAuth(ctx context.Context) {
 	if err := a.auth.PruneSessions(ctx); err != nil {
-		log.Printf("error pruning sessions: %v", err)
+		slog.Warn("prune sessions", "err", err)
 	}
 	enrolled, err := a.auth.Enrolled(ctx)
 	switch {
 	case err != nil:
-		log.Printf("error checking enrollment: %v", err)
+		slog.Warn("check enrollment", "err", err)
 	case !enrolled:
-		log.Printf("WARNING: not enrolled — run `server enroll` (make enroll) before anyone can log in")
+		slog.Warn("not enrolled", "msg", "run `server enroll` (make enroll) before anyone can log in")
 	}
 }
 
@@ -156,6 +163,6 @@ type dbCloser interface{ Close() error }
 // run()'s result is already decided.
 func dbCloseWithErr(db dbCloser) {
 	if err := db.Close(); err != nil {
-		log.Printf("error closing db: %v", err)
+		slog.Warn("close db", "err", err)
 	}
 }

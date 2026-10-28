@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as baseRender,
+  screen,
+} from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import type { ReactElement } from "react";
 import type { Note } from "../../lib/api";
 import NoteList from "./NoteList";
 
 afterEach(() => {
   cleanup();
 });
+
+// Rows embed NoteBody, which needs a router context for mention clicks.
+function render(ui: ReactElement) {
+  return baseRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const NOTES: Note[] = [
   { id: "n1", title: "First", body_md: "one", pinned: true },

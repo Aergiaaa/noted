@@ -2,9 +2,13 @@ import { useState, type SubmitEvent } from "react";
 import { api, errorLines, type Task } from "../../lib/api";
 import { sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
+import LinkPicker from "../links/LinkPicker";
+import { useLinkSources } from "../links/useLinkSources";
 
 const SAVE_FAILED = "Couldn't save the task.";
 const TITLE_REQUIRED = "Title is required.";
+
+const TASK_LINK_SOURCES = ["event", "note"] as const;
 
 interface TaskFormProps {
   task: Task | null;
@@ -21,9 +25,12 @@ export default function TaskForm({
 }: TaskFormProps) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [due, setDue] = useState(task?.due_date ?? "");
+  const [eventId, setEventId] = useState<string | null>(task?.event_id ?? null);
+  const [noteId, setNoteId] = useState<string | null>(task?.note_id ?? null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const linkSources = useLinkSources(TASK_LINK_SOURCES);
 
   // Confirming only ever opens in edit mode; "" is a placeholder that can
   // never reach confirmDelete.
@@ -39,15 +46,19 @@ export default function TaskForm({
     setErrors([]);
     setSaving(true);
     const cleanTitle = sanitizeLine(title);
-    // Create omits empty optionals; PATCH always sends due_date so "" clears
-    // it. Link keys stay out of the PATCH entirely (absent keeps the stored
-    // value) — the ID inputs are hidden until F9 pickers land.
+    // Create omits empty optionals; PATCH always sends every field so a
+    // cleared picker's "" unlinks (API.md PATCH: "" clears, absent keeps).
     const optional = {
       ...(due !== "" ? { due_date: due } : {}),
+      ...(eventId !== null ? { event_id: eventId } : {}),
+      ...(noteId !== null ? { note_id: noteId } : {}),
     };
+
     const patch = {
       title: cleanTitle,
       due_date: due,
+      event_id: eventId ?? "",
+      note_id: noteId ?? "",
     };
 
     try {
@@ -59,6 +70,7 @@ export default function TaskForm({
       } else {
         await api(`/tasks/${task.id}`, { method: "PATCH", body: patch });
       }
+
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -70,6 +82,7 @@ export default function TaskForm({
 
   const confirmDelete = async (id: string) => {
     setSaving(true);
+
     try {
       await api(`/tasks/${id}`, { method: "DELETE" });
       onDeleted?.(id);
@@ -112,6 +125,28 @@ export default function TaskForm({
             onChange={(e) => setDue(e.target.value)}
           />
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <LinkPicker
+            label="Event"
+            items={linkSources.events.map((event) => ({
+              id: event.id,
+              title: event.title,
+            }))}
+            value={eventId}
+            onChange={setEventId}
+            loading={linkSources.loading}
+          />
+          <LinkPicker
+            label="Note"
+            items={linkSources.notes.map((note) => ({
+              id: note.id,
+              title: note.title,
+            }))}
+            value={noteId}
+            onChange={setNoteId}
+            loading={linkSources.loading}
+          />
+        </div>
 
         {errors.length > 0 && (
           <ul className="text-xs text-error" role="alert">

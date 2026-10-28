@@ -98,7 +98,10 @@ export default function CalendarPage() {
   };
   const dismissToast = useCallback(() => setToast(null), []);
 
-  if (events.error !== null) {
+  // Keep-previous: a background failure keeps the last good week on screen
+  // (FRONTEND.md) — the error only replaces the grid when there is nothing
+  // to show (initial load failed).
+  if (events.data === null && events.error !== null) {
     return (
       <section>
         <h1 className="text-xl font-semibold">Calendar</h1>

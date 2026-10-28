@@ -13,7 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "cally": "^0.9.2",
+    "cally": "0.9.2",
     "daisyui": "^5.7.38",
     "dompurify": "^3.4.17",
     "marked": "^18.1.1",

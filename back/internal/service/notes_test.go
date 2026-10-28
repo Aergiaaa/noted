@@ -448,3 +448,66 @@ func TestNoteService_purge_zeroWhenNothingDue(t *testing.T) {
 		t.Fatalf("Purge rows = %d, want 0", n)
 	}
 }
+
+func TestNoteService_purge_nullsInboundLinks(t *testing.T) {
+	svc, db := newTestNoteService(t)
+	note := seedNote(t, svc, "Linked")
+
+	seeds := []string{
+		`INSERT INTO tasks (id, title, status, note_id, created_at, updated_at)
+		 VALUES ('t_linked', 'Follow up', 'open', ?, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`,
+		`INSERT INTO events (id, title, starts_at, ends_at, note_id, created_at, updated_at)
+		 VALUES ('e_linked', 'Dentist', '2026-10-14T09:00:00Z', '2026-10-14T10:00:00Z', ?, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`,
+		`INSERT INTO transactions (id, kind, amount_cents, currency, occurred_on, note_id, created_at)
+		 VALUES ('x_linked', 'expense', 5000, 'IDR', '2026-09-20', ?, '2026-09-20T00:00:00Z')`,
+	}
+	for _, query := range seeds {
+		if _, err := db.Exec(query, note.ID); err != nil {
+			t.Fatalf("seed peer: %v", err)
+		}
+	}
+
+	readLinks := func() []sql.NullString {
+		t.Helper()
+		var taskNote, eventNote, txNote sql.NullString
+		if err := db.QueryRow(
+			`SELECT note_id FROM tasks WHERE id = 't_linked'`).Scan(&taskNote); err != nil {
+			t.Fatalf("read task link: %v", err)
+		}
+		if err := db.QueryRow(
+			`SELECT note_id FROM events WHERE id = 'e_linked'`).Scan(&eventNote); err != nil {
+			t.Fatalf("read event link: %v", err)
+		}
+		if err := db.QueryRow(
+			`SELECT note_id FROM transactions WHERE id = 'x_linked'`).Scan(&txNote); err != nil {
+			t.Fatalf("read transaction link: %v", err)
+		}
+		return []sql.NullString{taskNote, eventNote, txNote}
+	}
+
+	if err := svc.Delete(context.Background(), note.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	for i, link := range readLinks() {
+		if !link.Valid {
+			t.Fatalf("link %d nulled by soft-delete, want intact until purge", i)
+		}
+	}
+
+	if _, err := db.Exec(
+		`UPDATE notes SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, note.ID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	n, err := svc.Purge(context.Background(), mustTime(t, "2026-10-15T00:00:00Z"))
+	if err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("Purge rows = %d, want 1", n)
+	}
+	for i, link := range readLinks() {
+		if link.Valid {
+			t.Fatalf("link %d = %q, want NULL after purge", i, link.String)
+		}
+	}
+}

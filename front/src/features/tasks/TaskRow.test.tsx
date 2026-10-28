@@ -93,8 +93,34 @@ describe("TaskRow", () => {
     renderRow(task({ event_id: "e9", note_id: "n9" }));
     const event = screen.getByRole("link", { name: "event" });
     const note = screen.getByRole("link", { name: "note" });
-    expect(event.getAttribute("href")).toBe("/calendar");
-    expect(note.getAttribute("href")).toBe("/notes");
+    expect(event.getAttribute("href")).toBe("/calendar?event=e9");
+    expect(note.getAttribute("href")).toBe("/notes?id=n9");
+  });
+
+  it("shows resolved titles on the chips when the page has them", () => {
+    const view = render(
+      <MemoryRouter initialEntries={["/tasks"]}>
+        <table>
+          <tbody>
+            <TaskRow
+              task={task({ event_id: "e9", note_id: "n9" })}
+              overdue={false}
+              onToggleStatus={vi.fn()}
+              onOpen={vi.fn()}
+              linkTitle={(kind, id) =>
+                kind === "event" && id === "e9"
+                  ? "Dentist"
+                  : id === "n9"
+                    ? "Groceries"
+                    : undefined
+              }
+            />
+          </tbody>
+        </table>
+      </MemoryRouter>,
+    );
+    expect(view.container.textContent).toContain("Dentist");
+    expect(view.container.textContent).toContain("Groceries");
   });
 
   it("renders no chips for an unlinked task", () => {

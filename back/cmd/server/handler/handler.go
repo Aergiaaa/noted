@@ -33,3 +33,14 @@ func New(a *auth.Service, events *service.EventService, notes *service.NoteServi
 		secure:       secure,
 	}
 }
+
+// derefParam collapses a decoded optional request field to the plain
+// string the service inputs take (nil → ""). PATCH requests keep the
+// pointer — absent must stay distinguishable from "" there — but create
+// inputs resolve once here, at the boundary.
+func derefParam(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
