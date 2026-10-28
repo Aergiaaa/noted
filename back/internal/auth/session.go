@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -38,7 +38,7 @@ func (s *Service) createSession(ctx context.Context, method string) (string, err
 	// A login is the natural moment to sweep dead rows; a failure only
 	// leaves inert (already expired) rows behind, so it never fails login.
 	if err := s.q.DeleteExpiredSessions(ctx, formatTime(now)); err != nil {
-		log.Printf("auth: prune sessions: %v", err)
+		slog.Warn("auth: prune sessions", "err", err)
 	}
 
 	return token, nil
@@ -62,7 +62,7 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 	}
 
 	if err != nil {
-		log.Printf("auth: internal: session lookup: %v", err)
+		slog.Warn("auth: internal: session lookup", "err", err)
 		return time.Time{}, ErrUnauthenticated
 	}
 
@@ -70,7 +70,7 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 
 	expires, err := time.Parse(time.RFC3339, row.ExpiresAt)
 	if err != nil {
-		log.Printf("auth: internal: session expiry parse: %v", err)
+		slog.Warn("auth: internal: session expiry parse", "err", err)
 		return time.Time{}, ErrUnauthenticated
 	}
 
@@ -92,7 +92,7 @@ func (s *Service) Validate(ctx context.Context, token string) (time.Time, error)
 		})
 		if err != nil {
 			// The row stays valid; the slide is retried on the next request.
-			log.Printf("auth: session touch: %v", err)
+			slog.Warn("auth: session touch", "err", err)
 		}
 	}
 
@@ -111,7 +111,7 @@ func slideExpiry(row generated.Session, expires, now time.Time) time.Time {
 
 	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
 	if err != nil {
-		log.Printf("auth: session created parse: %v", err)
+		slog.Warn("auth: session created parse", "err", err)
 		return newExp
 	}
 

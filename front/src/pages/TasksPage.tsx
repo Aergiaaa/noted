@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, errorLines, type Task, type TasksResponse } from "../lib/api";
 import TaskList from "../features/tasks/TaskList";
 import TaskForm from "../features/tasks/TaskForm";
 import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
-import { getOverdueTasks } from "../lib/selectors";
+import { createLinkTitleResolver, getOverdueTasks } from "../lib/selectors";
+import { useLinkSources } from "../features/links/useLinkSources";
 import { toDayKey } from "../lib/format";
 
 const LOAD_FAILED = "Couldn't load tasks.";
 const UPDATE_FAILED = "Couldn't update the task.";
+
+// Chip titles resolve from these lists (F9); tasks themselves are the
+// page's own fetch above.
+const TASK_CHIP_SOURCES = ["event", "note"] as const;
 
 type StatusFilter = "all" | "open" | "done";
 
@@ -47,6 +52,14 @@ export default function TasksPage() {
       cancelled = true;
     };
   }, [status, due, nonce]);
+
+  // Declared after the tasks effect so the mount call order stays
+  // tasks → events → notes (test chains rely on it).
+  const linkSources = useLinkSources(TASK_CHIP_SOURCES);
+  const linkTitle = useMemo(
+    () => createLinkTitleResolver(linkSources),
+    [linkSources],
+  );
 
   const refetch = () => {
     setError(null);
@@ -163,6 +176,7 @@ export default function TasksPage() {
             overdueIds={overdueIds}
             onToggleStatus={(task) => void toggleStatus(task)}
             onOpen={openEdit}
+            linkTitle={linkTitle}
           />
         )}
       </div>

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import {
   act,
   cleanup,
@@ -41,6 +42,13 @@ function jsonResponse(status: number, body: unknown) {
 
 function listResponse(events: Event[]) {
   return jsonResponse(200, { data: events });
+}
+
+// EventForm fetches the notes list on mount for its note picker (F9).
+function notesListResponse() {
+  return jsonResponse(200, {
+    data: [{ id: "n9", title: "Groceries", body_md: "", pinned: false }],
+  });
 }
 
 const TODAY_KEY = "2026-10-15";
@@ -164,6 +172,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockImplementationOnce(
         () =>
           new Promise<Response>((res) => {
@@ -198,11 +207,15 @@ describe("CalendarPage", () => {
     });
 
     await waitFor(() => expect(eventBlock(/Dentist/)).toBeDefined());
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
-    const [, postInit] = fetchMock.mock.calls[1];
+    const postCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === "POST",
+    );
+    expect(postCall?.[0]).toBe("/api/events");
+    const postInit = postCall?.[1] as RequestInit;
     expect(postInit.method).toBe("POST");
-    expect(JSON.parse(postInit.body)).toMatchObject({
+    expect(JSON.parse(postInit.body as string)).toMatchObject({
       title: "Dentist",
       starts_at: localISO(TODAY_KEY, "14:00"),
       ends_at: localISO(TODAY_KEY, "15:00"),
@@ -211,7 +224,13 @@ describe("CalendarPage", () => {
   });
 
   it("requires a title before saving", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(listResponse([]))
+        .mockResolvedValueOnce(notesListResponse()),
+    );
 
     render(<CalendarPage />);
     await waitForGrid();
@@ -220,7 +239,8 @@ describe("CalendarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Title is required.")).toBeDefined();
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    // Week list + notes picker source; no save call.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it("strips control characters from title and description before saving", async () => {
@@ -228,6 +248,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(jsonResponse(201, created))
       .mockResolvedValueOnce(listResponse([created]));
     vi.stubGlobal("fetch", fetchMock);
@@ -248,17 +269,25 @@ describe("CalendarPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    const [, postInit] = fetchMock.mock.calls[1];
+    const postCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === "POST",
+    );
+    const postInit = postCall?.[1] as RequestInit;
     expect(postInit.method).toBe("POST");
-    expect(JSON.parse(postInit.body)).toMatchObject({
+    expect(JSON.parse(postInit.body as string)).toMatchObject({
       title: "Dent ist",
       description: "checkup\nnow",
     });
   });
 
   it("rejects an end time that is not after the start client-side", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(listResponse([]))
+        .mockResolvedValueOnce(notesListResponse()),
+    );
 
     render(<CalendarPage />);
     await waitForGrid();
@@ -270,13 +299,14 @@ describe("CalendarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Ends must be after starts.")).toBeDefined();
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it("renders server-side field errors from a 400", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(
         jsonResponse(400, {
           error: {
@@ -305,6 +335,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockRejectedValueOnce(new TypeError("offline"));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -325,6 +356,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(new Response("nope", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -346,6 +378,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(jsonResponse(200, renamed))
       .mockResolvedValueOnce(listResponse([renamed]));
     vi.stubGlobal("fetch", fetchMock);
@@ -367,9 +400,14 @@ describe("CalendarPage", () => {
 
     await waitFor(() => expect(eventBlock("Dentist 2.0 09:00")).toBeDefined());
 
-    const [, patchInit] = fetchMock.mock.calls[1];
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === "PATCH",
+    );
+    const patchInit = patchCall?.[1] as RequestInit;
     expect(patchInit.method).toBe("PATCH");
-    expect(JSON.parse(patchInit.body)).toMatchObject({ title: "Dentist 2.0" });
+    expect(JSON.parse(patchInit.body as string)).toMatchObject({
+      title: "Dentist 2.0",
+    });
   });
 
   it("shows event details from the fetched week before editing", async () => {
@@ -392,7 +430,8 @@ describe("CalendarPage", () => {
     expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
     expect(screen.getByLabelText("Title")).toHaveProperty("value", "Dentist");
     expect(screen.queryByRole("heading", { name: "Dentist" })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Edit mounts EventForm, which lazy-loads the notes list for the picker.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("closes the details card without opening the form", async () => {
@@ -464,6 +503,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(listResponse([]));
     vi.stubGlobal("fetch", fetchMock);
@@ -475,7 +515,8 @@ describe("CalendarPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByText("Delete this event?")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Week list + notes; no mutation yet.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
@@ -486,8 +527,10 @@ describe("CalendarPage", () => {
         screen.queryByRole("button", { name: "Dentist 09:00" }),
       ).toBeNull(),
     );
-    const [, deleteInit] = fetchMock.mock.calls[1];
-    expect(deleteInit.method).toBe("DELETE");
+    const deleteCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === "DELETE",
+    );
+    expect((deleteCall![1] as RequestInit).method).toBe("DELETE");
     expect(screen.queryByRole("heading", { name: "Edit event" })).toBeNull();
   });
 
@@ -540,6 +583,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(listResponse([]))
       .mockRejectedValueOnce(new TypeError("offline"));
@@ -687,6 +731,7 @@ describe("CalendarPage", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(listResponse([original]))
+      .mockResolvedValueOnce(notesListResponse())
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(listResponse([]))
       .mockResolvedValueOnce(new Response("nope", { status: 200 }));
@@ -718,7 +763,10 @@ describe("CalendarPage", () => {
     const original = eventOn(TODAY_KEY, "Dentist");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValueOnce(listResponse([original])),
+      vi
+        .fn()
+        .mockResolvedValueOnce(listResponse([original]))
+        .mockResolvedValueOnce(notesListResponse()),
     );
 
     render(<CalendarPage />);
@@ -731,7 +779,8 @@ describe("CalendarPage", () => {
 
     expect(screen.queryByText("Delete this event?")).toBeNull();
     expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    // Week list + notes only; the delete never fired.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the event and drops the confirm when delete fails", async () => {
@@ -741,6 +790,7 @@ describe("CalendarPage", () => {
       vi
         .fn()
         .mockResolvedValueOnce(listResponse([original]))
+        .mockResolvedValueOnce(notesListResponse())
         .mockRejectedValueOnce(new TypeError("offline")),
     );
 
@@ -757,7 +807,7 @@ describe("CalendarPage", () => {
     expect(screen.getByText("network request failed")).toBeDefined();
     expect(screen.queryByText("Delete this event?")).toBeNull();
     expect(screen.getByRole("heading", { name: "Edit event" })).toBeDefined();
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
   });
 
   it("ignores a load that settles after unmount", async () => {
@@ -832,6 +882,54 @@ describe("CalendarPage", () => {
 
     await waitForGrid();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the skeleton when StrictMode aborts the first week fetch", async () => {
+    // StrictMode mounts, cleans up (aborting fetch #1), and mounts again —
+    // the cancelled request must stay silent instead of converting into
+    // "network request failed" and replacing the skeleton with an error.
+    const pending: Array<(r: Response) => void> = [];
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+          calls += 1;
+          if (calls === 1) {
+            return new Promise<Response>((_, reject) => {
+              init?.signal?.addEventListener("abort", () =>
+                reject(new DOMException("Aborted", "AbortError")),
+              );
+            });
+          }
+          return new Promise<Response>((resolve) => {
+            pending.push(resolve);
+          });
+        }),
+    );
+
+    const { container } = render(
+      <StrictMode>
+        <CalendarPage />
+      </StrictMode>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Double-invoked effect: fetch #1 was aborted, its replacement is still
+    // in flight — no error surface, skeleton stays until #2 lands.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("network request failed")).toBeNull();
+    expect(container.querySelector(".skeleton")).not.toBeNull();
+
+    await act(async () => {
+      pending[0](listResponse([]));
+    });
+    await waitForGrid();
+    expect(container.querySelector(".skeleton")).toBeNull();
   });
 
   it("steps whole weeks and flips the month title at the boundary", async () => {
@@ -932,7 +1030,13 @@ describe("CalendarPage", () => {
   });
 
   it("closes the form with Escape without saving", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(listResponse([])));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(listResponse([]))
+        .mockResolvedValueOnce(notesListResponse()),
+    );
 
     render(<CalendarPage />);
     await waitForGrid();
@@ -943,7 +1047,8 @@ describe("CalendarPage", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(screen.queryByRole("heading", { name: "New event" })).toBeNull();
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    // Week list + notes picker source; Escape never saves.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it("renders the fixed week's day headers", async () => {

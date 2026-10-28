@@ -1,7 +1,8 @@
-import { useState, type SubmitEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 import { api, errorLines, type Note } from "../../lib/api";
 import { sanitizeBody, sanitizeLine } from "../../lib/sanitize";
 import Modal from "../../components/ui/Modal";
+import MentionInsert from "../links/MentionInsert";
 
 const SAVE_FAILED = "Couldn't save the note.";
 const TITLE_REQUIRED = "Title is required.";
@@ -26,6 +27,7 @@ export default function NoteForm({
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   // Confirming only ever opens in edit mode; "" is a placeholder that can
   // never reach confirmDelete.
@@ -103,8 +105,14 @@ export default function NoteForm({
             maxLength={BODY_MAX_CHAR}
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            ref={bodyRef}
           />
         </label>
+        <MentionInsert
+          text={body}
+          onTextChange={setBody}
+          textareaRef={bodyRef}
+        />
         <label className="label cursor-pointer justify-start gap-2">
           <input
             type="checkbox"

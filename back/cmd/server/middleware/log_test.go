@@ -3,21 +3,22 @@ package middleware
 import (
 	"bytes"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// captureLog swaps the stdlib logger for the duration of fn. Tests that
-// touch process globals stay serial (TESTING.md), so no t.Parallel here.
+// captureLog swaps the default slog logger for the duration of fn. Tests
+// that touch process globals stay serial (TESTING.md), so no t.Parallel
+// here.
 func captureLog(t *testing.T, fn func()) string {
 	t.Helper()
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	fn()
 	return buf.String()
@@ -42,7 +43,7 @@ func TestAccessLog_lineCarriesRequestIDMethodURIAndStatus(t *testing.T) {
 
 	rid := rec.Header().Get(REQUEST_ID_HEADER)
 	for _, want := range []string{
-		"request ", "rid=" + rid, "method=GET", "uri=/healthz?x=1", "status=201", "dur=",
+		"msg=request", "rid=" + rid, "method=GET", `uri="/healthz?x=1"`, "status=201", "dur=",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("log line %q missing %q", line, want)
@@ -83,9 +84,9 @@ func TestAccessLog_abortPanic_stillEmitsLine(t *testing.T) {
 	// Recover's truncated-response path re-panics ErrAbortHandler; the
 	// deferred emit must still log the request line on the way out.
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/abort", nil)
@@ -103,7 +104,7 @@ func TestAccessLog_abortPanic_stillEmitsLine(t *testing.T) {
 	if !ok || !errors.Is(err, http.ErrAbortHandler) {
 		t.Fatalf("recovered = %#v, want ErrAbortHandler", recovered)
 	}
-	if line := buf.String(); !strings.Contains(line, "request ") || !strings.Contains(line, "uri=/abort") {
+	if line := buf.String(); !strings.Contains(line, "msg=request") || !strings.Contains(line, "uri=/abort") {
 		t.Fatalf("log = %q, want request line despite abort", line)
 	}
 }

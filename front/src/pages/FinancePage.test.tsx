@@ -9,7 +9,9 @@ import {
 } from "@testing-library/react";
 import FinancePage from "./FinancePage";
 import { toDayKey } from "../lib/format";
+import { EVENTS_WIDE_PATH } from "../features/links/useLinkSources";
 import type { BalanceResponse, Transaction, Wallet } from "../lib/api";
+import { MemoryRouter } from "react-router";
 
 afterEach(() => {
   cleanup();
@@ -120,6 +122,9 @@ describe("FinancePage", () => {
       "/api/finance/balance",
       "/api/finance/wallets?archived=1",
       "/api/finance/transactions",
+      "/api/tasks",
+      `/api${EVENTS_WIDE_PATH}`,
+      "/api/notes",
     ]);
   });
 
@@ -588,5 +593,127 @@ describe("FinancePage", () => {
     expect(
       screen.queryByRole("heading", { name: "Manage wallets" }),
     ).toBeNull();
+  });
+
+  // Router for the chip tests: full history + the three title lists, and
+  // a PATCH branch that clears the unlinked field on the next refetch
+  // (each PATCH advances the modelled row) or errors without refetching.
+  function chipRoute(patch: Response) {
+    let patchCount = 0;
+    return (url: string, method?: string): Response => {
+      if (url === "/api/finance/balance") return jsonResponse(200, BALANCE);
+      if (url === "/api/finance/wallets?archived=1") {
+        return jsonResponse(200, { data: WALLETS });
+      }
+      if (url.startsWith("/api/finance/transactions")) {
+        if (method === "PATCH") {
+          patchCount += 1;
+          return patch;
+        }
+        const row =
+          patchCount === 0
+            ? tx({ task_id: "t1", event_id: "e9", note_id: "n9" })
+            : patchCount === 1
+              ? tx({ event_id: "e9", note_id: "n9" })
+              : tx({ event_id: "e9" });
+        return jsonResponse(200, { data: [row], next_cursor: null });
+      }
+      if (url === "/api/tasks") {
+        return jsonResponse(200, {
+          data: [
+            {
+              id: "t1",
+              title: "Buy keyboard",
+              status: "open",
+              due_date: null,
+              event_id: null,
+              note_id: null,
+              completed_at: null,
+            },
+          ],
+        });
+      }
+      if (url.startsWith("/api/events")) {
+        return jsonResponse(200, {
+          data: [{ id: "e9", title: "Dentist", starts_at: "", ends_at: "" }],
+        });
+      }
+      if (url === "/api/notes") {
+        return jsonResponse(200, {
+          data: [{ id: "n9", title: "Groceries", body_md: "", pinned: false }],
+        });
+      }
+      throw new Error(`unexpected ${url}`);
+    };
+  }
+
+  it("titles the link chips and unlinks one behind its confirm", async () => {
+    const fetchMock = stubFetch(chipRoute(new Response(null, { status: 204 })));
+
+    render(
+      <MemoryRouter>
+        <FinancePage />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Buy keyboard" })).toBeDefined(),
+    );
+    const event = screen.getByRole("link", { name: "Dentist" });
+    const note = screen.getByRole("link", { name: "Groceries" });
+    expect(event.getAttribute("href")).toBe("/calendar?event=e9");
+    expect(note.getAttribute("href")).toBe("/notes?id=n9");
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlink task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit | undefined)?.method === "PATCH",
+      );
+      expect(patch).toBeDefined();
+      expect(String(patch![0])).toBe("/api/finance/transactions/tx1");
+      expect(JSON.parse((patch![1] as { body: string }).body)).toEqual({
+        task_id: "",
+      });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Buy keyboard" })).toBeNull(),
+    );
+    expect(screen.getByRole("link", { name: "Dentist" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlink note" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Groceries" })).toBeNull(),
+    );
+    const patches = fetchMock.mock.calls.filter(
+      (call) => (call[1] as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(
+      patches.map((patch) => JSON.parse((patch[1] as { body: string }).body)),
+    ).toEqual([{ task_id: "" }, { note_id: "" }]);
+    expect(screen.getByRole("link", { name: "Dentist" })).toBeDefined();
+  });
+
+  it("surfaces the error when unlinking fails", async () => {
+    stubFetch(chipRoute(envelope("boom", 500)));
+
+    render(
+      <MemoryRouter>
+        <FinancePage />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Buy keyboard" })).toBeDefined(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlink event" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("boom"),
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
   });
 });

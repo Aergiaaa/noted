@@ -1,4 +1,6 @@
 import type { Transaction } from "../../lib/api";
+import type { MentionType } from "../../lib/mentions";
+import type { LinkField } from "../links/LinkChip";
 import TransactionRow from "./TransactionRow";
 
 interface TransactionListProps {
@@ -7,6 +9,8 @@ interface TransactionListProps {
   onVoid: (id: string) => void;
   cursor: string | null;
   onLoadMore: (cursor: string) => void;
+  linkTitle?: (kind: MentionType, id: string) => string | undefined;
+  onUnlink?: (id: string, field: LinkField) => void;
 }
 
 // Dense history table; the page owns the empty/loading/error states and
@@ -17,6 +21,8 @@ export default function TransactionList({
   onVoid,
   cursor,
   onLoadMore,
+  linkTitle,
+  onUnlink,
 }: TransactionListProps) {
   return (
     <div className="overflow-x-auto">
@@ -37,6 +43,8 @@ export default function TransactionList({
               tx={row}
               walletNames={walletNames}
               onVoid={onVoid}
+              linkTitle={linkTitle}
+              onUnlink={onUnlink}
             />
           ))}
         </tbody>

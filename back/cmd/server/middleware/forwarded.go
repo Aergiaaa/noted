@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -38,7 +38,11 @@ func resolveForwarded(w http.ResponseWriter, r *http.Request, next http.Handler,
 		trusted,
 	)
 	if err != nil {
-		log.Printf("FORWARDED rid=%s: %v; keeping peer address", RequestIDFrom(r), err)
+		slog.Warn("FORWARDED",
+			"rid", RequestIDFrom(r),
+			"err", err,
+			"msg", "keeping peer address",
+		)
 	}
 
 	ctx := context.WithValue(r.Context(), CLIENT_IP_KEY, ip)
@@ -72,7 +76,7 @@ func parseTrustedProxy(entry string) *net.IPNet {
 	if strings.Contains(entry, "/") {
 		_, n, err := net.ParseCIDR(entry)
 		if err != nil {
-			log.Printf("TRUSTED_PROXIES: invalid CIDR %q: %v", entry, err)
+			slog.Warn("TRUSTED_PROXIES", "entry", entry, "err", err)
 			return nil
 		}
 
@@ -81,7 +85,7 @@ func parseTrustedProxy(entry string) *net.IPNet {
 
 	ip := net.ParseIP(entry)
 	if ip == nil {
-		log.Printf("TRUSTED_PROXIES: invalid IP %q", entry)
+		slog.Warn("TRUSTED_PROXIES", "entry", entry)
 		return nil
 	}
 

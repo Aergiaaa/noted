@@ -1,11 +1,13 @@
-import { Link } from "react-router";
 import type { Task } from "../../lib/api";
+import type { MentionType } from "../../lib/mentions";
+import LinkChip from "../links/LinkChip";
 
 interface TaskRowProps {
   task: Task;
   overdue: boolean;
   onToggleStatus: (task: Task) => void;
   onOpen: (task: Task) => void;
+  linkTitle?: (kind: MentionType, id: string) => string | undefined;
 }
 
 export default function TaskRow({
@@ -13,6 +15,7 @@ export default function TaskRow({
   overdue,
   onToggleStatus,
   onOpen,
+  linkTitle,
 }: TaskRowProps) {
   const done = task.status === "done";
   const badgeClass = done
@@ -59,14 +62,18 @@ export default function TaskRow({
             </span>
           )}
           {task.event_id !== null && (
-            <Link className="badge badge-info badge-sm" to="/calendar">
-              event
-            </Link>
+            <LinkChip
+              kind="event"
+              id={task.event_id}
+              title={linkTitle?.("event", task.event_id)}
+            />
           )}
           {task.note_id !== null && (
-            <Link className="badge badge-info badge-sm" to="/notes">
-              note
-            </Link>
+            <LinkChip
+              kind="note"
+              id={task.note_id}
+              title={linkTitle?.("note", task.note_id)}
+            />
           )}
         </div>
       </td>

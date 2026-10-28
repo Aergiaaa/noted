@@ -60,3 +60,21 @@ func (q *Queries) GetEnrollment(ctx context.Context) (Enrollment, error) {
 	)
 	return i, err
 }
+
+const updateEnrollment = `-- name: UpdateEnrollment :exec
+UPDATE enrollment
+SET totp_secret = ?,
+    updated_at  = ?
+WHERE id = 1
+`
+
+type UpdateEnrollmentParams struct {
+	TotpSecret string
+	UpdatedAt  string
+}
+
+// Re-seal the TOTP secret with a new key (key rotation).
+func (q *Queries) UpdateEnrollment(ctx context.Context, arg UpdateEnrollmentParams) error {
+	_, err := q.db.ExecContext(ctx, updateEnrollment, arg.TotpSecret, arg.UpdatedAt)
+	return err
+}

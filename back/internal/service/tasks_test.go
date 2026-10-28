@@ -60,7 +60,7 @@ func TestTaskService_create_startsOpenWithoutCompletion(t *testing.T) {
 	created, err := svc.Create(context.Background(), TaskInput{
 		Title:       "  Buy milk  ",
 		Status:      STATUS_DONE,
-		CompletedAt: ptr("2026-10-01T00:00:00Z"),
+		CompletedAt: "2026-10-01T00:00:00Z",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -107,9 +107,9 @@ func TestTaskService_create_persistsDueAndLinks(t *testing.T) {
 
 	created := seedTask(t, svc, TaskInput{
 		Title:   "Buy keyboard",
-		DueDate: ptr("2026-10-20"),
-		EventID: &eventID,
-		NoteID:  &noteID,
+		DueDate: "2026-10-20",
+		EventID: eventID,
+		NoteID:  noteID,
 	})
 	if created.DueDate == nil || *created.DueDate != "2026-10-20" {
 		t.Errorf("DueDate = %v, want 2026-10-20", created.DueDate)
@@ -125,7 +125,7 @@ func TestTaskService_create_persistsDueAndLinks(t *testing.T) {
 func TestTaskService_create_unknownEvent_400(t *testing.T) {
 	svc, _ := newTestTaskService(t)
 
-	_, err := svc.Create(context.Background(), TaskInput{Title: "X", EventID: ptr("nope")})
+	_, err := svc.Create(context.Background(), TaskInput{Title: "X", EventID: "nope"})
 	if got := fieldsOf(t, err)["event_id"]; got != "unknown event" {
 		t.Fatalf("event_id field = %q, want unknown event", got)
 	}
@@ -134,7 +134,7 @@ func TestTaskService_create_unknownEvent_400(t *testing.T) {
 func TestTaskService_create_unknownNote_400(t *testing.T) {
 	svc, _ := newTestTaskService(t)
 
-	_, err := svc.Create(context.Background(), TaskInput{Title: "X", NoteID: ptr("nope")})
+	_, err := svc.Create(context.Background(), TaskInput{Title: "X", NoteID: "nope"})
 	if got := fieldsOf(t, err)["note_id"]; got != "unknown note" {
 		t.Fatalf("note_id field = %q, want unknown note", got)
 	}
@@ -167,7 +167,7 @@ func TestTaskService_create_eventTableGone_internalError(t *testing.T) {
 		t.Fatalf("drop events: %v", err)
 	}
 
-	_, err := svc.Create(context.Background(), TaskInput{Title: "X", EventID: ptr("e1")})
+	_, err := svc.Create(context.Background(), TaskInput{Title: "X", EventID: "e1"})
 	if err == nil {
 		t.Fatal("Create succeeded, want internal error")
 	}
@@ -183,7 +183,7 @@ func TestTaskService_create_noteTableGone_internalError(t *testing.T) {
 		t.Fatalf("drop notes: %v", err)
 	}
 
-	_, err := svc.Create(context.Background(), TaskInput{Title: "X", NoteID: ptr("n1")})
+	_, err := svc.Create(context.Background(), TaskInput{Title: "X", NoteID: "n1"})
 	if err == nil {
 		t.Fatal("Create succeeded, want internal error")
 	}
@@ -211,8 +211,8 @@ func TestTaskService_create_taskTableGone_internalError(t *testing.T) {
 
 func TestTaskService_list_ordersByDueDateNullsLast(t *testing.T) {
 	svc, _ := newTestTaskService(t)
-	seedTask(t, svc, TaskInput{Title: "Later", DueDate: ptr("2026-10-10")})
-	seedTask(t, svc, TaskInput{Title: "Sooner", DueDate: ptr("2026-10-05")})
+	seedTask(t, svc, TaskInput{Title: "Later", DueDate: "2026-10-10"})
+	seedTask(t, svc, TaskInput{Title: "Sooner", DueDate: "2026-10-05"})
 	seedTask(t, svc, TaskInput{Title: "NoDue"})
 
 	tasks, err := svc.List(context.Background(), nil, nil)
@@ -257,8 +257,8 @@ func TestTaskService_list_statusFilter(t *testing.T) {
 
 func TestTaskService_list_dueFilter(t *testing.T) {
 	svc, _ := newTestTaskService(t)
-	seedTask(t, svc, TaskInput{Title: "Target", DueDate: ptr("2026-10-05")})
-	seedTask(t, svc, TaskInput{Title: "Other", DueDate: ptr("2026-10-10")})
+	seedTask(t, svc, TaskInput{Title: "Target", DueDate: "2026-10-05"})
+	seedTask(t, svc, TaskInput{Title: "Other", DueDate: "2026-10-10"})
 	seedTask(t, svc, TaskInput{Title: "NoDue"})
 
 	tasks, err := svc.List(context.Background(), nil, ptr("2026-10-05"))
@@ -272,12 +272,12 @@ func TestTaskService_list_dueFilter(t *testing.T) {
 
 func TestTaskService_list_statusAndDueCombined(t *testing.T) {
 	svc, _ := newTestTaskService(t)
-	seedTask(t, svc, TaskInput{Title: "Open05", DueDate: ptr("2026-10-05")})
-	done := seedTask(t, svc, TaskInput{Title: "Done05", DueDate: ptr("2026-10-05")})
+	seedTask(t, svc, TaskInput{Title: "Open05", DueDate: "2026-10-05"})
+	done := seedTask(t, svc, TaskInput{Title: "Done05", DueDate: "2026-10-05"})
 	if _, err := svc.Update(context.Background(), done.ID, TaskPatch{Status: ptr(STATUS_DONE)}); err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
-	seedTask(t, svc, TaskInput{Title: "Open10", DueDate: ptr("2026-10-10")})
+	seedTask(t, svc, TaskInput{Title: "Open10", DueDate: "2026-10-10"})
 
 	tasks, err := svc.List(context.Background(), ptr(STATUS_OPEN), ptr("2026-10-05"))
 	if err != nil {
@@ -319,9 +319,9 @@ func TestTaskService_update_mergesPartial(t *testing.T) {
 	noteID := seedNoteForTask(t, db)
 	task := seedTask(t, svc, TaskInput{
 		Title:   "Old",
-		DueDate: ptr("2026-10-10"),
-		EventID: &eventID,
-		NoteID:  &noteID,
+		DueDate: "2026-10-10",
+		EventID: eventID,
+		NoteID:  noteID,
 	})
 
 	updated, err := svc.Update(context.Background(), task.ID, TaskPatch{Title: ptr("New")})
@@ -371,9 +371,9 @@ func TestTaskService_update_emptyStringsClearStoredLinks(t *testing.T) {
 	noteID := seedNoteForTask(t, db)
 	task := seedTask(t, svc, TaskInput{
 		Title:   "Linked",
-		DueDate: ptr("2026-10-20"),
-		EventID: &eventID,
-		NoteID:  &noteID,
+		DueDate: "2026-10-20",
+		EventID: eventID,
+		NoteID:  noteID,
 	})
 
 	updated, err := svc.Update(context.Background(), task.ID, TaskPatch{
@@ -483,6 +483,37 @@ func TestTaskService_update_unknownNote_400(t *testing.T) {
 	_, err := svc.Update(context.Background(), task.ID, TaskPatch{NoteID: ptr("nope")})
 	if got := fieldsOf(t, err)["note_id"]; got != "unknown note" {
 		t.Fatalf("note_id field = %q, want unknown note", got)
+	}
+}
+
+func TestTaskService_update_keepsStoredTrashedEventLink(t *testing.T) {
+	svc, db := newTestTaskService(t)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, svc, TaskInput{Title: "Buy keyboard", EventID: eventID})
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, eventID); err != nil {
+		t.Fatalf("trash event: %v", err)
+	}
+
+	// TaskForm omits the link keys, so the stored trashed event is kept
+	// (API.md absent = keep) and the title edit must go through.
+	updated, err := svc.Update(context.Background(), task.ID, TaskPatch{Title: ptr("Buy keyboard tomorrow")})
+	if err != nil {
+		t.Fatalf("Update title with stored trashed event link: %v", err)
+	}
+	if updated.EventID == nil || *updated.EventID != eventID {
+		t.Fatalf("event_id = %v, want kept %s", updated.EventID, eventID)
+	}
+}
+
+func TestTaskService_update_replaceWithUnknownEvent_400(t *testing.T) {
+	svc, db := newTestTaskService(t)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, svc, TaskInput{Title: "Buy keyboard", EventID: eventID})
+
+	_, err := svc.Update(context.Background(), task.ID, TaskPatch{EventID: ptr("e_missing")})
+	if got := fieldsOf(t, err)["event_id"]; got != "unknown event" {
+		t.Fatalf("event_id field = %q, want unknown event", got)
 	}
 }
 

@@ -272,6 +272,9 @@ func TestCreateTransaction_badRequests(t *testing.T) {
 		{"missing wallet", `{"kind":"expense","wallet_id":"","amount_cents":100,"occurred_on":"2026-10-01"}`, "wallet_id", "required"},
 		{"bad date", `{"kind":"expense","wallet_id":"wal_cash","amount_cents":100,"occurred_on":"01/10/2026"}`, "occurred_on", "must be YYYY-MM-DD"},
 		{"zero amount", `{"kind":"expense","wallet_id":"wal_cash","amount_cents":0,"occurred_on":"2026-10-01"}`, "amount_cents", "must be at least 1"},
+		{"unknown task link", `{"kind":"expense","wallet_id":"wal_cash","amount_cents":100,"occurred_on":"2026-10-01","task_id":"t_missing"}`, "task_id", "unknown task"},
+		{"unknown event link", `{"kind":"expense","wallet_id":"wal_cash","amount_cents":100,"occurred_on":"2026-10-01","event_id":"e_missing"}`, "event_id", "unknown event"},
+		{"unknown note link", `{"kind":"expense","wallet_id":"wal_cash","amount_cents":100,"occurred_on":"2026-10-01","note_id":"n_missing"}`, "note_id", "unknown note"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

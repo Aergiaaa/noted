@@ -1,11 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as baseRender,
+  screen,
+} from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import type { ReactElement } from "react";
 import type { Note } from "../../lib/api";
 import NoteRow from "./NoteRow";
 
 afterEach(() => {
   cleanup();
 });
+
+// NoteBody navigates on mention-chip clicks (F9) → it needs a router
+// context, which the app always provides around rows.
+function render(ui: ReactElement) {
+  return baseRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function note(over: Partial<Note> = {}): Note {
   return {

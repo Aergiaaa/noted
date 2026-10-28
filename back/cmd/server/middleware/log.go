@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -36,8 +36,13 @@ func logStatus(r *http.Request, sw *statusWriter, start time.Time) {
 		stat = http.StatusOK // handler returned without writing
 	}
 
-	log.Printf("request rid=%s method=%s uri=%s status=%d dur=%s",
-		RequestIDFrom(r), r.Method, r.URL.RequestURI(), stat, time.Since(start))
+	slog.Info("request",
+		"rid", RequestIDFrom(r),
+		"method", r.Method,
+		"uri", r.URL.RequestURI(),
+		"status", stat,
+		"dur", time.Since(start),
+	)
 }
 
 // statusWriter records the first status written, so the log reports what

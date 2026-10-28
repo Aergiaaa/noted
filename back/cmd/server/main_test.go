@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -86,9 +86,9 @@ func TestNewConfigFromEnv_overrides(t *testing.T) {
 
 func TestNewConfigFromEnv_staleDataPath_warns(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	t.Setenv("DATA_PATH", "/data/old.db")
 	t.Setenv("DB_PATH", "")
@@ -287,22 +287,22 @@ func (s *stubCloser) Close() error { return s.err }
 
 func TestDBCloseWithErr_logsOnCloseError(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	dbCloseWithErr(&stubCloser{err: errors.New("boom")})
 
-	if got := buf.String(); !strings.Contains(got, "error closing db: boom") {
+	if got := buf.String(); !strings.Contains(got, `err=boom`) {
 		t.Fatalf("log = %q, want close error line", got)
 	}
 }
 
 func TestDBCloseWithErr_silentOnSuccess(t *testing.T) {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 
 	dbCloseWithErr(&stubCloser{})
 
@@ -316,9 +316,9 @@ func TestDBCloseWithErr_silentOnSuccess(t *testing.T) {
 // bootLog captures log output around fn, returning everything written.
 func bootLog(fn func()) string {
 	var buf bytes.Buffer
-	old := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(old)
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	defer slog.SetDefault(old)
 	fn()
 	return buf.String()
 }
@@ -336,7 +336,7 @@ func TestWire_warnsWhenNotEnrolled(t *testing.T) {
 	if a.handler == nil || a.auth == nil {
 		t.Fatal("wire did not build handler + auth service")
 	}
-	if !strings.Contains(out, "WARNING: not enrolled") {
+	if !strings.Contains(out, "not enrolled") {
 		t.Fatalf("log = %q, want enrollment warning", out)
 	}
 }
@@ -377,13 +377,13 @@ func TestWire_closedDB_logsBothBootFailures(t *testing.T) {
 	a := newApp(Config{})
 	out := bootLog(func() { a.wire(db) })
 
-	if !strings.Contains(out, "error pruning sessions") {
+	if !strings.Contains(out, "prune sessions") {
 		t.Fatalf("log = %q, want prune failure line", out)
 	}
-	if !strings.Contains(out, "error checking enrollment") {
+	if !strings.Contains(out, "check enrollment") {
 		t.Fatalf("log = %q, want enrollment check failure line", out)
 	}
-	if !strings.Contains(out, "error purging soft-deleted events") {
+	if !strings.Contains(out, "purge events") {
 		t.Fatalf("log = %q, want purge failure line", out)
 	}
 }

@@ -44,6 +44,44 @@ function renderForm(note: Note | null) {
 }
 
 describe("NoteForm", () => {
+  it("inserts a mention token into the body at the caret", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: unknown) => {
+      const url = String(input);
+      if (url.includes("/tasks")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            data: [
+              {
+                id: "t1",
+                title: "Buy keyboard",
+                status: "open",
+                due_date: null,
+                event_id: null,
+                note_id: null,
+                completed_at: null,
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    const bodyArea = screen.getByLabelText("Body") as HTMLTextAreaElement;
+    fireEvent.change(bodyArea, { target: { value: "Hello  world" } });
+    bodyArea.setSelectionRange(6, 6);
+    fireEvent.click(screen.getByRole("button", { name: "Mention" }));
+    await screen.findByRole("option", { name: "Buy keyboard" });
+    fireEvent.change(screen.getByLabelText("Insert mention"), {
+      target: { value: "task:t1" },
+    });
+
+    expect(bodyArea.value).toBe("Hello @[task:t1] world");
+    expect(bodyArea.selectionStart).toBe(6 + "@[task:t1]".length);
+  });
+
   it("creates a note with the title, body and pinned flag", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
     vi.stubGlobal("fetch", fetchMock);

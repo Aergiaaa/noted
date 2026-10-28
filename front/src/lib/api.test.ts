@@ -202,6 +202,25 @@ describe("api", () => {
       code: "network_error",
     });
   });
+
+  it("rethrows an AbortError untouched so cancellation stays detectable", async () => {
+    const abort = new DOMException("Aborted", "AbortError");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abort));
+
+    await expect(api("/session")).rejects.toBe(abort);
+  });
+
+  it("still converts a non-abort DOMException into a network error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("denied", "DataError")),
+    );
+
+    await expect(api("/session")).rejects.toMatchObject({
+      status: 0,
+      code: "network_error",
+    });
+  });
 });
 
 describe("isApiError", () => {

@@ -21,6 +21,41 @@ function jsonResponse(status: number, body: unknown) {
   });
 }
 
+// Picker sources land alongside the save call: route by URL so list GETs
+// answer {data} and the save keeps its own status/body.
+function fetchRouter(lists: Record<string, unknown>, saveStatus = 201) {
+  return vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (init?.method === "PATCH" || init?.method === "POST") {
+      return Promise.resolve(jsonResponse(saveStatus, {}));
+    }
+    if (url.includes("/events?")) {
+      return Promise.resolve(
+        jsonResponse(200, {
+          data: [
+            {
+              id: "e9",
+              title: "Dentist",
+              starts_at: "2026-10-15T09:00:00Z",
+              ends_at: "2026-10-15T10:00:00Z",
+            },
+          ],
+        }),
+      );
+    }
+    if (url.includes("/notes")) {
+      return Promise.resolve(
+        jsonResponse(200, {
+          data: [{ id: "n9", title: "Groceries", body_md: "", pinned: false }],
+        }),
+      );
+    }
+    if (url.includes("/tasks")) {
+      return Promise.resolve(jsonResponse(200, lists.tasks ?? { data: [] }));
+    }
+    return Promise.resolve(jsonResponse(200, { data: [] }));
+  });
+}
+
 const TASK: Task = {
   id: "t1",
   title: "Buy keyboard",
@@ -47,13 +82,12 @@ function renderForm(task: Task | null) {
 }
 
 describe("TaskForm", () => {
-  it("creates a task with title and due; link inputs stay hidden until F9", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+  it("creates a task with title and due; empty links stay omitted", async () => {
+    const fetchMock = fetchRouter({});
     vi.stubGlobal("fetch", fetchMock);
     const { onClose, onSaved } = renderForm(null);
 
-    expect(screen.queryByLabelText("Event ID")).toBeNull();
-    expect(screen.queryByLabelText("Note ID")).toBeNull();
+    await waitFor(() => expect(screen.getByLabelText("Event")).toBeDefined());
 
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Ship it" },
@@ -65,9 +99,11 @@ describe("TaskForm", () => {
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/tasks");
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+    const saveCall = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "POST",
+    );
+    expect(saveCall?.[0]).toBe("/api/tasks");
+    expect(saveCall?.[1]).toMatchObject({
       method: "POST",
       body: JSON.stringify({
         title: "Ship it",
@@ -76,8 +112,59 @@ describe("TaskForm", () => {
     });
   });
 
+  it("offers only existing titles in the event and note pickers", async () => {
+    vi.stubGlobal("fetch", fetchRouter({}));
+    renderForm(null);
+
+    await waitFor(() => expect(screen.getByLabelText("Event")).toBeDefined());
+    const eventOptions = screen.getAllByRole("option");
+    // Both pickers present; wait for their lists too.
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "Dentist" })).toBeDefined(),
+    );
+    expect(screen.getByRole("option", { name: "Groceries" })).toBeDefined();
+    expect(screen.getAllByRole("option", { name: "None" })).toHaveLength(2);
+    expect(eventOptions.length).toBeGreaterThan(0);
+  });
+
+  it("sends picked link ids on create", async () => {
+    const fetchMock = fetchRouter({});
+    vi.stubGlobal("fetch", fetchMock);
+    renderForm(null);
+
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "Dentist" })).toBeDefined(),
+    );
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Ship it" },
+    });
+    fireEvent.change(screen.getByLabelText("Event"), {
+      target: { value: "e9" },
+    });
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "n9" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const saveCall = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit)?.method === "POST",
+      );
+      expect(saveCall).toBeDefined();
+    });
+    const saveCall = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "POST",
+    );
+    const body = JSON.parse((saveCall![1] as { body: string }).body) as Record<
+      string,
+      unknown
+    >;
+    expect(body.event_id).toBe("e9");
+    expect(body.note_id).toBe("n9");
+  });
+
   it("strips control characters from the title before sending", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, {}));
+    const fetchMock = fetchRouter({});
     vi.stubGlobal("fetch", fetchMock);
     renderForm(null);
 
@@ -86,15 +173,23 @@ describe("TaskForm", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+    await waitFor(() => {
+      const saveCall = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit)?.method === "POST",
+      );
+      expect(saveCall).toBeDefined();
+    });
+    const saveCall = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "POST",
+    );
+    expect(saveCall?.[1]).toMatchObject({
       method: "POST",
       body: JSON.stringify({ title: "Dentist" }),
     });
   });
 
   it("rejects a control-only title before touching the network", () => {
-    const fetchMock = vi.fn();
+    const fetchMock = fetchRouter({});
     vi.stubGlobal("fetch", fetchMock);
     renderForm(null);
 
@@ -104,63 +199,82 @@ describe("TaskForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(screen.getByText("Title is required.")).toBeDefined();
-    expect(fetchMock).not.toHaveBeenCalled();
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => (call[1] as RequestInit)?.method === "POST",
+    );
+    expect(saveCalls).toHaveLength(0);
   });
 
-  it("prefills and PATCHes, clearing due while keeping stored links", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+  it("PATCHes cleared links as empty strings and keeps untouched ones", async () => {
+    const fetchMock = fetchRouter({}, 200);
     vi.stubGlobal("fetch", fetchMock);
     renderForm(TASK);
 
-    expect(screen.getByLabelText("Title").getAttribute("value")).toBe(
-      "Buy keyboard",
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "Dentist" })).toBeDefined(),
     );
-    expect(screen.getByLabelText("Due").getAttribute("value")).toBe(
-      "2026-10-20",
+    expect((screen.getByLabelText("Event") as HTMLSelectElement).value).toBe(
+      "e9",
     );
-    expect(screen.queryByLabelText("Event ID")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Due"), { target: { value: "" } });
+    // Clear the event, leave the note alone.
+    fireEvent.change(screen.getByLabelText("Event"), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/tasks/t1");
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      method: "PATCH",
-      body: JSON.stringify({
-        title: "Buy keyboard",
-        due_date: "",
-      }),
+    await waitFor(() => {
+      const patchCall = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit)?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
     });
-    // Absent link keys keep the stored event/note links (API.md PATCH).
-    const init = fetchMock.mock.calls[0]?.[1] as { body: string };
-    const body = JSON.parse(init.body);
-    expect(body).not.toHaveProperty("event_id");
-    expect(body).not.toHaveProperty("note_id");
+    const patchCall = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "PATCH",
+    );
+    expect(patchCall?.[0]).toBe("/api/tasks/t1");
+    const body = JSON.parse((patchCall![1] as { body: string }).body) as Record<
+      string,
+      unknown
+    >;
+    expect(body).toEqual({
+      title: "Buy keyboard",
+      due_date: "2026-10-20",
+      event_id: "",
+      note_id: "n9",
+    });
   });
 
   it("rejects an empty title before touching the network", () => {
-    const fetchMock = vi.fn();
+    const fetchMock = fetchRouter({});
     vi.stubGlobal("fetch", fetchMock);
     renderForm(null);
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("Title is required.")).toBeDefined();
-    expect(fetchMock).not.toHaveBeenCalled();
+    const saveCalls = fetchMock.mock.calls.filter(
+      (call) => (call[1] as RequestInit)?.method === "POST",
+    );
+    expect(saveCalls).toHaveLength(0);
   });
 
   it("shows server validation fields after a failed save", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(400, {
-          error: {
-            code: "validation_error",
-            message: "validation failed",
-            fields: { due_date: "must be YYYY-MM-DD" },
-          },
-        }),
-      ),
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        if (init?.method === "PATCH" || init?.method === "POST") {
+          return Promise.resolve(
+            jsonResponse(400, {
+              error: {
+                code: "validation_error",
+                message: "validation failed",
+                fields: { due_date: "must be YYYY-MM-DD" },
+              },
+            }),
+          );
+        }
+        return Promise.resolve(jsonResponse(200, { data: [] }));
+      }),
     );
     renderForm(null);
 
@@ -192,18 +306,25 @@ describe("TaskForm", () => {
 
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("t1"));
     expect(onClose).toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "DELETE" });
+    const deleteCall = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "DELETE",
+    );
+    expect(deleteCall?.[1]).toMatchObject({ method: "DELETE" });
   });
 
   it("shows an error and returns to the buttons when delete fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse(500, {
-          error: { code: "internal_error", message: "server exploded" },
-        }),
-      ),
+      vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        if (init?.method === "DELETE") {
+          return Promise.resolve(
+            jsonResponse(500, {
+              error: { code: "internal_error", message: "server exploded" },
+            }),
+          );
+        }
+        return Promise.resolve(jsonResponse(200, { data: [] }));
+      }),
     );
     renderForm(TASK);
 

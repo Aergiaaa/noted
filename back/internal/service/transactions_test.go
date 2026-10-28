@@ -38,7 +38,7 @@ func incomeInput(walletID string, cents int64, day string) TransactionInput {
 		Kind:        KIND_INCOME,
 		AmountCents: cents,
 		OccurredOn:  day,
-		WalletID:    &walletID,
+		WalletID:    walletID,
 	}
 }
 
@@ -47,7 +47,7 @@ func expenseInput(walletID string, cents int64, day string) TransactionInput {
 		Kind:        KIND_EXPENSE,
 		AmountCents: cents,
 		OccurredOn:  day,
-		WalletID:    &walletID,
+		WalletID:    walletID,
 	}
 }
 
@@ -56,8 +56,8 @@ func transferInput(from, to string, cents int64, day string) TransactionInput {
 		Kind:         KIND_TRANSFER,
 		AmountCents:  cents,
 		OccurredOn:   day,
-		FromWalletID: &from,
-		ToWalletID:   &to,
+		FromWalletID: from,
+		ToWalletID:   to,
 	}
 }
 
@@ -89,7 +89,7 @@ func TestTransactionService_create_memoSanitizedAndNilWhenEmpty(t *testing.T) {
 
 	in := expenseInput(cash.ID, 50000, "2026-10-20")
 	memo := "  cof\x00fee  "
-	in.Memo = &memo
+	in.Memo = memo
 	created, err := svc.Create(context.Background(), in)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -100,7 +100,7 @@ func TestTransactionService_create_memoSanitizedAndNilWhenEmpty(t *testing.T) {
 
 	blank := "   "
 	in2 := expenseInput(cash.ID, 1000, "2026-10-20")
-	in2.Memo = &blank
+	in2.Memo = blank
 	created2, err := svc.Create(context.Background(), in2)
 	if err != nil {
 		t.Fatalf("Create blank memo: %v", err)
@@ -133,7 +133,7 @@ func TestTransactionService_create_transferSideColumnsOnExpense_400(t *testing.T
 	cash := cashWallet(t, wallets)
 
 	in := expenseInput(cash.ID, 50000, "2026-10-20")
-	in.FromWalletID = &cash.ID
+	in.FromWalletID = cash.ID
 	_, err := svc.Create(context.Background(), in)
 	if got := fieldsOf(t, err)["from_wallet_id"]; got != "only transfers use from_wallet_id" {
 		t.Fatalf("from_wallet_id field = %q", got)
@@ -171,11 +171,93 @@ func TestTransactionService_create_badLink_400(t *testing.T) {
 	svc, wallets, _ := newTestTransactionService(t)
 	cash := cashWallet(t, wallets)
 
+	cases := []struct {
+		name  string
+		field string
+		want  string
+		apply func(in *TransactionInput)
+	}{
+		{"unknown task", "task_id", "unknown task",
+			func(in *TransactionInput) { in.TaskID = "t_missing" }},
+		{"unknown event", "event_id", "unknown event",
+			func(in *TransactionInput) { in.EventID = "e_missing" }},
+		{"unknown note", "note_id", "unknown note",
+			func(in *TransactionInput) { in.NoteID = "n_missing" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := expenseInput(cash.ID, 50000, "2026-10-20")
+			tc.apply(&in)
+			_, err := svc.Create(context.Background(), in)
+			if got := fieldsOf(t, err)[tc.field]; got != tc.want {
+				t.Fatalf("%s field = %q, want %q", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTransactionService_update_badLink_400(t *testing.T) {
+	svc, wallets, _ := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+
+	created, err := svc.Create(context.Background(), expenseInput(cash.ID, 50000, "2026-10-20"))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	cases := []struct {
+		name  string
+		field string
+		want  string
+		patch TransactionPatch
+	}{
+		{"unknown task", "task_id", "unknown task",
+			TransactionPatch{TaskID: strPtr("t_missing")}},
+		{"unknown event", "event_id", "unknown event",
+			TransactionPatch{EventID: strPtr("e_missing")}},
+		{"unknown note", "note_id", "unknown note",
+			TransactionPatch{NoteID: strPtr("n_missing")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.Update(context.Background(), created.ID, tc.patch)
+			if got := fieldsOf(t, err)[tc.field]; got != tc.want {
+				t.Fatalf("%s field = %q, want %q", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTransactionService_update_keepsStoredTrashedEventLink(t *testing.T) {
+	svc, wallets, db := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+	eventID := seedEventForTask(t, db)
+	task := seedTask(t, NewTaskService(generated.New(db)), TaskInput{Title: "Buy keyboard"})
+
 	in := expenseInput(cash.ID, 50000, "2026-10-20")
-	in.TaskID = strPtr("t_missing")
-	_, err := svc.Create(context.Background(), in)
-	if got := fieldsOf(t, err)["task_id"]; got != "unknown task" {
-		t.Fatalf("task_id field = %q", got)
+	in.EventID = eventID
+	in.TaskID = task.ID
+	created, err := svc.Create(context.Background(), in)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := db.Exec(
+		`UPDATE events SET deleted_at = '2020-01-01T00:00:00Z' WHERE id = ?`, eventID); err != nil {
+		t.Fatalf("trash event: %v", err)
+	}
+
+	// The chip unlink sends one field; the stored trashed event on the
+	// merged row must not re-validate (API.md absent = keep, DOMAIN.md
+	// links stay intact until purge).
+	unlinked, err := svc.Update(context.Background(), created.ID, TransactionPatch{TaskID: strPtr("")})
+	if err != nil {
+		t.Fatalf("Update unlink with stored trashed event link: %v", err)
+	}
+	if unlinked.TaskID != nil {
+		t.Fatalf("task_id = %v, want cleared", unlinked.TaskID)
+	}
+	if unlinked.EventID == nil || *unlinked.EventID != eventID {
+		t.Fatalf("event_id = %v, want kept %s", unlinked.EventID, eventID)
 	}
 }
 
@@ -227,7 +309,7 @@ func TestTransactionService_createTransfer_missingSides_400(t *testing.T) {
 	cash := cashWallet(t, wallets)
 
 	in := transferInput(cash.ID, cash.ID, 1000, "2026-10-20")
-	in.ToWalletID = nil
+	in.ToWalletID = ""
 	_, err := svc.CreateTransfer(context.Background(), in)
 	if got := fieldsOf(t, err)["to_wallet_id"]; got != "required" {
 		t.Fatalf("to_wallet_id field = %q, want required", got)
@@ -360,7 +442,7 @@ func TestTransactionService_update_movesWalletAndClearsMemo(t *testing.T) {
 	memo := "wrong pot"
 	created, err := svc.Create(context.Background(), func() TransactionInput {
 		in := expenseInput(cash.ID, 50000, "2026-10-19")
-		in.Memo = &memo
+		in.Memo = memo
 		return in
 	}())
 	if err != nil {
@@ -407,12 +489,11 @@ func TestTransactionService_list_pagesSkipNothing(t *testing.T) {
 	}
 
 	var gotIDs []string
-	var cursorOcc, cursorID *string
+	var cursor *TransactionCursor
 	for {
 		page, err := svc.List(context.Background(), TransactionListParams{
-			CursorOccurredOn: cursorOcc,
-			CursorID:         cursorID,
-			Limit:            2,
+			Cursor: cursor,
+			Limit:  2,
 		})
 		if err != nil {
 			t.Fatalf("List page: %v", err)
@@ -424,8 +505,7 @@ func TestTransactionService_list_pagesSkipNothing(t *testing.T) {
 			gotIDs = append(gotIDs, row.ID)
 		}
 		last := page[len(page)-1]
-		cursorOcc = &last.OccurredOn
-		cursorID = &last.ID
+		cursor = &TransactionCursor{OccurredOn: last.OccurredOn, ID: last.ID}
 		if len(page) < 2 {
 			break
 		}
@@ -479,7 +559,7 @@ func TestTransactionService_memoTooLong_400(t *testing.T) {
 
 	in := expenseInput(cash.ID, 1000, "2026-10-19")
 	long := strings.Repeat("m", 501)
-	in.Memo = &long
+	in.Memo = long
 	_, err := svc.Create(context.Background(), in)
 	if got := fieldsOf(t, err)["memo"]; got != "must be at most 500 characters" {
 		t.Fatalf("memo field = %q", got)
@@ -717,7 +797,7 @@ func TestTransactionService_create_incomeToSide_400(t *testing.T) {
 	cash := cashWallet(t, wallets)
 
 	in := incomeInput(cash.ID, 1000, "2026-10-20")
-	in.ToWalletID = strPtr(cash.ID)
+	in.ToWalletID = cash.ID
 	_, err := svc.Create(context.Background(), in)
 	if got := fieldsOf(t, err)["to_wallet_id"]; got != "only transfers use to_wallet_id" {
 		t.Fatalf("to_wallet_id field = %q", got)
@@ -761,7 +841,7 @@ func TestTransactionService_createTransfer_missingFrom_required(t *testing.T) {
 	bank := seedWallet(t, wallets, "Bank")
 
 	in := transferInput(cash.ID, bank.ID, 1000, "2026-10-20")
-	in.FromWalletID = nil
+	in.FromWalletID = ""
 	_, err := svc.CreateTransfer(context.Background(), in)
 	if got := fieldsOf(t, err)["from_wallet_id"]; got != "required" {
 		t.Fatalf("from_wallet_id field = %q, want required", got)
@@ -776,9 +856,9 @@ func TestTransactionService_create_validLinksOk(t *testing.T) {
 	noteID := seedNoteForTask(t, db)
 
 	in := incomeInput(cash.ID, 1000, "2026-10-20")
-	in.TaskID = &task.ID
-	in.EventID = &eventID
-	in.NoteID = &noteID
+	in.TaskID = task.ID
+	in.EventID = eventID
+	in.NoteID = noteID
 	created, err := svc.Create(context.Background(), in)
 	if err != nil {
 		t.Fatalf("Create with valid links: %v", err)
@@ -794,7 +874,7 @@ func TestTransactionService_create_taskRefDbError(t *testing.T) {
 	mustExec(t, db, `DROP TABLE tasks`)
 
 	in := incomeInput(cash.ID, 1000, "2026-10-20")
-	in.TaskID = strPtr("t_any")
+	in.TaskID = "t_any"
 	_, err := svc.Create(context.Background(), in)
 	if err == nil {
 		t.Fatal("Create = nil, want task lookup error")
@@ -811,10 +891,27 @@ func TestTransactionService_create_eventRefDbError(t *testing.T) {
 	mustExec(t, db, `DROP TABLE events`)
 
 	in := incomeInput(cash.ID, 1000, "2026-10-20")
-	in.EventID = strPtr("e_any")
+	in.EventID = "e_any"
 	_, err := svc.Create(context.Background(), in)
 	if err == nil {
 		t.Fatal("Create = nil, want event lookup error")
+	}
+	var validation *ValidationError
+	if errors.As(err, &validation) {
+		t.Fatalf("err = validation %v, want db error", validation.Fields)
+	}
+}
+
+func TestTransactionService_create_noteRefDbError(t *testing.T) {
+	svc, wallets, db := newTestTransactionService(t)
+	cash := cashWallet(t, wallets)
+	mustExec(t, db, `DROP TABLE notes`)
+
+	in := incomeInput(cash.ID, 1000, "2026-10-20")
+	in.NoteID = "n_any"
+	_, err := svc.Create(context.Background(), in)
+	if err == nil {
+		t.Fatal("Create = nil, want note lookup error")
 	}
 	var validation *ValidationError
 	if errors.As(err, &validation) {

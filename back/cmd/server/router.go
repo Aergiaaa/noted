@@ -2,7 +2,6 @@ package main
 
 import (
 	"net/http"
-	"time"
 
 	"noted/cmd/server/handler"
 	"noted/cmd/server/middleware"
@@ -39,7 +38,7 @@ func (a *app) newRouter() http.Handler {
 		limiter := middleware.NewTokenBucket(
 			auth.LOGIN_RATE_LIMIT,
 			auth.LOGIN_RATE_WINDOW,
-			time.Now,
+			a.now,
 		)
 		r.With(middleware.RateLimit(limiter)).
 			Post("/auth/login", a.handler.Login)

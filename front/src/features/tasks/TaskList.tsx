@@ -1,4 +1,5 @@
 import type { Task } from "../../lib/api";
+import type { MentionType } from "../../lib/mentions";
 import TaskRow from "./TaskRow";
 
 interface TaskListProps {
@@ -6,6 +7,7 @@ interface TaskListProps {
   overdueIds: ReadonlySet<string>;
   onToggleStatus: (task: Task) => void;
   onOpen: (task: Task) => void;
+  linkTitle?: (kind: MentionType, id: string) => string | undefined;
 }
 
 export default function TaskList({
@@ -13,6 +15,7 @@ export default function TaskList({
   overdueIds,
   onToggleStatus,
   onOpen,
+  linkTitle,
 }: TaskListProps) {
   return (
     <table className="table table-sm">
@@ -24,6 +27,7 @@ export default function TaskList({
             overdue={overdueIds.has(task.id)}
             onToggleStatus={onToggleStatus}
             onOpen={onOpen}
+            linkTitle={linkTitle}
           />
         ))}
       </tbody>

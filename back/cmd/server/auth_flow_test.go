@@ -49,7 +49,12 @@ func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) string {
 // router: guard → enroll → wrong code → live code → session → rotate
 // recovery pool → dead/live codes → logout → rate limit.
 func TestAuthFlow_endToEnd(t *testing.T) {
+	// Freeze the clock so the login rate limiter cannot refill tokens
+	// between attempts under -race (bcrypt slows real time enough that a
+	// token would otherwise refill before the 6th attempt).
+	testNow := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 	app := newTestApp(t, Config{TOTPEncKey: cliEncKey})
+	app.now = func() time.Time { return testNow }
 	router := app.newRouter()
 
 	// 1. Guard: no cookie yet.
