@@ -15,10 +15,12 @@ export interface FetchState<T> {
 // swap — no skeleton flash), refetch re-runs silently, retry flips the
 // skeleton back on. An AbortController cancels the previous fetch when the
 // effect re-runs or unmounts, so a stale response never overwrites a newer
-// one (the old race the docs called out). Aborted requests are silent —
-// they don't set error or flip loading, because the replacement fetch owns
-// that state. A fetch hook is orchestration, which PLAYBOOK §4 allows —
-// only trivial boolean hooks are banned.
+// one. Aborted requests are silent — they don't set error or flip loading,
+// because the replacement fetch owns that state. Loading clears when any
+// non-aborted fetch settles (success or failure); the page decides what to
+// render (ErrorState only when data is null, grid otherwise — keep-previous).
+// A fetch hook is orchestration, which PLAYBOOK §4 allows — only trivial
+// boolean hooks are banned.
 export function useFetch<T>(
   path: string,
   fallbackError: string,
@@ -37,58 +39,22 @@ export function useFetch<T>(
   }
 
   useEffect(() => {
-    console.log("[useFetch] effect running, nonce:", nonce);
     const controller = new AbortController();
-    const isBackground = nonce > 0;
-    let fetchError: string | null = null;
 
-    console.log("[useFetch] calling api, nonce:", nonce);
     api<T>(path, { signal: controller.signal })
       .then((res) => {
-        // Check if response is an ApiError (HTTP error from server)
-        if (isApiError(res)) {
-          console.log("[useFetch] HTTP error:", res);
-          fetchError = res.message;
-          setError(res.message);
-          // On HTTP error: initial load clears loading; background sets loading=true
-          if (isBackground) {
-            setLoading(true);
-          } else {
-            setLoading(false);
-          }
-          return;
-        }
-        // Success
         setData(res);
         setError(null);
+        setLoading(false);
       })
 
       .catch((err: unknown) => {
-        // Network error (fetch threw) - wrap as ApiError with status=0
-        console.log("[useFetch] network error:", err);
-        if (err instanceof DOMException && err.name === "AbortError") {
+        if (controller.signal.aborted) {
           return;
         }
-        fetchError = isApiError(err) ? err.message : fallbackError;
-        setError(fetchError);
-        // On network error: initial load clears loading; background sets loading=true
-        if (isBackground) {
-          setLoading(true);
-        } else {
-          setLoading(false);
-        }
-      })
 
-      .then(() => {
-        // On success (no error): clear loading for non-aborted fetches
-        if (!controller.signal.aborted && fetchError === null) {
-          setLoading(false);
-        }
-      })
-
-      .finally(() => {
-        // Aborted fetches don't own the loading flag — the replacement owns it.
-        // Non-aborted: loading already set correctly.
+        setError(isApiError(err) ? err.message : fallbackError);
+        setLoading(false);
       });
 
     return () => {

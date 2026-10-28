@@ -140,7 +140,9 @@ export async function api<T = unknown>(
   let res: Response;
   try {
     res = await fetch(`/api${path}`, init);
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+
     throw {
       status: 0,
       code: "network_error",

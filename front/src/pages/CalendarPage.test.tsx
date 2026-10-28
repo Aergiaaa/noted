@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import {
   act,
   cleanup,
@@ -881,6 +882,54 @@ describe("CalendarPage", () => {
 
     await waitForGrid();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the skeleton when StrictMode aborts the first week fetch", async () => {
+    // StrictMode mounts, cleans up (aborting fetch #1), and mounts again —
+    // the cancelled request must stay silent instead of converting into
+    // "network request failed" and replacing the skeleton with an error.
+    const pending: Array<(r: Response) => void> = [];
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+          calls += 1;
+          if (calls === 1) {
+            return new Promise<Response>((_, reject) => {
+              init?.signal?.addEventListener("abort", () =>
+                reject(new DOMException("Aborted", "AbortError")),
+              );
+            });
+          }
+          return new Promise<Response>((resolve) => {
+            pending.push(resolve);
+          });
+        }),
+    );
+
+    const { container } = render(
+      <StrictMode>
+        <CalendarPage />
+      </StrictMode>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Double-invoked effect: fetch #1 was aborted, its replacement is still
+    // in flight — no error surface, skeleton stays until #2 lands.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("network request failed")).toBeNull();
+    expect(container.querySelector(".skeleton")).not.toBeNull();
+
+    await act(async () => {
+      pending[0](listResponse([]));
+    });
+    await waitForGrid();
+    expect(container.querySelector(".skeleton")).toBeNull();
   });
 
   it("steps whole weeks and flips the month title at the boundary", async () => {

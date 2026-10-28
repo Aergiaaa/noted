@@ -17,7 +17,9 @@ describe("useFetch", () => {
   it("starts loading and lands data from the server", async () => {
     vi.mocked(api).mockResolvedValue({ data: [1, 2] });
 
-    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
+    const { result } = renderHook(() =>
+      useFetch<{ data: number[] }>("/things", "failed"),
+    );
 
     expect(result.current.loading).toBe(true);
     expect(result.current.data).toBeNull();
@@ -29,7 +31,7 @@ describe("useFetch", () => {
   });
 
   it("surfaces the server message on an ApiError", async () => {
-    vi.mocked(api).mockResolvedValue({
+    vi.mocked(api).mockRejectedValue({
       status: 400,
       code: "validation_error",
       message: "bad input",
@@ -69,24 +71,28 @@ describe("useFetch", () => {
 
   it("silently ignores AbortError when fetch is cancelled", async () => {
     vi.mocked(api).mockImplementation(
-      () => new Promise((_, reject) => {
-        reject(new DOMException("Aborted", "AbortError"));
-      }),
+      () =>
+        new Promise((_, reject) => {
+          reject(new DOMException("Aborted", "AbortError"));
+        }),
     );
 
     const { unmount } = renderHook(() => useFetch("/things", "failed"));
     unmount();
 
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
   });
 
   it("does not flip loading flag for an aborted fetch", async () => {
     vi.mocked(api).mockImplementation(
-      () => new Promise((_, reject) => {
-        reject(new DOMException("Aborted", "AbortError"));
-      }),
+      () =>
+        new Promise((_, reject) => {
+          reject(new DOMException("Aborted", "AbortError"));
+        }),
     );
 
     const { result, unmount } = renderHook(() => useFetch("/things", "failed"));
@@ -94,11 +100,62 @@ describe("useFetch", () => {
 
     unmount();
 
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(result.current.loading).toBe(true);
     expect(result.current.error).toBeNull();
     expect(result.current.data).toBeNull();
+  });
+
+  it("stays silent when an aborted fetch rejects as a network error", async () => {
+    // The transport converts most fetch failures into a network_error
+    // ApiError, so the hook must key cancellation off its own signal —
+    // not the error's shape — or a week-slide abort surfaces as a load
+    // error (the calendar-only regression).
+    let callCount = 0;
+    let resolveSecond!: (value: unknown) => void;
+    vi.mocked(api).mockImplementation((_path, options) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise((_, reject) => {
+          options?.signal?.addEventListener("abort", () =>
+            reject({
+              status: 0,
+              code: "network_error",
+              message: "network request failed",
+            }),
+          );
+        });
+      }
+      return new Promise((resolve) => {
+        resolveSecond = resolve;
+      });
+    });
+
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string }) =>
+        useFetch<{ data: string[] }>(path, "failed"),
+      { initialProps: { path: "/first" } },
+    );
+
+    // Path change cleans up the first effect: its fetch aborts and rejects
+    // with the converted shape while the replacement is still in flight.
+    rerender({ path: "/second" });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveSecond({ data: ["b"] });
+    });
+    expect(result.current.data).toEqual({ data: ["b"] });
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
   });
 
   it("refetches without flipping the loading flag and keeps previous data", async () => {
@@ -125,14 +182,16 @@ describe("useFetch", () => {
 
   it("clears a stale error when refetching", async () => {
     vi.mocked(api)
-      .mockResolvedValueOnce({
+      .mockRejectedValueOnce({
         status: 400,
         code: "validation_error",
         message: "boom",
       })
       .mockResolvedValue({ ok: true });
 
-    const { result } = renderHook(() => useFetch<{ ok: boolean }>("/things", "failed"));
+    const { result } = renderHook(() =>
+      useFetch<{ ok: boolean }>("/things", "failed"),
+    );
     await waitFor(() => expect(result.current.error).toBe("boom"));
 
     act(() => {
@@ -143,7 +202,6 @@ describe("useFetch", () => {
   });
 
   it("shows the skeleton again on retry", async () => {
-    // Network errors from api() are wrapped with status=0 and code="network_error"
     vi.mocked(api)
       .mockRejectedValueOnce({
         status: 0,
@@ -152,7 +210,9 @@ describe("useFetch", () => {
       })
       .mockResolvedValue({ ok: true });
 
-    const { result } = renderHook(() => useFetch<{ ok: boolean }>("/things", "failed"));
+    const { result } = renderHook(() =>
+      useFetch<{ ok: boolean }>("/things", "failed"),
+    );
     await waitFor(() =>
       expect(result.current.error).toBe("network request failed"),
     );
@@ -166,48 +226,42 @@ describe("useFetch", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("keeps loading on background fetch failure", async () => {
-    // Initial load succeeds
+  it("keeps previous data and clears loading on background fetch failure", async () => {
     let callCount = 0;
     vi.mocked(api).mockImplementation(() => {
       callCount++;
-      console.log("[test] api call #" + callCount);
       if (callCount === 1) {
         return Promise.resolve({ data: [1] });
       }
-      // Second call (refetch) fails
-      return Promise.resolve({
+      return Promise.reject({
         status: 400,
         code: "validation_error",
         message: "boom",
       });
     });
 
-    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
+    const { result } = renderHook(() =>
+      useFetch<{ data: number[] }>("/things", "failed"),
+    );
     await waitFor(() => expect(result.current.data).toEqual({ data: [1] }));
     expect(result.current.loading).toBe(false);
 
-    // Background fetch (refetch) fails
     act(() => {
       result.current.refetch();
     });
 
     await waitFor(() => expect(result.current.error).toBe("boom"));
-    // loading should stay true for background failure
-    expect(result.current.loading).toBe(true);
-    // data should remain the previous value
+    expect(result.current.loading).toBe(false);
     expect(result.current.data).toEqual({ data: [1] });
   });
 
-  it("keeps loading on background network error", async () => {
-    // Initial load succeeds
+  it("keeps previous data and clears loading on background network error", async () => {
     let callCount = 0;
     vi.mocked(api).mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
         return Promise.resolve({ data: [1] });
       }
-      // Second call (refetch) fails with network error (simulating api.ts wrapping)
       return Promise.reject({
         status: 0,
         code: "network_error",
@@ -215,19 +269,20 @@ describe("useFetch", () => {
       });
     });
 
-    const { result } = renderHook(() => useFetch<{ data: number[] }>("/things", "failed"));
+    const { result } = renderHook(() =>
+      useFetch<{ data: number[] }>("/things", "failed"),
+    );
     await waitFor(() => expect(result.current.data).toEqual({ data: [1] }));
     expect(result.current.loading).toBe(false);
 
-    // Background fetch (refetch) fails with network error
     act(() => {
       result.current.refetch();
     });
 
-    await waitFor(() => expect(result.current.error).toBe("network request failed"));
-    // loading should stay true for background failure
-    expect(result.current.loading).toBe(true);
-    // data should remain the previous value
+    await waitFor(() =>
+      expect(result.current.error).toBe("network request failed"),
+    );
+    expect(result.current.loading).toBe(false);
     expect(result.current.data).toEqual({ data: [1] });
   });
 
@@ -235,7 +290,7 @@ describe("useFetch", () => {
     vi.mocked(api).mockImplementation((url: string) =>
       url.includes("second")
         ? Promise.resolve({ data: ["b"] })
-        : Promise.resolve({
+        : Promise.reject({
             status: 400,
             code: "validation_error",
             message: "boom",
@@ -252,6 +307,35 @@ describe("useFetch", () => {
     rerender({ path: "/second" });
     expect(result.current.error).toBeNull();
     await waitFor(() => expect(result.current.data).toEqual({ data: ["b"] }));
+  });
+
+  it("keeps previous data visible when a path change fails", async () => {
+    let callCount = 0;
+    vi.mocked(api).mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve({ data: ["a"] });
+      }
+      return Promise.reject({
+        status: 0,
+        code: "network_error",
+        message: "network request failed",
+      });
+    });
+
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string }) =>
+        useFetch<{ data: string[] }>(path, "failed"),
+      { initialProps: { path: "/first" } },
+    );
+    await waitFor(() => expect(result.current.data).toEqual({ data: ["a"] }));
+
+    rerender({ path: "/second" });
+    await waitFor(() =>
+      expect(result.current.error).toBe("network request failed"),
+    );
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toEqual({ data: ["a"] });
   });
 
   it("re-runs the effect when fallbackError changes", async () => {
