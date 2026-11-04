@@ -84,6 +84,21 @@ func (s *TaskService) List(ctx context.Context, status, due *string) ([]Task, er
 	return tasks, nil
 }
 
+// Overdue returns open tasks with due_date strictly before the given day.
+func (s *TaskService) Overdue(ctx context.Context, day string) ([]Task, error) {
+	rows, err := s.q.ListOpenTasksDueBefore(ctx, &day)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks := make([]Task, len(rows))
+	for i, row := range rows {
+		tasks[i] = fromTaskRow(row)
+	}
+
+	return tasks, nil
+}
+
 func (s *TaskService) Create(ctx context.Context, in TaskInput) (Task, error) {
 	in.Title = sanitizeLine(in.Title)
 	in.Status = STATUS_OPEN

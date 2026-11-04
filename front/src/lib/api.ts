@@ -183,6 +183,17 @@ export async function api<T = unknown>(
 
 // Server envelope fields (API.md validation_error) become "field: message";
 // anything else falls back to the caller's generic failure line.
+// Dashboard composed response (API.md).
+export interface DashboardResponse {
+  date: string;
+  balance: BalanceResponse;
+  events_today: Event[];
+  tasks_today: Task[];
+  overdue_tasks: Task[];
+  recent_transactions: Transaction[];
+  pinned_notes: Note[];
+}
+
 export function errorLines(err: unknown, fallback: string): string[] {
   if (!isApiError(err)) return [fallback];
   if (err.fields !== undefined) {

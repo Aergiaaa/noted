@@ -55,6 +55,9 @@ func (a *app) newRouter() http.Handler {
 
 			r.Post("/auth/recovery-codes", a.handler.RecoveryCodes)
 
+			// Dashboard (F10)
+			r.Get("/dashboard", a.handler.GetDashboard)
+
 			r.Get("/events", a.handler.ListEvents)
 			r.Post("/events", a.handler.CreateEvent)
 			r.Patch("/events/{id}", a.handler.UpdateEvent)

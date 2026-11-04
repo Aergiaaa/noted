@@ -28,14 +28,88 @@ function stubProbe(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 function stubAuthed(extra: Array<[string, Response]> = []) {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValueOnce(
-      jsonResponse(200, { authenticated: true, expires_at: "x" }),
+  // Dashboard response for authenticated users who land on /
+  const dashboardResponse = jsonResponse(200, {
+    date: "2026-10-29",
+    balance: { currency: "USD", total: { balance_cents: 0 }, wallets: [] },
+    events_today: [],
+    tasks_today: [],
+    overdue_tasks: [],
+    recent_transactions: [],
+    pinned_notes: [],
+  });
+
+  // Events list response for Calendar page
+  const eventsResponse = jsonResponse(200, { data: [] });
+
+  // Transactions list response for Finance page
+  const transactionsResponse = jsonResponse(200, {
+    data: [],
+    next_cursor: null,
+  });
+
+  // Wallets response for Finance page
+  const walletsResponse = jsonResponse(200, { data: [] });
+
+  // Notes list response for Notes page
+  const notesResponse = jsonResponse(200, { data: [] });
+
+  // Tasks list response for Tasks page
+  const tasksResponse = jsonResponse(200, { data: [] });
+
+  const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = String(input);
+    // Session probe
+    if (url === "/api/session") {
+      return Promise.resolve(
+        jsonResponse(200, { authenticated: true, expires_at: "x" }),
+      );
+    }
+    // Dashboard (api() prepends /api)
+    if (url.startsWith("/api/dashboard")) {
+      return Promise.resolve(dashboardResponse);
+    }
+    // Events
+    if (url.startsWith("/api/events")) {
+      return Promise.resolve(eventsResponse);
+    }
+    // Finance
+    if (url.startsWith("/api/finance/transactions")) {
+      return Promise.resolve(transactionsResponse);
+    }
+    if (url.startsWith("/api/finance/wallets")) {
+      return Promise.resolve(walletsResponse);
+    }
+    // Notes
+    if (url.startsWith("/api/notes")) {
+      return Promise.resolve(notesResponse);
+    }
+    // Tasks
+    if (url.startsWith("/api/tasks")) {
+      return Promise.resolve(tasksResponse);
+    }
+    return Promise.resolve(
+      jsonResponse(404, { error: { code: "not_found", message: "not found" } }),
     );
+  });
+
   for (const [url, res] of extra) {
-    fetchMock.mockResolvedValueOnce(res).mockResolvedValue(res);
-    void url;
+    // Allow extra responses to override specific URLs
+    const originalImpl = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u === url) return Promise.resolve(res);
+        return (
+          originalImpl?.(input, init) ??
+          Promise.resolve(
+            jsonResponse(404, {
+              error: { code: "not_found", message: "not found" },
+            }),
+          )
+        );
+      },
+    );
   }
   stubProbe(fetchMock);
   return fetchMock;
@@ -73,12 +147,23 @@ describe("App guard", () => {
   });
 
   it("offers retry when the probe fails, then proceeds", async () => {
+    const dashboardResponse = jsonResponse(200, {
+      date: "2026-10-29",
+      balance: { currency: "USD", total: { balance_cents: 0 }, wallets: [] },
+      events_today: [],
+      tasks_today: [],
+      overdue_tasks: [],
+      recent_transactions: [],
+      pinned_notes: [],
+    });
+
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("offline"))
-      .mockResolvedValue(
+      .mockResolvedValueOnce(
         jsonResponse(200, { authenticated: true, expires_at: "x" }),
-      );
+      )
+      .mockResolvedValue(dashboardResponse);
     stubProbe(fetchMock);
 
     renderApp();
@@ -89,9 +174,11 @@ describe("App guard", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Dashboard" })).toBeDefined(),
+      expect(
+        screen.getByRole("heading", { name: "Today at a glance" }),
+      ).toBeDefined(),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3); // session retry + dashboard
   });
 
   it("sends guests to /login, replacing the history entry", async () => {
@@ -150,7 +237,9 @@ describe("App guard", () => {
     renderApp();
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Dashboard" })).toBeDefined(),
+      expect(
+        screen.getByRole("heading", { name: "Today at a glance" }),
+      ).toBeDefined(),
     );
     expect(window.location.pathname).toBe("/");
   });
@@ -162,7 +251,9 @@ describe("App guard", () => {
     renderApp();
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Dashboard" })).toBeDefined(),
+      expect(
+        screen.getByRole("heading", { name: "Today at a glance" }),
+      ).toBeDefined(),
     );
     expect(window.location.pathname).toBe("/");
   });

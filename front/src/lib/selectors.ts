@@ -1,4 +1,4 @@
-import type { Event, Note, Task, WalletBalance } from "./api";
+import type { Event, Note, Task, WalletBalance, Transaction } from "./api";
 import { WALLET_SEED_CASH_ID } from "./api";
 import type { MentionType } from "./mentions";
 
@@ -9,6 +9,34 @@ export function getOverdueTasks(tasks: Task[], today: string): Task[] {
     (task) =>
       task.status === "open" && task.due_date !== null && task.due_date < today,
   );
+}
+
+// Events today: starts_at date equals today (local date derived from UTC instant).
+export function getEventsToday(events: Event[], today: string): Event[] {
+  return events.filter((event) => event.starts_at.startsWith(today));
+}
+
+// Tasks today: open tasks with due_date equal to today.
+export function getTasksToday(tasks: Task[], today: string): Task[] {
+  return tasks.filter(
+    (task) =>
+      task.status === "open" &&
+      task.due_date !== null &&
+      task.due_date === today,
+  );
+}
+
+// Recent transactions: most recent N by occurred_on (already sorted DESC by API).
+export function getRecentTransactions(
+  transactions: Transaction[],
+  limit: number,
+): Transaction[] {
+  return transactions.slice(0, limit);
+}
+
+// Pinned notes: pinned=true, already ordered by updated_at DESC from API.
+export function getPinnedNotes(notes: Note[], limit: number): Note[] {
+  return notes.filter((note) => note.pinned).slice(0, limit);
 }
 
 // New transactions start in the seeded Cash wallet when it is active
