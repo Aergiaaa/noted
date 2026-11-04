@@ -351,4 +351,13 @@ describe("useFetch", () => {
     await waitFor(() => expect(vi.mocked(api)).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.error).toBe("second failed"));
   });
+
+  it("handles empty path by setting loading to false immediately", async () => {
+    const { result } = renderHook(() => useFetch("", "failed"));
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(vi.mocked(api)).not.toHaveBeenCalled();
+  });
 });
