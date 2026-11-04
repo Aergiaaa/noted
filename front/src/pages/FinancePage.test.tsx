@@ -154,6 +154,32 @@ describe("FinancePage", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it("shows the transactions load error and recovers on retry", async () => {
+    let failTransactions = true;
+    const fetchMock = stubFetch((url) => {
+      if (failTransactions && url.startsWith("/api/finance/transactions")) {
+        return envelope("tx boom", 500);
+      }
+      if (url === "/api/finance/balance") return jsonResponse(200, BALANCE);
+      if (url === "/api/finance/wallets?archived=1") {
+        return jsonResponse(200, { data: WALLETS });
+      }
+      return jsonResponse(200, { data: [tx()], next_cursor: null });
+    });
+
+    render(<FinancePage />);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("tx boom"),
+    );
+
+    failTransactions = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(screen.getAllByTestId("transaction-row")).toHaveLength(1),
+    );
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it("offers the create CTA when the history is empty", async () => {
     stubFetch((url) => {
       if (url === "/api/finance/balance") return jsonResponse(200, BALANCE);
