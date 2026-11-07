@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -76,6 +80,51 @@ func TestWriteError_explicitMessageOverridesDefault(t *testing.T) {
 	}
 	if body.Message != "forbidden origin" {
 		t.Fatalf("message = %v, want %q", body.Message, "forbidden origin")
+	}
+}
+
+// --- writeServiceError ---
+
+// A client that hangs up mid-request (the frontend aborts stale fetches)
+// is not a server failure: bare 499, INFO level, no envelope — and the
+// wrapped form matters, since drivers return cancel through %w.
+func TestWriteServiceError_clientCanceled_499AndInfoLog(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"bare cancel", context.Canceled},
+		{"wrapped cancel", fmt.Errorf("query: %w", context.Canceled)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			old := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+			defer slog.SetDefault(old)
+
+			rec := httptest.NewRecorder()
+			writeServiceError(rec, tt.err, "dashboard")
+
+			if rec.Code != statusClientClosedRequest {
+				t.Fatalf("status = %d, want %d", rec.Code, statusClientClosedRequest)
+			}
+			if rec.Body.Len() != 0 {
+				t.Fatalf("body = %q, want empty (nobody is listening)", rec.Body.String())
+			}
+
+			logged := buf.String()
+			if !strings.Contains(logged, "level=INFO") {
+				t.Errorf("log = %q, want INFO", logged)
+			}
+			if strings.Contains(logged, "level=ERROR") {
+				t.Errorf("canceled request logged as ERROR: %q", logged)
+			}
+			if !strings.Contains(logged, "op=dashboard") {
+				t.Errorf("log = %q, want op=dashboard", logged)
+			}
+		})
 	}
 }
 
