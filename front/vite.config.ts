@@ -24,6 +24,9 @@ export default defineConfig({
     // workers on a 4-core box past vitest's 5s default mid-file (flaky
     // timeouts, not slow tests); 10s still catches a genuinely hung test.
     testTimeout: 10000,
+    // waitFor's separate 1s default expires first under the same
+    // starvation — see vitest.setup.ts.
+    setupFiles: ["vitest.setup.ts"],
     coverage: {
       // istanbul, not v8: v8 coverage relies on the Node inspector and
       // reports 0% when vitest runs under the Bun runtime.
