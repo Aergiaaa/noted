@@ -108,6 +108,7 @@ func (a *app) wire(db *sql.DB) {
 	tasks := service.NewTaskService(queries)
 	wallets := service.NewWalletService(queries)
 	transactions := service.NewTransactionService(queries, a.conf.CurrencyDefault)
+	dashboard := service.NewDashboardService(events, notes, tasks, transactions)
 
 	a.handler = handler.New(
 		a.auth,
@@ -116,6 +117,7 @@ func (a *app) wire(db *sql.DB) {
 		tasks,
 		wallets,
 		transactions,
+		dashboard,
 		a.secure,
 	)
 

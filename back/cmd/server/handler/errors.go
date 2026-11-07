@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -8,6 +9,11 @@ import (
 
 	"noted/internal/service"
 )
+
+// statusClientClosedRequest (499, nginx convention): the caller hung up
+// before an answer could be written. It never carries an envelope — the
+// frozen status map above governs only what a client can actually read.
+const statusClientClosedRequest = 499
 
 // Error is the frozen error envelope inner object (API.md).
 type Error struct {
@@ -89,6 +95,12 @@ func writeServiceError(w http.ResponseWriter, err error, op string) {
 	var validation *service.ValidationError
 
 	switch {
+	case errors.Is(err, context.Canceled):
+		// The client aborted mid-request (the frontend cancels stale
+		// fetches), so nobody is waiting for an answer and the server
+		// did nothing wrong: INFO with a bare 499, never ERROR + 500.
+		slog.Info("handler", "op", op, "err", err)
+		w.WriteHeader(statusClientClosedRequest)
 	case errors.As(err, &validation):
 		WriteError(w, http.StatusBadRequest, "", validation.Fields)
 	case errors.Is(err, service.ErrNotFound):

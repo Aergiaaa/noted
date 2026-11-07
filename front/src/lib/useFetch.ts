@@ -39,6 +39,11 @@ export function useFetch<T>(
   }
 
   useEffect(() => {
+    if (!path) {
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
 
     api<T>(path, { signal: controller.signal })

@@ -26,7 +26,7 @@ func newTestFinanceHandler(t *testing.T) (*Handler, http.Handler, *sql.DB) {
 	q := generated.New(db)
 	wallets := service.NewWalletService(q)
 	transactions := service.NewTransactionService(q, "IDR")
-	h := New(nil, nil, nil, nil, wallets, transactions, false)
+	h := New(nil, nil, nil, nil, wallets, transactions, nil, false)
 
 	r := chi.NewRouter()
 	r.Get("/api/finance/balance", h.FinanceBalance)

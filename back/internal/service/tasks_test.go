@@ -674,3 +674,104 @@ func TestTaskService_purge_zeroWhenNothingDue(t *testing.T) {
 		t.Fatalf("Purge rows = %d, want 0", n)
 	}
 }
+
+func TestTaskService_Overdue_returnsTasksDueBeforeDay(t *testing.T) {
+	svc, _ := newTestTaskService(t)
+	ctx := context.Background()
+
+	// Create tasks with different due dates
+	_, err := svc.Create(ctx, TaskInput{
+		Title:   "Overdue 1",
+		Status:  STATUS_OPEN,
+		DueDate: "2026-10-27",
+		EventID: "",
+		NoteID:  "",
+	})
+	if err != nil {
+		t.Fatalf("create overdue 1: %v", err)
+	}
+
+	_, err = svc.Create(ctx, TaskInput{
+		Title:   "Overdue 2",
+		Status:  STATUS_OPEN,
+		DueDate: "2026-10-28",
+		EventID: "",
+		NoteID:  "",
+	})
+	if err != nil {
+		t.Fatalf("create overdue 2: %v", err)
+	}
+
+	// Task due today (not overdue)
+	_, err = svc.Create(ctx, TaskInput{
+		Title:   "Due today",
+		Status:  STATUS_OPEN,
+		DueDate: "2026-10-29",
+		EventID: "",
+		NoteID:  "",
+	})
+	if err != nil {
+		t.Fatalf("create due today: %v", err)
+	}
+
+	// Completed overdue task (should not be returned) - create as open then update to done
+	doneOverdue, err := svc.Create(ctx, TaskInput{
+		Title:   "Done overdue",
+		Status:  STATUS_OPEN,
+		DueDate: "2026-10-27",
+		EventID: "",
+		NoteID:  "",
+	})
+	if err != nil {
+		t.Fatalf("create done overdue: %v", err)
+	}
+	_, err = svc.Update(ctx, doneOverdue.ID, TaskPatch{Status: strPtr(STATUS_DONE)})
+	if err != nil {
+		t.Fatalf("update done overdue: %v", err)
+	}
+
+	overdue, err := svc.Overdue(ctx, "2026-10-29")
+	if err != nil {
+		t.Fatalf("Overdue: %v", err)
+	}
+
+	// Debug: check all tasks in db
+	rows, err := svc.List(ctx, nil, nil)
+	if err != nil {
+		t.Fatalf("List all: %v", err)
+	}
+	for _, task := range rows {
+		due := ""
+		if task.DueDate != nil {
+			due = *task.DueDate
+		}
+		t.Logf("task: %s, due: %s, status: %s", task.Title, due, task.Status)
+	}
+
+	if len(overdue) != 2 {
+		t.Fatalf("overdue = %d, want 2", len(overdue))
+	}
+	// Should be ordered by due_date
+	if overdue[0].Title != "Overdue 1" || overdue[1].Title != "Overdue 2" {
+		t.Fatalf("overdue order = %v, want [Overdue 1 Overdue 2]", overdue)
+	}
+}
+
+func TestTaskService_Overdue_error(t *testing.T) {
+	db, err := database.Open(filepath.Join(t.TempDir(), "tasks_overdue_err.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	// Drop tasks table to cause query error
+	if _, err := db.Exec("DROP TABLE IF EXISTS tasks"); err != nil {
+		t.Fatalf("drop tasks table: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	svc := NewTaskService(generated.New(db))
+
+	_, err = svc.Overdue(context.Background(), "2026-10-29")
+	if err == nil {
+		t.Fatal("expected error from dropped table")
+	}
+}
