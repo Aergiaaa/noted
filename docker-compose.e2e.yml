@@ -1,0 +1,34 @@
+# Isolated E2E stack for `make e2e`: the prod images (static Go binary +
+# nginx-built Vite app), a throwaway DB volume and plain HTTP on :8088.
+# It never touches ./.db or the owner's enrollment, and `make e2e` drops
+# the volume when the run ends. Always invoked with an explicit -f pair —
+# listing files turns off the automatic docker-compose.override.yml merge,
+# so the dev hot-reload stack can't leak in.
+#
+# A separate project name keeps the prod images (`noted-e2e-api`) from
+# overwriting the dev image tag (`noted-api`) that compose-up builds.
+name: noted-e2e
+
+services:
+  api:
+    # The base file reads the owner's .env; E2E supplies every setting
+    # itself so a fresh clone with no .env still runs.
+    env_file: !reset []
+    environment:
+      APP_ENV: dev
+      APP_ORIGIN: http://localhost:${E2E_PORT:-8088}
+      TZ: UTC
+      DB_PATH: /data/noted.db
+      CURRENCY_DEFAULT: USD
+      TOTP_ENC_KEY: ${E2E_TOTP_ENC_KEY:?run this stack through make e2e}
+      TRUSTED_PROXIES: ""
+      ADDR: ":8080"
+    volumes: !override
+      - noted-e2e-data:/data
+
+  web:
+    ports:
+      - "${E2E_PORT:-8088}:80"
+
+volumes:
+  noted-e2e-data:

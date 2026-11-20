@@ -478,3 +478,95 @@ func TestEnroll_enrolledCheckFailure_exits1(t *testing.T) {
 		t.Fatalf("stderr = %q, want enroll error line", errOut)
 	}
 }
+
+func TestEnroll_suppliedSecret_persistsWithoutPrompt(t *testing.T) {
+	a := newCLIApp(t)
+	secret := "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+	out, errOut, code := runCLI(t, a, []string{"enroll", "--secret", secret})
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, errOut)
+	}
+	if strings.Contains(out, "code (1/") {
+		t.Fatal("supplied secret must not prompt for a live code")
+	}
+	for _, want := range []string{
+		"enrolled — recovery codes", "URI: otpauth://totp/Noted:me", "secret=" + secret,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q", want)
+		}
+	}
+	if n := len(codeLine.FindAllString(out, -1)); n != auth.RECOVERY_CODE_COUNT {
+		t.Errorf("printed codes = %d, want %d", n, auth.RECOVERY_CODE_COUNT)
+	}
+
+	svc := openAuth(t, a)
+	enrolled, err := svc.Enrolled(context.Background())
+	if err != nil || !enrolled {
+		t.Fatalf("Enrolled = %v, %v; want true, nil", enrolled, err)
+	}
+
+	live, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	if ok, _, err := svc.ValidateCode(context.Background(), live); err != nil || !ok {
+		t.Fatalf("ValidateCode with supplied secret = %v, %v; want true, nil", ok, err)
+	}
+}
+
+func TestEnroll_suppliedSecret_qrFlagWritesSVG(t *testing.T) {
+	a := newCLIApp(t)
+	svg := filepath.Join(t.TempDir(), "qr.svg")
+
+	_, _, code := runCLI(t, a, []string{
+		"enroll", "--secret", "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP", "--qr", svg,
+	})
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	if _, err := os.Stat(svg); err != nil {
+		t.Fatalf("SVG not written: %v", err)
+	}
+}
+
+func TestEnroll_suppliedSecret_invalid_exits2(t *testing.T) {
+	a := newCLIApp(t)
+	_, errOut, code := runCLI(t, a, []string{"enroll", "--secret", "not-base32!!"})
+
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "secret") {
+		t.Fatalf("stderr = %q, want secret error", errOut)
+	}
+}
+
+func TestEnroll_suppliedSecret_missingKey_exits1(t *testing.T) {
+	a := newApp(Config{DBPath: filepath.Join(t.TempDir(), "cli.db")})
+	_, errOut, code := runCLI(t, a, []string{
+		"enroll", "--secret", "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+	})
+
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1", code)
+	}
+	if !strings.Contains(errOut, "TOTP_ENC_KEY") {
+		t.Fatalf("stderr = %q, want TOTP_ENC_KEY message", errOut)
+	}
+}
+
+func TestEnroll_missingFlagValues_exit2(t *testing.T) {
+	a := newCLIApp(t)
+	for _, args := range [][]string{
+		{"enroll", "--qr"},
+		{"enroll", "--secret"},
+		{"enroll", "--unknown"},
+	} {
+		if _, errOut, code := runCLI(t, a, args); code != 2 {
+			t.Errorf("args %v: exit = %d, want 2 (stderr %q)", args, code, errOut)
+		}
+	}
+}
