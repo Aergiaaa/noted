@@ -5,9 +5,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"database/sql"
+	"encoding/base32"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/hotp"
@@ -32,6 +35,38 @@ func (s *Service) Prep() (*otp.Key, error) {
 		Issuer:      ISSUER,
 		AccountName: ACCOUNT,
 	})
+}
+
+// SECRET_BYTES matches totp.Generate's 20-byte secret (RFC4226).
+const SECRET_BYTES = 20
+
+// NormalizeSecret validates an operator-supplied base32 secret (the CLI's
+// --secret flag, used to restore an authenticator backup or seed an
+// automated test that already owns the secret). Uppercase and padding-free,
+// exactly the shape totp.Generate mints; anything else is a usage error.
+func NormalizeSecret(secret string) (string, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(secret))
+	raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(normalized)
+	if err != nil {
+		return "", fmt.Errorf("secret: %w", err)
+	}
+
+	if len(raw) != SECRET_BYTES {
+		return "", fmt.Errorf("secret: got %d bytes, want %d", len(raw), SECRET_BYTES)
+	}
+
+	return normalized, nil
+}
+
+// EnrollURI renders the otpauth:// URI for a supplied secret. SHA1/6
+// digits/30s are the defaults an authenticator assumes, matching
+// totp.Generate's key.
+func EnrollURI(secret string) string {
+	q := url.Values{}
+	q.Set("secret", secret)
+	q.Set("issuer", ISSUER)
+	return fmt.Sprintf("otpauth://totp/%s:%s?%s",
+		url.PathEscape(ISSUER), url.PathEscape(ACCOUNT), q.Encode())
 }
 
 // CheckEncKey parses TOTP_ENC_KEY up front so the CLI can fail before it

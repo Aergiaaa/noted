@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/server ./cmd/server
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates wget \
   && adduser -D -u 65532 appuser \
-  && mkdir -p /data && chown appuser:appuser /data
+  && mkdir -p /data /backups && chown appuser:appuser /data /backups
 COPY --from=build /out/server /server
 EXPOSE 8080
 USER appuser

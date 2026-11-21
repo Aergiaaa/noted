@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -249,5 +250,55 @@ func TestIsTOTPCode_separatesLoginShapes(t *testing.T) {
 		if got := isTOTPCode(tc.code); got != tc.want {
 			t.Fatalf("isTOTPCode(%q) = %v, want %v", tc.code, got, tc.want)
 		}
+	}
+}
+
+func TestNormalizeSecret_normalizesCaseAndWhitespace(t *testing.T) {
+	want := "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+	got, err := NormalizeSecret("  " + strings.ToLower(want) + " ")
+	if err != nil {
+		t.Fatalf("NormalizeSecret: %v", err)
+	}
+	if got != want {
+		t.Fatalf("NormalizeSecret = %q, want %q", got, want)
+	}
+
+	// The normalized secret must drive the same TOTP math the login path uses.
+	code, err := totp.GenerateCode(got, time.Now())
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	if !isTOTPCode(code) {
+		t.Fatalf("generated code %q not shaped like a TOTP code", code)
+	}
+}
+
+func TestNormalizeSecret_rejectsBadInput(t *testing.T) {
+	for _, tc := range []struct{ name, secret string }{
+		{"not base32", "0189!!!!"},
+		{"wrong length", "JBSWY3DP"}, // 8 symbols = 5 bytes
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := NormalizeSecret(tc.secret); err == nil {
+				t.Fatalf("NormalizeSecret(%q): want error", tc.secret)
+			}
+		})
+	}
+}
+
+func TestEnrollURI_carriesSecretAndIssuer(t *testing.T) {
+	secret := "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+	u, err := url.Parse(EnrollURI(secret))
+	if err != nil {
+		t.Fatalf("parse URI: %v", err)
+	}
+	if u.Scheme != "otpauth" || u.Host != "totp" || u.Path != "/Noted:me" {
+		t.Fatalf("URI = %q, want otpauth://totp/Noted:me", u.String())
+	}
+	q := u.Query()
+	if q.Get("secret") != secret || q.Get("issuer") != ISSUER {
+		t.Fatalf("URI params = %v, want secret + issuer=%s", q, ISSUER)
 	}
 }

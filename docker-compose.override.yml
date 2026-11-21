@@ -24,6 +24,8 @@ services:
     volumes:
       - ./back:/src
       - ./.db:/data
+      # Backups land beside the dev DB so the drill never needs prod volumes.
+      - ./.backups:/backups
       # Persist go build cache across container recreation (image /tmp is
       # 1777, so the named volume inherits it and stays uid-writable).
       - dev-tmp:/tmp

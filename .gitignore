@@ -19,3 +19,9 @@ node_modules/
 
 # Go build artifacts (binaries land here via `go build ./...`)
 /back/server
+
+# E2E output (Playwright)
+playwright-report/
+
+# Local backup drills (make backup)
+.backups/

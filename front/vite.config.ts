@@ -27,6 +27,7 @@ export default defineConfig({
     // waitFor's separate 1s default expires first under the same
     // starvation — see vitest.setup.ts.
     setupFiles: ["vitest.setup.ts"],
+    exclude: ["e2e/**/*", "playwright.config.ts", "node_modules/**/*"],
     coverage: {
       // istanbul, not v8: v8 coverage relies on the Node inspector and
       // reports 0% when vitest runs under the Bun runtime.
@@ -36,7 +37,13 @@ export default defineConfig({
       // src/main.tsx is the createRoot entrypoint: it can only run by
       // booting the real app, so it is excluded from the 100% gate the
       // same way func main is excluded on the backend.
-      exclude: ["src/main.tsx", "src/**/*.test.{ts,tsx}", "src/**/*.d.ts"],
+      exclude: [
+        "src/main.tsx",
+        "src/**/*.test.{ts,tsx}",
+        "src/**/*.d.ts",
+        "e2e/**/*",
+        "playwright.config.ts",
+      ],
       thresholds: {
         lines: 100,
         functions: 100,

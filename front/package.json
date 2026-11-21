@@ -4,13 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "dev": "vite",
+    "e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
-    "preview": "vite preview"
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "cally": "0.9.2",
@@ -23,6 +24,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^24.13.3",
@@ -32,6 +34,7 @@
     "@vitest/coverage-istanbul": "^5.0.1",
     "jsdom": "^30.0.1",
     "oxlint": "^1.81.0",
+    "playwright": "^1.65.0",
     "prettier": "^3.9.10",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
