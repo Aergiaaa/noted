@@ -1,5 +1,13 @@
-# F1: Caddyfile placeholder. Prod TLS config lands in F12.
-# {$APP_ORIGIN_HOST} must be set via .env / environment in F12.
-:80 {
-	reverse_proxy web:80
+# Production Caddyfile: auto-HTTPS via ACME.
+# Set APP_ORIGIN_HOST in .env (e.g. noted.example.com).
+# Caddy reads $APP_ORIGIN_HOST from the environment.
+
+{$APP_ORIGIN_HOST} {
+	encode zstd gzip
+	reverse_proxy web:80 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+	}
 }

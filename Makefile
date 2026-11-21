@@ -1,4 +1,4 @@
-.PHONY: test test-back test-front test-cover test-cover-back test-cover-front format promote release sqlc migrate-check compose-up compose-down backup enroll reset-auth
+.PHONY: test test-back test-front test-cover test-cover-back test-cover-front format promote release sqlc migrate-check compose-up compose-down backup restore-drill e2e enroll reset-auth
 
 # Full test suite: backend (go test) + frontend (vitest).
 test: test-back test-front
@@ -116,16 +116,84 @@ compose-up:
 compose-down:
 	docker compose down
 
-# Nightly-style backup drill target (wired in F12).
+# Nightly-style backup: VACUUM INTO ./.backups/noted-YYYY-MM-DD.db (bind
+# mounted at /backups in the dev container), integrity-checked, 0600, 14
+# kept. Run from the dev stack; prod uses the same subcommand against the
+# noted-backups volume (DEPLOYMENT.md).
+backup: export UID := $(shell id -u)
+backup: export GID := $(shell id -g)
 backup:
-	@echo "TODO(F12): VACUUM INTO + integrity_check"
+	mkdir -p .backups
+	docker compose run --build --rm api run ./cmd/server backup
+
+# Restore drill: copy the newest backup to a scratch DB, boot the real
+# server against it, and require /healthz to answer. Never touches .db's
+# live database.
+restore-drill: export UID := $(shell id -u)
+restore-drill: export GID := $(shell id -g)
+restore-drill:
+	@latest=$$(ls -1t .backups/noted-*.db 2>/dev/null | head -1); \
+	[ -n "$$latest" ] || { echo "restore-drill: no backup yet — run make backup"; exit 1; }; \
+	mkdir -p .db; \
+	docker rm -f noted-restore-drill >/dev/null 2>&1 || true; \
+	cp "$$latest" .db/restore-drill.db; \
+	docker compose run --build --rm -d --name noted-restore-drill \
+		-e DB_PATH=/data/restore-drill.db api run ./cmd/server >/dev/null; \
+	i=0; \
+	until docker exec noted-restore-drill wget -qO- http://localhost:8080/healthz >/dev/null 2>&1; do \
+		i=$$((i+1)); \
+		if [ $$i -ge 30 ]; then \
+			docker logs noted-restore-drill || true; \
+			docker rm -f noted-restore-drill >/dev/null; \
+			rm -f .db/restore-drill.db*; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done; \
+	docker rm -f noted-restore-drill >/dev/null; \
+	rm -f .db/restore-drill.db*; \
+	echo "restore-drill: restored backup booted clean (healthz 200)"
+
+# Playwright critical flows against the prod images. The isolated stack
+# (docker-compose.e2e.yml) gets a fresh volume and a random encryption
+# key each run; enrollment is seeded host-side with a known test secret
+# and the browser mints the matching TOTP codes. Nothing here touches
+# ./.db or the owner's enrollment.
+E2E_PORT ?= 8088
+E2E_TOTP_SECRET ?= JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+# Prefer a distro Chromium when present (NixOS et al. lack the libraries
+# Playwright's bundled build needs); otherwise the managed browser from
+# `bunx playwright install --with-deps chromium` is used.
+E2E_CHROMIUM_PATH ?= $(shell command -v chromium 2>/dev/null)
+
+e2e: export E2E_PORT := $(E2E_PORT)
+e2e: export E2E_TOTP_SECRET := $(E2E_TOTP_SECRET)
+e2e: export E2E_CHROMIUM_PATH := $(E2E_CHROMIUM_PATH)
+e2e: export E2E_TOTP_ENC_KEY := $(shell openssl rand -base64 32)
+e2e:
+	@set -eu; \
+	compose="docker compose -f docker-compose.yml -f docker-compose.e2e.yml"; \
+	teardown() { $$compose down -v --remove-orphans >/dev/null 2>&1 || true; }; \
+	trap teardown EXIT INT TERM; \
+	teardown; \
+	$$compose up --build -d; \
+	i=0; \
+	until curl -fsS "http://localhost:$$E2E_PORT/healthz" >/dev/null 2>&1; do \
+		i=$$((i+1)); \
+		if [ $$i -ge 60 ]; then $$compose logs api; echo "e2e: stack never became healthy"; exit 1; fi; \
+		sleep 2; \
+	done; \
+	$$compose run --rm -T api enroll --secret "$$E2E_TOTP_SECRET"; \
+	( cd front && { [ -n "$$E2E_CHROMIUM_PATH" ] || bunx playwright install chromium; } && \
+		E2E_BASE_URL="http://localhost:$$E2E_PORT" bunx playwright test )
 
 # F4 enrollment, run inside the dev api container (entrypoint `go`, source
 # bind-mounted at /src, DB_PATH=/data/noted.db hits the same ./.db file the
 # running server uses). Prints the ASCII QR + otpauth URI, verifies one live
 # 6-digit code, then persists the sealed secret + recovery pool once (shown
 # once, store offline). Extra flags via ARGS, e.g.
-# `make enroll ARGS='--qr /tmp/noted-qr.svg'`.
+# `make enroll ARGS='--qr /tmp/noted-qr.svg'`; `--secret BASE32` skips the
+# live-code prompt for a known secret (E2E seeding, authenticator restore).
 # UID/GID export: same reasoning as compose-up above — without it the
 # container falls back to 1000:1000 and may write .db files the host
 # user can't read or write.
@@ -133,7 +201,7 @@ enroll: export UID := $(shell id -u)
 enroll: export GID := $(shell id -g)
 enroll:
 	mkdir -p .db
-	docker compose run --rm -it api run ./cmd/server enroll $(ARGS)
+	docker compose run --build --rm -it api run ./cmd/server enroll $(ARGS)
 
 # Wipes enrollment, recovery codes and sessions so the host can re-arm.
 # --yes is passed deliberately: the CLI refuses a bare `reset-auth`.
@@ -141,4 +209,4 @@ reset-auth: export UID := $(shell id -u)
 reset-auth: export GID := $(shell id -g)
 reset-auth:
 	mkdir -p .db
-	docker compose run --rm -it api run ./cmd/server reset-auth --yes
+	docker compose run --build --rm -it api run ./cmd/server reset-auth --yes

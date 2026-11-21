@@ -20,8 +20,10 @@ func (a *app) cli(args []string) (handled bool, code int) {
 		return true, a.runResetAuth(args[1:])
 	case "rotate-enc-key":
 		return true, a.runRotateEncKey(args[1:])
+	case "backup":
+		return true, a.runBackup(args[1:])
 	default:
-		fmt.Fprintln(os.Stderr, "usage: server [enroll [--qr FILE.svg] | reset-auth --yes | rotate-enc-key]")
+		fmt.Fprintln(os.Stderr, "usage: server [enroll [--qr FILE.svg] [--secret BASE32] | reset-auth --yes | rotate-enc-key | backup [--dir DIR] | backup --verify FILE]")
 		return true, 2
 	}
 }
